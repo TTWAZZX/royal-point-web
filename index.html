@@ -5,45 +5,38 @@
   <title>Royal Point</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- jQuery + jQuery Form -->
+  <!-- CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sanwithz/Form/sanwithzstyle2.min.css" />
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- JS libs -->
   <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.form/4.3.0/jquery.form.min.js"></script>
-
-  <!-- Bootstrap -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
-
-  <!-- Optional style from sanwithz -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sanwithz/Form/sanwithzstyle2.min.css" />
-
-  <!-- SweetAlert2 -->
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-  <!-- Loading Overlay -->
   <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
-
-  <!-- LIFF SDK -->
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
-  <!-- html5-qrcode -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
-  <!-- Custom CSS -->
-  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body class="bg-light">
-
   <div class="container mt-2">
-    <!-- Header image -->
-    <img src="https://lh3.googleusercontent.com/d/1ewOWxYLOyvTiRO9zwj1QbDcA0PWaIduY" class="card-img-top rounded-4" alt="Header" />
 
-    <!-- Registration Section -->
+    <!-- ปุ่มไปหน้าแอดมิน (แสดงเฉพาะแอดมิน ผ่าน app.js) -->
+    <div class="text-end my-2">
+      <a id="goAdminBtn" href="/admin.html" class="btn btn-dark btn-sm d-none">
+        <i class="fa-solid fa-shield-halved"></i> ไปหน้าแอดมิน
+      </a>
+    </div>
+
+    <!-- Header -->
+    <img src="https://lh3.googleusercontent.com/d/1ewOWxYLOyvTiRO9zwj1QbDcA0PWaIduY" class="card-img-top rounded-4 mb-2" alt="Header"/>
+
+    <!-- ลงทะเบียน -->
     <div id="regSection">
-      <div class="mt-5">
+      <div class="mt-4">
         <h2 class="text-center">ระบบลงทะเบียนใช้งาน</h2>
         <form id="dataForm" class="list mt-3">
           <div class="mb-3" style="display:none">
@@ -58,38 +51,17 @@
             <label for="room" class="form-label">Section</label>
             <select class="form-control" id="room" name="room" required>
               <option value="" disabled selected>เลือก</option>
-              <option value="ACC">ACC</option>
-              <option value="C&FA">C&FA</option>
-              <option value="CS">CS</option>
-              <option value="CIC">CIC</option>
-              <option value="DIR">DIR</option>
-              <option value="ENG">ENG</option>
-              <option value="FIN">FIN</option>
-              <option value="GR">GR</option>
-              <option value="HP">HP</option>
-              <option value="HCM">HCM</option>
-              <option value="HRD">HRD</option>
-              <option value="HRM">HRM</option>
-              <option value="IT">IT</option>
-              <option value="L&S">L&S</option>
-              <option value="MTN">MTN</option>
-              <option value="MKT">MKT</option>
-              <option value="MC">MC</option>
-              <option value="OS">OS</option>
-              <option value="PD">PD</option>
-              <option value="PD1">PD1</option>
-              <option value="PD2">PD2</option>
-              <option value="PC">PC</option>
-              <option value="PE">PE</option>
-              <option value="PUR">PUR</option>
-              <option value="QA">QA</option>
-              <option value="QC">QC</option>
-              <option value="RDPP">RDPP</option>
-              <option value="R&D">R&D</option>
-              <option value="SHE">SHE</option>
-              <option value="SCM">SCM</option>
-              <option value="SYS-ENG">SYS-ENG</option>
-              <option value="TSH CENTER">TSH CENTER</option>
+              <option value="ACC">ACC</option><option value="C&FA">C&FA</option><option value="CS">CS</option>
+              <option value="CIC">CIC</option><option value="DIR">DIR</option><option value="ENG">ENG</option>
+              <option value="FIN">FIN</option><option value="GR">GR</option><option value="HP">HP</option>
+              <option value="HCM">HCM</option><option value="HRD">HRD</option><option value="HRM">HRM</option>
+              <option value="IT">IT</option><option value="L&S">L&S</option><option value="MTN">MTN</option>
+              <option value="MKT">MKT</option><option value="MC">MC</option><option value="OS">OS</option>
+              <option value="PD">PD</option><option value="PD1">PD1</option><option value="PD2">PD2</option>
+              <option value="PC">PC</option><option value="PE">PE</option><option value="PUR">PUR</option>
+              <option value="QA">QA</option><option value="QC">QC</option><option value="RDPP">RDPP</option>
+              <option value="R&D">R&D</option><option value="SHE">SHE</option><option value="SCM">SCM</option>
+              <option value="SYS-ENG">SYS-ENG</option><option value="TSH CENTER">TSH CENTER</option>
               <option value="WH">WH</option>
             </select>
           </div>
@@ -110,7 +82,7 @@
       </div>
     </div>
 
-    <!-- Display/Dashboard Section -->
+    <!-- แดชบอร์ดผู้ใช้ -->
     <div id="displaySection" class="list mt-2" style="display:none;">
       <div class="d-flex align-items-center bg-silver p-3 rounded-4 shadow-sm mb-3">
         <img id="profilePic" src="https://placehold.co/60x60" class="rounded-circle border border-2 border-white shadow me-3" style="width: 60px; height: 60px;" />
@@ -134,9 +106,7 @@
         <!-- Progress Curve -->
         <div>
           <svg viewBox="0 0 100 50" class="w-100">
-            <!-- background curve -->
             <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#eee" stroke-width="10" fill="none" />
-            <!-- foreground curve progress -->
             <path id="progressCurve" d="M 10 50 A 40 40 0 0 1 90 50"
                   stroke="#30674c" stroke-width="10" fill="none"
                   stroke-dasharray="126" stroke-dashoffset="126" stroke-linecap="round" />
@@ -146,156 +116,46 @@
 
         <p id="next-tier">สะสมอีก <strong>100</strong> พ้อยท์ ภายใน <strong>31/12/68</strong><br />เพื่อเลื่อนสถานะเป็น <strong>Gold</strong> ในปี 2568</p>
 
-        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#scoreModal">
-          <i class="fa-solid fa-qrcode"></i> สแกนคิวอาร์โค้ดรับพ้อยท์
-        </button>
-        <button class="btn btn-primary btn-sm me-2" onclick="refreshUserScore()">
-          <i class="fa-solid fa-arrows-rotate"></i>
-        </button>
-
-        <button class="btn btn-secondary me-2" data-bs-toggle="modal" data-bs-target="#historyModal">
-          <i class="fa-solid fa-list"></i> ประวัติพ้อยท์
-        </button>
+        <div class="d-flex justify-content-center gap-2">
+          <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#scoreModal">
+            <i class="fa-solid fa-qrcode"></i> สแกนคิวอาร์โค้ดรับพ้อยท์
+          </button>
+          <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#historyModal">
+            <i class="fa-solid fa-clock-rotate-left"></i> ประวัติพ้อยท์
+          </button>
+          <button class="btn btn-primary btn-sm" onclick="refreshUserScore()">
+            <i class="fa-solid fa-arrows-rotate"></i>
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Ads Carousel -->
+    <!-- โฆษณา/ภาพสไลด์ (เดิม) -->
     <div id="Ads" class="card-img-top rounded-4 mt-3">
       <div id="carouselAdsControls" class="carousel slide" data-bs-ride="carousel">
         <div class="carousel-inner rounded-4 overflow-hidden">
-          <div class="carousel-item active">
-            <img src="https://lh3.googleusercontent.com/d/1j6_CKghy0tLKW2dJW7W1E8TLMKxMtJTl" class="d-block w-100" alt="Ad 1" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1SJkRqfgv8r5D_r0_z-GXCI464oLxhgkc" class="d-block w-100" alt="Ad 2" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/16N6b_e-IcwKSX2HTGqj16mVBClGOpsHy" class="d-block w-100" alt="Ad 3" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1-Ha84mEEGWxM7Gl4fW9pE8z9MN1T1cjI" class="d-block w-100" alt="Ad 4" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1jXIzoxDKBDQNhdW9W4wTi73PuIT0JsJO" class="d-block w-100" alt="Ad 5" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1k39qYN9XiKEVBytB6Mxfq89slFqTcgju" class="d-block w-100" alt="Ad 6" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1RhqRg9dV1Qms-A6tZcs_FJwHfp6yqN67" class="d-block w-100" alt="Ad 7" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1XEqxqeABJV8WD9hcy7UgTDDngHFqCFDK" class="d-block w-100" alt="Ad 8" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1SJUOqdUsVTs8cOpoh1J6W8uWYQKPhpPk" class="d-block w-100" alt="Ad 9" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1sp1PEnaVtpUcOpLGWj5SnVl5KpmHOwiD" class="d-block w-100" alt="Ad 10" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/17MUuzjvvlKRZ5s24Ma0unxAupAQIQwJQ" class="d-block w-100" alt="Ad 11" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1z4ae4Zy9hzG7Hzhslg8bQsTiDei8Pg2j" class="d-block w-100" alt="Ad 12" />
-          </div>
-          <div class="carousel-item">
-            <img src="https://lh3.googleusercontent.com/d/1gW0BZiZU9gBNjam9JiSiTMP0JGwAHP_8" class="d-block w-100" alt="Ad 13" />
-          </div>
+          <div class="carousel-item active"><img src="https://lh3.googleusercontent.com/d/1j6_CKghy0tLKW2dJW7W1E8TLMKxMtJTl" class="d-block w-100" alt="Ad 1" /></div>
+          <div class="carousel-item"><img src="https://lh3.googleusercontent.com/d/1SJkRqfgv8r5D_r0_z-GXCI464oLxhgkc" class="d-block w-100" alt="Ad 2" /></div>
+          <div class="carousel-item"><img src="https://lh3.googleusercontent.com/d/16N6b_e-IcwKSX2HTGqj16mVBClGOpsHy" class="d-block w-100" alt="Ad 3" /></div>
+          <!-- ... ตัด/เพิ่มตามต้องการ ... -->
         </div>
         <button class="carousel-control-prev" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="prev">
-          <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-          <span class="visually-hidden">ก่อนหน้า</span>
+          <span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">ก่อนหน้า</span>
         </button>
         <button class="carousel-control-next" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="next">
-          <span class="carousel-control-next-icon" aria-hidden="true"></span>
-          <span class="visually-hidden">ถัดไป</span>
+          <span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">ถัดไป</span>
         </button>
       </div>
     </div>
   </div>
-
-<!-- Admin Panel (แสดงเฉพาะแอดมิน) -->
-<div id="adminPanel" class="mt-4" style="display:none;">
-  <div class="card shadow-sm border-0">
-    <div class="card-header bg-white border-0 py-3 d-flex align-items-center justify-content-between">
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-dark rounded-pill px-3 py-2">Admin</span>
-        <h5 class="mb-0 fw-bold"><i class="fa-solid fa-shield-halved me-2"></i>Admin Control</h5>
-      </div>
-      <div class="d-flex gap-2">
-        <a id="btnAdminExport" class="btn btn-success btn-sm">
-          <i class="fa-solid fa-file-arrow-down me-1"></i>Export CSV
-        </a>
-        <button id="btnAdminRefresh" class="btn btn-primary btn-sm">
-          <i class="fa-solid fa-rotate me-1"></i>รีเฟรชข้อมูล
-        </button>
-      </div>
-    </div>
-
-    <div class="card-body pt-0">
-      <!-- Filters -->
-      <div class="row g-2 align-items-end mb-3">
-        <div class="col-md-4">
-          <label class="form-label small text-muted mb-1">ค้นหา (ชื่อ/UID)</label>
-          <input id="adminSearch" type="text" class="form-control" placeholder="พิมพ์เพื่อค้นหา...">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small text-muted mb-1">คะแนนขั้นต่ำ</label>
-          <input id="adminMinScore" type="number" min="0" class="form-control" placeholder="เช่น 50">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label small text-muted mb-1">ต่อหน้า</label>
-          <select id="adminPageSize" class="form-select">
-            <option>10</option>
-            <option selected>20</option>
-            <option>50</option>
-            <option>100</option>
-          </select>
-        </div>
-        <div class="col-md-3 text-end">
-          <span id="adminInfo" class="small text-muted"></span>
-        </div>
-      </div>
-
-      <!-- Table -->
-      <div class="table-responsive admin-table-wrap">
-        <table class="table table-hover align-middle mb-2">
-          <thead class="table-light sticky-top">
-            <tr>
-              <th class="sort" data-key="rank" style="width:70px;">#</th>
-              <th class="sort" data-key="name">ชื่อ</th>
-              <th class="sort" data-key="uid">UID</th>
-              <th class="sort text-end" data-key="score" style="width:120px;">คะแนน</th>
-            </tr>
-          </thead>
-          <tbody id="adminTableBody">
-            <!-- skeleton loader -->
-            <tr><td colspan="4">
-              <div class="skeleton skeleton-row"></div>
-              <div class="skeleton skeleton-row"></div>
-              <div class="skeleton skeleton-row"></div>
-            </td></tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Pagination -->
-      <nav class="d-flex justify-content-between align-items-center">
-        <div class="small text-muted" id="adminRange"></div>
-        <ul id="adminPager" class="pagination pagination-sm mb-0"></ul>
-      </nav>
-    </div>
-  </div>
-</div>
 
   <!-- Modal: Add Score -->
-  <div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
+  <div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-fullscreen">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
-          <h4 class="modal-title" id="scoreModalLabel"><i class="fa-solid fa-qrcode"></i> เพิ่มคะแนนสะสม</h4>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
+          <h4 class="modal-title"><i class="fa-solid fa-qrcode"></i> เพิ่มคะแนนสะสม</h4>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body text-center">
           <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
@@ -312,80 +172,23 @@
 
   <!-- Modal: History -->
   <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
       <div class="modal-content">
-        <div class="modal-header bg-primary text-white">
-          <h5 class="modal-title"><i class="fa-solid fa-list"></i> ประวัติพ้อยท์</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="modal-header">
+          <h6 class="modal-title"><i class="fa-solid fa-clock-rotate-left me-2"></i>ประวัติพ้อยท์</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <ul id="historyList" class="list-group"></ul>
+          <ul id="historyList" class="list-group list-group-flush"></ul>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Offcanvas: User Detail -->
-<div class="offcanvas offcanvas-end" tabindex="-1" id="adminUserCanvas" aria-labelledby="adminUserCanvasLabel">
-  <div class="offcanvas-header">
-    <h5 class="offcanvas-title" id="adminUserCanvasLabel"><i class="fa-solid fa-user-circle me-2"></i>รายละเอียดผู้ใช้</h5>
-    <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas"></button>
-  </div>
-  <div class="offcanvas-body">
-    <div id="adminUserBox" class="mb-3">
-      <div class="skeleton skeleton-card"></div>
-      <div class="skeleton skeleton-card"></div>
-    </div>
-
-    <!-- Admin controls -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-body">
-        <div class="row g-2">
-          <div class="col-5">
-            <label class="form-label small text-muted mb-1">จำนวนคะแนน</label>
-            <input type="number" id="adminAmount" min="0" step="1" class="form-control" placeholder="เช่น 10">
-          </div>
-          <div class="col-7">
-            <label class="form-label small text-muted mb-1">หมายเหตุ (ไม่บังคับ)</label>
-            <input type="text" id="adminNote" class="form-control" placeholder="สาเหตุการปรับ">
-          </div>
-          <div class="col-12 d-flex gap-2">
-            <button id="btnAdminAdd" class="btn btn-sm btn-primary">
-              <i class="fa-solid fa-plus"></i> เพิ่มคะแนน
-            </button>
-            <button id="btnAdminDeduct" class="btn btn-sm btn-warning">
-              <i class="fa-solid fa-minus"></i> หักคะแนน
-            </button>
-            <button id="btnAdminReset" class="btn btn-sm btn-danger ms-auto">
-              <i class="fa-solid fa-rotate-left"></i> ล้างคะแนน
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="d-grid gap-2 mb-3">
-      <button id="btnCopyUid" class="btn btn-outline-secondary btn-sm">
-        <i class="fa-solid fa-copy me-1"></i>คัดลอก UID
-      </button>
-    </div>
-
-    <div class="mb-2"><strong>ประวัติพ้อยท์</strong></div>
-    <ul id="adminUserHistory" class="list-group small">
-      <li class="list-group-item"><div class="skeleton skeleton-row"></div></li>
-      <li class="list-group-item"><div class="skeleton skeleton-row"></div></li>
-    </ul>
-  </div>
-</div>
-
-  <!-- Footer -->
-  <footer style="font-size: 14px;" class="text-center my-3">
-    © <script>document.write(new Date().getFullYear());</script>
-    Copyright |
-    พัฒนาโดยสัตยา วงศ์ชมภู Safety Officer
+  <footer class="text-center my-3" style="font-size: 14px;">
+    © <script>document.write(new Date().getFullYear());</script> — พัฒนาโดยสัตยา วงศ์ชมภู Safety Officer
   </footer>
 
-  <!-- App JS -->
-  <script src="app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>
