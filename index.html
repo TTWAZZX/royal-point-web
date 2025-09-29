@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <title>Royal Point</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- jQuery + jQuery Form -->
+  <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.form/4.3.0/jquery.form.min.js"></script>
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
+
+  <!-- Optional style from sanwithz -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/sanwithz/Form/sanwithzstyle2.min.css" />
+
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <!-- Loading Overlay -->
+  <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
+
+  <!-- LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+  <!-- html5-qrcode -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <style>
+    .bg-silver { background: linear-gradient(135deg, #C0C0C0, #ffffff); color: #333; }
+    .bg-gold { background: linear-gradient(135deg, #FFD700, #FFF3B0); color: #333; }
+    .bg-diamond { background: linear-gradient(30deg, #3f87a6, #ebf8e1, #f69d3c); color: #333; }
+
+    #displaySection { display: none; }
+
+    .h1,.h2,.h3,.h4,.h5,.h6,h1,h2,h3,h4,h5,h6 { margin-top: 0; margin-bottom: 0; }
+
+    .modal-fullscreen { width: 100%; max-width: none; height: 100%; margin: 0; }
+    .modal-fullscreen .modal-content { width: 100%; height: 100%; border: 0; border-radius: 0; }
+    .modal-fullscreen .modal-body { overflow-y: auto; }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+      .container { padding: 10px; }
+      .btn-lg { width: 100%; }
+      .card-img-top { width: 100%; height: auto; }
+      h2 { font-size: 1.5rem; }
+      .modal-fullscreen { height: 100%; }
+      .modal-dialog { max-width: 90%; }
+    }
+    @media (max-width: 576px) {
+      .modal-dialog { max-width: 90%; }
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+
+  <div class="container mt-2">
+    <!-- Header image -->
+    <img src="https://lh3.googleusercontent.com/d/1ewOWxYLOyvTiRO9zwj1QbDcA0PWaIduY" class="card-img-top rounded-4" alt="Header" />
+
+    <!-- Registration Section -->
+    <div id="regSection">
+      <div class="mt-5">
+        <h2 class="text-center">ระบบลงทะเบียนใช้งาน</h2>
+        <form id="dataForm" class="list mt-3">
+          <div class="mb-3" style="display:none">
+            <label for="uid" class="form-label disable">UID</label>
+            <input type="text" class="form-control" id="uid" name="uid" readonly />
+          </div>
+          <div class="mb-3">
+            <label for="name" class="form-label">ชื่อ - นามสกุล</label>
+            <input type="text" class="form-control" id="name" name="name" required />
+          </div>
+          <div class="mb-3">
+            <label for="room" class="form-label">Section</label>
+            <select class="form-control" id="room" name="room" required>
+              <option value="" disabled selected>เลือก</option>
+              <option value="ACC">ACC</option>
+              <option value="C&FA">C&FA</option>
+              <option value="CS">CS</option>
+              <option value="CIC">CIC</option>
+              <option value="DIR">DIR</option>
+              <option value="ENG">ENG</option>
+              <option value="FIN">FIN</option>
+              <option value="GR">GR</option>
+              <option value="HP">HP</option>
+              <option value="HCM">HCM</option>
+              <option value="HRD">HRD</option>
+              <option value="HRM">HRM</option>
+              <option value="IT">IT</option>
+              <option value="L&S">L&S</option>
+              <option value="MTN">MTN</option>
+              <option value="MKT">MKT</option>
+              <option value="MC">MC</option>
+              <option value="OS">OS</option>
+              <option value="PD">PD</option>
+              <option value="PD1">PD1</option>
+              <option value="PD2">PD2</option>
+              <option value="PC">PC</option>
+              <option value="PE">PE</option>
+              <option value="PUR">PUR</option>
+              <option value="QA">QA</option>
+              <option value="QC">QC</option>
+              <option value="RDPP">RDPP</option>
+              <option value="R&D">R&D</option>
+              <option value="SHE">SHE</option>
+              <option value="SCM">SCM</option>
+              <option value="SYS-ENG">SYS-ENG</option>
+              <option value="TSH CENTER">TSH CENTER</option>
+              <option value="WH">WH</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="dob" class="form-label">วันเกิด</label>
+            <input type="date" class="form-control" id="dob" name="dob" required />
+          </div>
+          <div class="mb-3">
+            <label for="passport" class="form-label">เลขประจำตัวพนักงาน/Passport</label>
+            <input type="text" class="form-control" id="passport" name="passport" required />
+          </div>
+          <div class="mb-3">
+            <label for="telephone" class="form-label">เบอร์โทรศัพท์</label>
+            <input type="text" class="form-control" id="telephone" name="telephone" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg w-100">สมัครใช้งาน</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Display/Dashboard Section -->
+    <div id="displaySection" class="list mt-2">
+      <div class="d-flex align-items-center bg-silver p-3 rounded-4 shadow-sm mb-3">
+        <img id="profilePic" src="https://placehold.co/60x60" class="rounded-circle border border-2 border-white shadow me-3" style="width: 60px; height: 60px;" />
+        <div>
+          <div class="fw-bold fs-6" id="username"></div>
+          <div class="text-muted small">
+            <span></span><br />
+            <span id="phone"><i class="fas fa-phone"></i></span>
+          </div>
+        </div>
+        <div class="ms-auto text-end">
+          <div class="text-warning fw-bold" style="margin-right: 10px;">
+            <h2><i class="fas fa-coins"></i></h2>
+            <h2 id="points">0</h2>
+            <h5>Pt</h5>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center mt-2">
+        <!-- Progress Curve -->
+        <div>
+          <svg viewBox="0 0 100 50" class="w-100">
+            <!-- background curve -->
+            <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="#eee" stroke-width="10" fill="none" />
+            <!-- foreground curve progress -->
+            <path id="progressCurve" d="M 10 50 A 40 40 0 0 1 90 50"
+                  stroke="#30674c" stroke-width="10" fill="none"
+                  stroke-dasharray="126" stroke-dashoffset="126" stroke-linecap="round" />
+          </svg>
+          <div class="text-center mt-2 mb-4 fw-bold" id="tier-label">ระดับ Silver</div>
+        </div>
+
+        <p id="next-tier">สะสมอีก <strong>100</strong> พ้อยท์ ภายใน <strong>31/12/68</strong><br />เพื่อเลื่อนสถานะเป็น <strong>Gold</strong> ในปี 2568</p>
+
+        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#scoreModal">
+          <i class="fa-solid fa-qrcode"></i> สแกนคิวอาร์โค้ดรับพ้อยท์
+        </button>
+        <button class="btn btn-primary btn-sm me-2" onclick="refreshUserScore()">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Ads Carousel -->
+    <div id="Ads" class="card-img-top rounded-4 mt-3">
+      <div id="carouselAdsControls" class="carousel slide" data-bs-ride="carousel">
+        <div class="carousel-inner rounded-4 overflow-hidden">
+          <div class="carousel-item active">
+            <img src="https://lh3.googleusercontent.com/d/1j6_CKghy0tLKW2dJW7W1E8TLMKxMtJTl" class="d-block w-100" alt="Ad 1" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1SJkRqfgv8r5D_r0_z-GXCI464oLxhgkc" class="d-block w-100" alt="Ad 2" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/16N6b_e-IcwKSX2HTGqj16mVBClGOpsHy" class="d-block w-100" alt="Ad 3" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1-Ha84mEEGWxM7Gl4fW9pE8z9MN1T1cjI" class="d-block w-100" alt="Ad 4" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1jXIzoxDKBDQNhdW9W4wTi73PuIT0JsJO" class="d-block w-100" alt="Ad 5" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1k39qYN9XiKEVBytB6Mxfq89slFqTcgju" class="d-block w-100" alt="Ad 6" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1RhqRg9dV1Qms-A6tZcs_FJwHfp6yqN67" class="d-block w-100" alt="Ad 7" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1XEqxqeABJV8WD9hcy7UgTDDngHFqCFDK" class="d-block w-100" alt="Ad 8" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1SJUOqdUsVTs8cOpoh1J6W8uWYQKPhpPk" class="d-block w-100" alt="Ad 9" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1sp1PEnaVtpUcOpLGWj5SnVl5KpmHOwiD" class="d-block w-100" alt="Ad 10" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/17MUuzjvvlKRZ5s24Ma0unxAupAQIQwJQ" class="d-block w-100" alt="Ad 11" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1z4ae4Zy9hzG7Hzhslg8bQsTiDei8Pg2j" class="d-block w-100" alt="Ad 12" />
+          </div>
+          <div class="carousel-item">
+            <img src="https://lh3.googleusercontent.com/d/1gW0BZiZU9gBNjam9JiSiTMP0JGwAHP_8" class="d-block w-100" alt="Ad 13" />
+          </div>
+        </div>
+        <button class="carousel-control-prev" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="prev">
+          <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">ก่อนหน้า</span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="next">
+          <span class="carousel-control-next-icon" aria-hidden="true"></span>
+          <span class="visually-hidden">ถัดไป</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add Score -->
+  <div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h4 class="modal-title" id="scoreModalLabel"><i class="fa-solid fa-qrcode"></i> เพิ่มคะแนนสะสม</h4>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
+        </div>
+        <div class="modal-body text-center">
+          <div id="qr-reader" style="width: 100%; max-width: 400px; margin: auto;"></div>
+          <hr class="my-4" />
+          <div class="form-group">
+            <label for="secretCode" class="form-label">หรือกรอกรหัสลับเพื่อรับคะแนน</label>
+            <input type="text" id="secretCode" class="form-control text-center" placeholder="กรอกรหัสลับ" />
+            <button onclick="submitSecretCode()" class="btn btn-success mt-3"><i class="fa-solid fa-check"></i> ยืนยันรับคะแนน</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer style="font-size: 14px;" class="text-center my-3">
+    © <script>document.write(new Date().getFullYear());</script>
+    Copyright |
+    พัฒนาโดยสัตยา วงศ์ชมภู Safety Officer
+  </footer>
+
+  <script>
+    // ------------------ API endpoints (Vercel proxy) ------------------
+    const registerUrl    = "/api/register";
+    const scoreUpdateUrl = "/api/redeem";    // แก้ให้ตรงกับไฟล์ redeem.js
+    const scoreFetchUrl  = "/api/get-score";
+
+    // ------------------ LIFF ------------------
+    const liffID = "2007053300-QoEvbXyn"; // ใช้ค่าที่คุณให้มา
+
+    // ------------------ STATE ------------------
+    let html5QrcodeScanner;
+
+    // ------------------ Helpers ------------------
+    function setProgress(score) {
+      const totalLength = 126;            // ให้ตรงกับ stroke-dasharray
+      const percent = Math.max(0, Math.min(1, score / 100));  // 100 = เกณฑ์เต็มกราฟครึ่งวง
+      const offset = totalLength * (1 - percent);
+      document.getElementById("progressCurve").style.strokeDashoffset = offset;
+
+      // Tier logic
+      let tierText = "ระดับ Silver";
+      let bgClass  = "bg-silver";
+      let nextTierScore = 100;
+      if (score >= 350 && score < 800)       { tierText = "ระดับ Diamond"; bgClass = "bg-diamond"; nextTierScore = 800; }
+      else if (score >= 100 && score < 350)  { tierText = "ระดับ Gold";    bgClass = "bg-gold";    nextTierScore = 350; }
+      else if (score >= 800)                 { tierText = "ระดับ Diamond"; bgClass = "bg-diamond"; nextTierScore = 800; } // ปรับตาม tier ที่ใช้จริง
+
+      $('.d-flex').removeClass("bg-silver bg-gold bg-diamond").addClass(bgClass);
+      $('#tier-label').text(tierText);
+
+      const remaining = Math.max(0, nextTierScore - score);
+      if (score >= 800) {
+        $('#next-tier').html(`คุณอยู่ในระดับสูงสุดแล้ว 🎉`);
+      } else {
+        const nextName = (tierText === 'ระดับ Gold') ? 'Diamond' : 'Gold';
+        $('#next-tier').html(`สะสมอีก <strong>${remaining}</strong> พ้อยท์ ภายใน <strong>31/12/68</strong><br />เพื่อเลื่อนสถานะเป็น <strong>${nextName}</strong> ในปี 2568`);
+      }
+    }
+
+    function loadUserScore(uid) {
+      fetch(`${scoreFetchUrl}?uid=${encodeURIComponent(uid)}`)
+        .then(res => res.json())
+        .then(response => {
+          $.LoadingOverlay("hide");
+          if (response.status === 'success') {
+            const userData = response.data;
+            $('#displaySection').show();
+            $('#username').text(userData.name || '');
+            $('#phone').html(`<i class="fas fa-phone"></i> ${userData.tel || ''}`);
+            $('.text-muted span:first').text(`ส่วนงาน : ${userData.classroom || ''} | ${userData.passport || ''}`);
+
+            const score = parseInt(userData.score || "0", 10);
+            $('#points').text(score);
+            setProgress(score);
+          } else if (response.status === 'not found') {
+            $('#regSection').show();
+            $('#displaySection').hide();
+          } else {
+            Swal.fire("ผิดพลาด", response.message || "โหลดข้อมูลไม่สำเร็จ (API Error)", "error");
+          }
+        })
+        .catch(() => {
+          $.LoadingOverlay("hide");
+          Swal.fire("ผิดพลาด", "ไม่สามารถติดต่อ Server ได้", "error");
+        });
+    }
+
+    function refreshUserScore() {
+      const uid = $('#uid').val();
+      if (uid) {
+        $.LoadingOverlay("show", {
+          image: "",
+          fontawesome: "fa fa-spinner fa-spin",
+          text: "กำลังโหลดข้อมูล..."
+        });
+        loadUserScore(uid);
+      }
+    }
+
+    // ------------------ INIT ------------------
+    $(document).ready(function () {
+      $('#regSection').hide();
+
+      liff.init({ liffId: liffID }).then(() => {
+        if (liff.isLoggedIn()) {
+          $.LoadingOverlay("show", { image: "", fontawesome: "fa fa-spinner fa-spin", text: "กำลังโหลดข้อมูล..." });
+          liff.getProfile().then(profile => {
+            const uid = profile.userId;
+            $('#uid').val(uid);
+            $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
+            loadUserScore(uid);
+          });
+        } else {
+          liff.login();
+        }
+      }).catch((e) => {
+        console.error(e);
+        Swal.fire("ผิดพลาด", "ไม่สามารถเริ่ม LIFF ได้", "error");
+      });
+
+      // Registration submit
+      $('#dataForm').ajaxForm({
+        url: registerUrl,
+        type: 'POST',
+        dataType: 'json',
+        beforeSubmit: function () {
+          Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        },
+        success: function (response) {
+          if (response.status === 'success') {
+            Swal.fire({ icon: 'success', title: 'ลงทะเบียนสำเร็จ!', text: 'ข้อมูลของคุณถูกบันทึกแล้ว' });
+            $('#username').text($('#name').val());
+            $('#phone').html('<i class="fas fa-phone"></i> ' + $('#telephone').val());
+            $('.text-muted span:first').text(`ส่วนงาน : ${$('#room').val()} | ${$('#passport').val()}`);
+            $('#points').text('0');
+            $('#regSection').hide();
+            $('#displaySection').show();
+            document.getElementById("progressCurve").style.strokeDashoffset = 126; // เริ่มต้น
+          } else if (response.status === 'error' && response.message === 'User already registered') {
+            Swal.fire({ icon: 'warning', title: 'ลงทะเบียนซ้ำ!', text: 'ผู้ใช้รายนี้ลงทะเบียนไว้แล้ว' });
+          } else {
+            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: response.message || 'ไม่สามารถส่งข้อมูลได้' });
+          }
+        },
+        error: function () {
+          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้' });
+        }
+      });
+    });
+
+    // ------------------ REDEEM: manual code ------------------
+    function submitSecretCode() {
+      const code = $('#secretCode').val().trim();
+      if (!code) return Swal.fire("กรุณากรอกรหัสลับ");
+
+      $.LoadingOverlay("show");
+      fetch(scoreUpdateUrl, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: $('#uid').val(), code: code, type: 'MANUAL' })
+      })
+      .then(res => res.json())
+      .then(data => {
+        $.LoadingOverlay("hide");
+        if (data.status === "success") {
+          Swal.fire("สำเร็จ", `คุณได้รับคะแนนแล้ว (+${data.point})`, "success");
+          $('#scoreModal').modal('hide');
+          refreshUserScore();
+        } else if (data.status === "used") {
+          Swal.fire("รหัสถูกใช้แล้ว", data.message || "รหัสนี้ถูกใช้ไปแล้ว", "warning");
+        } else if (data.status === "invalid") {
+          Swal.fire("รหัสไม่ถูกต้อง", data.message || "ตรวจสอบรหัสอีกครั้ง", "error");
+        } else {
+          Swal.fire("เกิดข้อผิดพลาด", data.message || "โปรดลองใหม่ภายหลัง", "error");
+        }
+      })
+      .catch(() => {
+        $.LoadingOverlay("hide");
+        Swal.fire("ผิดพลาด", "ไม่สามารถติดต่อเซิร์ฟเวอร์ได้", "error");
+      });
+    }
+
+    // ------------------ REDEEM: scan QR ------------------
+    function onScanSuccess(decodedText) {
+      if (html5QrcodeScanner) html5QrcodeScanner.clear();
+      $('#scoreModal').modal('hide');
+      $.LoadingOverlay("show");
+
+      fetch(scoreUpdateUrl, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uid: $('#uid').val(), code: decodedText, type: 'SCAN' })
+      })
+      .then(res => res.json())
+      .then(data => {
+        $.LoadingOverlay("hide");
+        if (data.status === "success") {
+          Swal.fire("สำเร็จ", `คุณได้รับคะแนนจาก QR แล้ว (+${data.point})`, "success");
+          refreshUserScore();
+        } else if (data.status === "used") {
+          Swal.fire("รหัสถูกใช้แล้ว", data.message || "QR นี้ถูกใช้ไปแล้ว", "warning");
+        } else if (data.status === "invalid") {
+          Swal.fire("ไม่สามารถใช้ QR นี้ได้", data.message || "QR ไม่ถูกต้อง", "error");
+        } else {
+          Swal.fire("เกิดข้อผิดพลาด", data.message || "โปรดลองใหม่ภายหลัง", "error");
+        }
+      })
+      .catch(() => {
+        $.LoadingOverlay("hide");
+        Swal.fire("ผิดพลาด", "เกิดข้อผิดพลาดในการสแกน", "error");
+      });
+    }
+
+    // Init scanner when modal open
+    $('#scoreModal').on('shown.bs.modal', function () {
+      if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 });
+      }
+      html5QrcodeScanner.render(onScanSuccess);
+    });
+
+    $('#scoreModal').on('hidden.bs.modal', function () {
+      if (html5QrcodeScanner) html5QrcodeScanner.clear();
+    });
+  </script>
+</body>
+</html>
