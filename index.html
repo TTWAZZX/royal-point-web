@@ -31,32 +31,8 @@
   <!-- html5-qrcode -->
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 
-  <style>
-    .bg-silver { background: linear-gradient(135deg, #C0C0C0, #ffffff); color: #333; }
-    .bg-gold { background: linear-gradient(135deg, #FFD700, #FFF3B0); color: #333; }
-    .bg-diamond { background: linear-gradient(30deg, #3f87a6, #ebf8e1, #f69d3c); color: #333; }
-
-    #displaySection { display: none; }
-
-    .h1,.h2,.h3,.h4,.h5,.h6,h1,h2,h3,h4,h5,h6 { margin-top: 0; margin-bottom: 0; }
-
-    .modal-fullscreen { width: 100%; max-width: none; height: 100%; margin: 0; }
-    .modal-fullscreen .modal-content { width: 100%; height: 100%; border: 0; border-radius: 0; }
-    .modal-fullscreen .modal-body { overflow-y: auto; }
-
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-      .container { padding: 10px; }
-      .btn-lg { width: 100%; }
-      .card-img-top { width: 100%; height: auto; }
-      h2 { font-size: 1.5rem; }
-      .modal-fullscreen { height: 100%; }
-      .modal-dialog { max-width: 90%; }
-    }
-    @media (max-width: 576px) {
-      .modal-dialog { max-width: 90%; }
-    }
-  </style>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body class="bg-light">
@@ -135,7 +111,7 @@
     </div>
 
     <!-- Display/Dashboard Section -->
-    <div id="displaySection" class="list mt-2">
+    <div id="displaySection" class="list mt-2" style="display:none;">
       <div class="d-flex align-items-center bg-silver p-3 rounded-4 shadow-sm mb-3">
         <img id="profilePic" src="https://placehold.co/60x60" class="rounded-circle border border-2 border-white shadow me-3" style="width: 60px; height: 60px;" />
         <div>
@@ -175,6 +151,10 @@
         </button>
         <button class="btn btn-primary btn-sm me-2" onclick="refreshUserScore()">
           <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <button class="btn btn-secondary me-2" data-bs-toggle="modal" data-bs-target="#historyModal">
+          <i class="fa-solid fa-list"></i> ประวัติพ้อยท์
         </button>
       </div>
     </div>
@@ -256,216 +236,29 @@
     </div>
   </div>
 
+  <!-- Modal: History -->
+  <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fa-solid fa-list"></i> ประวัติพ้อยท์</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <ul id="historyList" class="list-group"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
   <footer style="font-size: 14px;" class="text-center my-3">
     © <script>document.write(new Date().getFullYear());</script>
     Copyright |
     พัฒนาโดยสัตยา วงศ์ชมภู Safety Officer
   </footer>
 
-  <script>
-    // ------------------ API endpoints (Vercel proxy) ------------------
-    const registerUrl    = "/api/register";
-    const scoreUpdateUrl = "/api/redeem";    // แก้ให้ตรงกับไฟล์ redeem.js
-    const scoreFetchUrl  = "/api/get-score";
-
-    // ------------------ LIFF ------------------
-    const liffID = "2007053300-QoEvbXyn"; // ใช้ค่าที่คุณให้มา
-
-    // ------------------ STATE ------------------
-    let html5QrcodeScanner;
-
-    // ------------------ Helpers ------------------
-    function setProgress(score) {
-      const totalLength = 126;            // ให้ตรงกับ stroke-dasharray
-      const percent = Math.max(0, Math.min(1, score / 100));  // 100 = เกณฑ์เต็มกราฟครึ่งวง
-      const offset = totalLength * (1 - percent);
-      document.getElementById("progressCurve").style.strokeDashoffset = offset;
-
-      // Tier logic
-      let tierText = "ระดับ Silver";
-      let bgClass  = "bg-silver";
-      let nextTierScore = 100;
-      if (score >= 350 && score < 800)       { tierText = "ระดับ Diamond"; bgClass = "bg-diamond"; nextTierScore = 800; }
-      else if (score >= 100 && score < 350)  { tierText = "ระดับ Gold";    bgClass = "bg-gold";    nextTierScore = 350; }
-      else if (score >= 800)                 { tierText = "ระดับ Diamond"; bgClass = "bg-diamond"; nextTierScore = 800; } // ปรับตาม tier ที่ใช้จริง
-
-      $('.d-flex').removeClass("bg-silver bg-gold bg-diamond").addClass(bgClass);
-      $('#tier-label').text(tierText);
-
-      const remaining = Math.max(0, nextTierScore - score);
-      if (score >= 800) {
-        $('#next-tier').html(`คุณอยู่ในระดับสูงสุดแล้ว 🎉`);
-      } else {
-        const nextName = (tierText === 'ระดับ Gold') ? 'Diamond' : 'Gold';
-        $('#next-tier').html(`สะสมอีก <strong>${remaining}</strong> พ้อยท์ ภายใน <strong>31/12/68</strong><br />เพื่อเลื่อนสถานะเป็น <strong>${nextName}</strong> ในปี 2568`);
-      }
-    }
-
-    function loadUserScore(uid) {
-      fetch(`${scoreFetchUrl}?uid=${encodeURIComponent(uid)}`)
-        .then(res => res.json())
-        .then(response => {
-          $.LoadingOverlay("hide");
-          if (response.status === 'success') {
-            const userData = response.data;
-            $('#displaySection').show();
-            $('#username').text(userData.name || '');
-            $('#phone').html(`<i class="fas fa-phone"></i> ${userData.tel || ''}`);
-            $('.text-muted span:first').text(`ส่วนงาน : ${userData.classroom || ''} | ${userData.passport || ''}`);
-
-            const score = parseInt(userData.score || "0", 10);
-            $('#points').text(score);
-            setProgress(score);
-          } else if (response.status === 'not found') {
-            $('#regSection').show();
-            $('#displaySection').hide();
-          } else {
-            Swal.fire("ผิดพลาด", response.message || "โหลดข้อมูลไม่สำเร็จ (API Error)", "error");
-          }
-        })
-        .catch(() => {
-          $.LoadingOverlay("hide");
-          Swal.fire("ผิดพลาด", "ไม่สามารถติดต่อ Server ได้", "error");
-        });
-    }
-
-    function refreshUserScore() {
-      const uid = $('#uid').val();
-      if (uid) {
-        $.LoadingOverlay("show", {
-          image: "",
-          fontawesome: "fa fa-spinner fa-spin",
-          text: "กำลังโหลดข้อมูล..."
-        });
-        loadUserScore(uid);
-      }
-    }
-
-    // ------------------ INIT ------------------
-    $(document).ready(function () {
-      $('#regSection').hide();
-
-      liff.init({ liffId: liffID }).then(() => {
-        if (liff.isLoggedIn()) {
-          $.LoadingOverlay("show", { image: "", fontawesome: "fa fa-spinner fa-spin", text: "กำลังโหลดข้อมูล..." });
-          liff.getProfile().then(profile => {
-            const uid = profile.userId;
-            $('#uid').val(uid);
-            $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
-            loadUserScore(uid);
-          });
-        } else {
-          liff.login();
-        }
-      }).catch((e) => {
-        console.error(e);
-        Swal.fire("ผิดพลาด", "ไม่สามารถเริ่ม LIFF ได้", "error");
-      });
-
-      // Registration submit
-      $('#dataForm').ajaxForm({
-        url: registerUrl,
-        type: 'POST',
-        dataType: 'json',
-        beforeSubmit: function () {
-          Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-        },
-        success: function (response) {
-          if (response.status === 'success') {
-            Swal.fire({ icon: 'success', title: 'ลงทะเบียนสำเร็จ!', text: 'ข้อมูลของคุณถูกบันทึกแล้ว' });
-            $('#username').text($('#name').val());
-            $('#phone').html('<i class="fas fa-phone"></i> ' + $('#telephone').val());
-            $('.text-muted span:first').text(`ส่วนงาน : ${$('#room').val()} | ${$('#passport').val()}`);
-            $('#points').text('0');
-            $('#regSection').hide();
-            $('#displaySection').show();
-            document.getElementById("progressCurve").style.strokeDashoffset = 126; // เริ่มต้น
-          } else if (response.status === 'error' && response.message === 'User already registered') {
-            Swal.fire({ icon: 'warning', title: 'ลงทะเบียนซ้ำ!', text: 'ผู้ใช้รายนี้ลงทะเบียนไว้แล้ว' });
-          } else {
-            Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: response.message || 'ไม่สามารถส่งข้อมูลได้' });
-          }
-        },
-        error: function () {
-          Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด!', text: 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้' });
-        }
-      });
-    });
-
-    // ------------------ REDEEM: manual code ------------------
-    function submitSecretCode() {
-      const code = $('#secretCode').val().trim();
-      if (!code) return Swal.fire("กรุณากรอกรหัสลับ");
-
-      $.LoadingOverlay("show");
-      fetch(scoreUpdateUrl, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: $('#uid').val(), code: code, type: 'MANUAL' })
-      })
-      .then(res => res.json())
-      .then(data => {
-        $.LoadingOverlay("hide");
-        if (data.status === "success") {
-          Swal.fire("สำเร็จ", `คุณได้รับคะแนนแล้ว (+${data.point})`, "success");
-          $('#scoreModal').modal('hide');
-          refreshUserScore();
-        } else if (data.status === "used") {
-          Swal.fire("รหัสถูกใช้แล้ว", data.message || "รหัสนี้ถูกใช้ไปแล้ว", "warning");
-        } else if (data.status === "invalid") {
-          Swal.fire("รหัสไม่ถูกต้อง", data.message || "ตรวจสอบรหัสอีกครั้ง", "error");
-        } else {
-          Swal.fire("เกิดข้อผิดพลาด", data.message || "โปรดลองใหม่ภายหลัง", "error");
-        }
-      })
-      .catch(() => {
-        $.LoadingOverlay("hide");
-        Swal.fire("ผิดพลาด", "ไม่สามารถติดต่อเซิร์ฟเวอร์ได้", "error");
-      });
-    }
-
-    // ------------------ REDEEM: scan QR ------------------
-    function onScanSuccess(decodedText) {
-      if (html5QrcodeScanner) html5QrcodeScanner.clear();
-      $('#scoreModal').modal('hide');
-      $.LoadingOverlay("show");
-
-      fetch(scoreUpdateUrl, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uid: $('#uid').val(), code: decodedText, type: 'SCAN' })
-      })
-      .then(res => res.json())
-      .then(data => {
-        $.LoadingOverlay("hide");
-        if (data.status === "success") {
-          Swal.fire("สำเร็จ", `คุณได้รับคะแนนจาก QR แล้ว (+${data.point})`, "success");
-          refreshUserScore();
-        } else if (data.status === "used") {
-          Swal.fire("รหัสถูกใช้แล้ว", data.message || "QR นี้ถูกใช้ไปแล้ว", "warning");
-        } else if (data.status === "invalid") {
-          Swal.fire("ไม่สามารถใช้ QR นี้ได้", data.message || "QR ไม่ถูกต้อง", "error");
-        } else {
-          Swal.fire("เกิดข้อผิดพลาด", data.message || "โปรดลองใหม่ภายหลัง", "error");
-        }
-      })
-      .catch(() => {
-        $.LoadingOverlay("hide");
-        Swal.fire("ผิดพลาด", "เกิดข้อผิดพลาดในการสแกน", "error");
-      });
-    }
-
-    // Init scanner when modal open
-    $('#scoreModal').on('shown.bs.modal', function () {
-      if (!html5QrcodeScanner) {
-        html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 10, qrbox: 250 });
-      }
-      html5QrcodeScanner.render(onScanSuccess);
-    });
-
-    $('#scoreModal').on('hidden.bs.modal', function () {
-      if (html5QrcodeScanner) html5QrcodeScanner.clear();
-    });
-  </script>
+  <!-- App JS -->
+  <script src="app.js"></script>
 </body>
 </html>
