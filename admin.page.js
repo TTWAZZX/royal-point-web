@@ -5,6 +5,24 @@
  * - ปรับคะแนน +/–, ล้างคะแนน (quick actions)
  * - Export CSV
  ***********************/
+/* ---------- วาง helper นี้ไว้ตอนต้นไฟล์ admin.page.js ---------- */
+const overlay = {
+  show(msg) {
+    if (window.jQuery && $.LoadingOverlay) {
+      $.LoadingOverlay("show", {
+        image: "",
+        fontawesome: "fa fa-spinner fa-spin",
+        text: msg || "กำลังทำงาน..."
+      });
+    }
+  },
+  hide() {
+    if (window.jQuery && $.LoadingOverlay) {
+      $.LoadingOverlay("hide");
+    }
+  }
+};
+
 const ADMIN_UID = "Ucadb3c0f63ada96c0432a0aede267ff9";
 const LIFF_ID   = "2007053300-QoEvbXyn";
 
@@ -212,35 +230,41 @@ function openAdjustModal(uid, name, sign){
   modal.show();
 }
 
-async function submitAdjust(sign){
-  const uid = $("#adjUid").textContent;
+/* ---------- แทนที่ฟังก์ชันเดิมด้วยเวอร์ชันนี้ ---------- */
+async function submitAdjust(sign) {
+  const uid  = $("#adjUid").textContent;
   const note = $("#adjNote").value || "";
-  const raw = Number($("#adjAmount").value || 0);
-  const delta = Math.round(raw) * sign; // enforce sign
+  const raw  = Number($("#adjAmount").value || 0);
+  const delta = Math.round(raw) * sign;  // บังคับเครื่องหมายตามปุ่ม (+/-)
 
-  if (!delta) return Swal.fire("กรอกจำนวนแต้ม", "จำนวนต้องไม่เป็นศูนย์", "warning");
+  if (!delta) {
+    return Swal.fire("กรอกจำนวนแต้ม", "จำนวนต้องไม่เป็นศูนย์", "warning");
+  }
 
   try {
-    $.LoadingOverlay("show");
-    const res = await fetch(API_ADJUST, {
+    overlay.show();
+    const res = await fetch("/api/admin-adjust", {
       method: "POST",
-      headers: { "Content-Type":"application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, delta, note })
     });
     const data = await res.json();
-    $.LoadingOverlay("hide");
+    overlay.hide();
 
     if (data.status !== "success") {
       return Swal.fire("ไม่สำเร็จ", data.message || "ปรับคะแนนไม่สำเร็จ", "error");
     }
-    // optimistic update
-    const row = rows.find(r=>r.uid===uid);
-    if (row) row.score = Number(row.score||0) + delta;
+
+    // optimistic update บนตาราง
+    const row = rows.find(r => r.uid === uid);
+    if (row) row.score = Number(row.score || 0) + delta;
+
     applyFilterSortPaginate(false);
-    Swal.fire("สำเร็จ", `อัปเดตคะแนนเรียบร้อย (${delta>0?'+':''}${delta})`, "success");
+    Swal.fire("สำเร็จ", `อัปเดตคะแนนเรียบร้อย (${delta > 0 ? "+" : ""}${delta})`, "success");
     bootstrap.Modal.getInstance($("#adjustModal"))?.hide();
-  } catch(e){
-    $.LoadingOverlay("hide");
+
+  } catch (e) {
+    overlay.hide();
     Swal.fire("ผิดพลาด", String(e), "error");
   }
 }
@@ -257,29 +281,34 @@ function confirmReset(uid, name){
   });
 }
 
-async function submitReset(forceUid){
+/* ---------- แทนที่ฟังก์ชันเดิมด้วยเวอร์ชันนี้ ---------- */
+async function submitReset(forceUid) {
   const uid  = forceUid || $("#adjUid").textContent;
   const note = $("#adjNote").value || "admin reset";
+
   try {
-    $.LoadingOverlay("show");
-    const res = await fetch(API_RESET, {
+    overlay.show();
+    const res = await fetch("/api/admin-reset", {
       method: "POST",
-      headers: { "Content-Type":"application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, note })
     });
     const data = await res.json();
-    $.LoadingOverlay("hide");
+    overlay.hide();
 
     if (data.status !== "success") {
       return Swal.fire("ไม่สำเร็จ", data.message || "ล้างคะแนนไม่สำเร็จ", "error");
     }
-    const row = rows.find(r=>r.uid===uid);
+
+    const row = rows.find(r => r.uid === uid);
     if (row) row.score = 0;
+
     applyFilterSortPaginate(false);
     Swal.fire("สำเร็จ", "ล้างคะแนนเรียบร้อย", "success");
     bootstrap.Modal.getInstance($("#adjustModal"))?.hide();
-  } catch(e){
-    $.LoadingOverlay("hide");
+
+  } catch (e) {
+    overlay.hide();
     Swal.fire("ผิดพลาด", String(e), "error");
   }
 }
