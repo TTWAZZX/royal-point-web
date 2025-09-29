@@ -209,8 +209,8 @@ function bindEvents() {
   });
 
   // modal buttons
-  $("#btnAdjAdd").addEventListener("click", ()=>submitAdjust(+1));
-  $("#btnAdjDeduct").addEventListener("click", ()=>submitAdjust(-1));
+  $("#btnAdjAdd").addEventListener("click", () => submitAdjust(+1));
+  $("#btnAdjDeduct").addEventListener("click", () => submitAdjust(-1));
   $("#btnAdjReset").addEventListener("click", ()=>submitReset());
 
   // Export CSV
@@ -221,11 +221,19 @@ function bindEvents() {
 }
 
 // Adjust modal
-function openAdjustModal(uid, name, sign){
+function openAdjustModal(uid, name, sign) {
   $("#adjUid").textContent = uid;
   $("#adjName").textContent = name || "";
-  $("#adjAmount").value = 10 * sign; // default
+  $("#adjAmount").value = 10;   // ให้เป็นจำนวนบวกเสมอ
   $("#adjNote").value = "";
+
+  // (ถ้า input ยังเป็น type="text") จะเปลี่ยนเป็น number ให้ด้วย
+  const amt = $("#adjAmount");
+  amt.setAttribute("type", "number");
+  amt.setAttribute("inputmode", "numeric");
+  amt.setAttribute("min", "1");
+  amt.setAttribute("step", "1");
+
   const modal = new bootstrap.Modal($("#adjustModal"));
   modal.show();
 }
@@ -234,11 +242,15 @@ function openAdjustModal(uid, name, sign){
 async function submitAdjust(sign) {
   const uid  = $("#adjUid").textContent;
   const note = $("#adjNote").value || "";
-  const raw  = Number($("#adjAmount").value || 0);
-  const delta = Math.round(raw) * sign;  // บังคับเครื่องหมายตามปุ่ม (+/-)
 
+  // >>> จุดสำคัญ: ใช้ค่าสัมบูรณ์เสมอ แล้วใช้ sign จากปุ่มกำหนดทิศทาง
+  let amt = parseInt($("#adjAmount").value, 10);
+  if (isNaN(amt)) amt = 0;
+  amt = Math.abs(amt);
+
+  const delta = sign === 1 ? amt : -amt;   // + เพิ่ม / - หัก
   if (!delta) {
-    return Swal.fire("กรอกจำนวนแต้ม", "จำนวนต้องไม่เป็นศูนย์", "warning");
+    return Swal.fire("กรอกจำนวนแต้ม", "จำนวนต้องมากกว่า 0", "warning");
   }
 
   try {
@@ -255,12 +267,12 @@ async function submitAdjust(sign) {
       return Swal.fire("ไม่สำเร็จ", data.message || "ปรับคะแนนไม่สำเร็จ", "error");
     }
 
-    // optimistic update บนตาราง
+    // อัปเดตตารางแบบ optimistic
     const row = rows.find(r => r.uid === uid);
     if (row) row.score = Number(row.score || 0) + delta;
 
     applyFilterSortPaginate(false);
-    Swal.fire("สำเร็จ", `อัปเดตคะแนนเรียบร้อย (${delta > 0 ? "+" : ""}${delta})`, "success");
+    Swal.fire("สำเร็จ", `อัปเดตคะแนน (${delta > 0 ? "+" : ""}${delta})`, "success");
     bootstrap.Modal.getInstance($("#adjustModal"))?.hide();
 
   } catch (e) {
