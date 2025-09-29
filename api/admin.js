@@ -1,32 +1,43 @@
+// /api/admin.js  (Vercel serverless - GET -> Apps Script doGet)
 export default async function handler(req, res) {
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-    const secret   = process.env.API_SECRET;
+    const endpoint = process.env.APPS_SCRIPT_ENDPOINT; // URL ลงท้ายด้วย /exec
+    const secret   = process.env.API_SECRET;           // ต้องตรงกับ Script Properties: API_SECRET
+    const debug    = String(req.query.debug || "") === "1";
+
     if (!endpoint || !secret) {
       return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET" });
     }
 
     const uid = String(req.query.uid || "");
-    const format = String(req.query.format || "").toLowerCase();
 
-    // ขอข้อมูลรวมคะแนนจาก Apps Script
-    const gsRes = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        action: "all-scores",
-        apiSecret: secret,
-        uid
-      })
-    });
-    const data = await gsRes.json();
+    // === เรียก Apps Script แบบ GET (ให้เข้า doGet) และใช้พารามิเตอร์ชื่อ 'secret' ===
+    const qs = new URLSearchParams({
+      action: "all-scores",
+      secret,
+      uid
+    }).toString();
 
-    if (data.status !== "success" || !Array.isArray(data.data)) {
-      return res.status(200).json({ status: "error", message: data.message || "Apps Script error" });
+    const gsRes = await fetch(`${endpoint}?${qs}`, { method: "GET", cache: "no-store" });
+    const text  = await gsRes.text();
+
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) {}
+
+    if (!data || data.status !== "success" || !Array.isArray(data.data)) {
+      if (debug) {
+        return res.status(200).json({
+          status: "error",
+          message: (data && data.message) || "Apps Script error",
+          httpStatus: gsRes.status,
+          raw: text?.slice(0, 1200)
+        });
+      }
+      return res.status(200).json({ status: "error", message: (data && data.message) || "Apps Script error" });
     }
 
-    // ถ้าขอ CSV
-    if (format === "csv") {
+    // CSV export
+    if (String(req.query.format || "").toLowerCase() === "csv") {
       const rows = data.data;
       const headers = ["rank","uid","name","score"];
       const csv = [
@@ -44,11 +55,7 @@ export default async function handler(req, res) {
       return res.status(200).send(csv);
     }
 
-    // ปกติ: ส่ง JSON
-    return res.status(200).json({
-      status: "success",
-      data: data.data
-    });
+    return res.status(200).json({ status: "success", data: data.data });
 
   } catch (e) {
     return res.status(200).json({ status: "error", message: String(e) });
