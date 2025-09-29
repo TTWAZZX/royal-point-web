@@ -1,77 +1,56 @@
-// /api/admin.js
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ status: "error", message: "Method Not Allowed" });
-  }
-
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT; // เช่น https://script.google.com/macros/s/XXXX/exec
-    const secret   = process.env.API_SECRET;           // ต้องตรงกับ Script Properties: API_SECRET
+    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
+    const secret   = process.env.API_SECRET;
     if (!endpoint || !secret) {
-      return res.status(500).json({ status: "error", message: "Missing server env config" });
+      return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET" });
     }
 
-    // uid ของผู้เรียก (ต้องเป็น Admin ตามที่ระบุใน Server.gs)
-    const uid = (req.query.uid || "").toString().trim();
-    if (!uid) {
-      return res.status(400).json({ status: "error", message: "Missing uid" });
-    }
+    const uid = String(req.query.uid || "");
+    const format = String(req.query.format || "").toLowerCase();
 
-    // รองรับ output เป็น CSV เมื่อ ?format=csv
-    const asCSV = String(req.query.format || "").toLowerCase() === "csv";
-
-    // เรียก Apps Script: action=all-scores → ตรวจสิทธิ์ admin ใน Server.gs
-    const params = new URLSearchParams({
-      action: "all-scores",
-      uid,        // uid ของ requester (ใช้ตรวจ admin)
-      secret,     // ส่งไปให้ Server.gs ตรวจ
+    // ขอข้อมูลรวมคะแนนจาก Apps Script
+    const gsRes = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        action: "all-scores",
+        apiSecret: secret,
+        uid
+      })
     });
+    const data = await gsRes.json();
 
-    const url = `${endpoint}?${params.toString()}`;
-    const r = await fetch(url, { headers: { Accept: "application/json" } });
-    const text = await r.text();
-
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      // หากฝั่ง GAS ตอบไม่ใช่ JSON ก็ส่งข้อความดิบกลับไปช่วยดีบัก
-      data = { status: r.ok ? "success" : "error", message: text };
+    if (data.status !== "success" || !Array.isArray(data.data)) {
+      return res.status(200).json({ status: "error", message: data.message || "Apps Script error" });
     }
 
-    if (!r.ok) {
-      return res.status(r.status).json(data);
-    }
-
-    // กรณีอยากดาวน์โหลด CSV
-    if (asCSV) {
-      if (data.status !== "success" || !Array.isArray(data.data)) {
-        return res.status(200).json(data);
-      }
+    // ถ้าขอ CSV
+    if (format === "csv") {
       const rows = data.data;
-      // สร้าง CSV: header + rows
-      const header = ["uid", "name", "score"];
-      const escape = (v) => {
-        const s = String(v ?? "");
-        // escape double quotes
-        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-      };
-      const csv =
-        header.join(",") + "\n" +
-        rows.map(r => [escape(r.uid), escape(r.name), escape(r.score)].join(",")).join("\n");
+      const headers = ["rank","uid","name","score"];
+      const csv = [
+        headers.join(","),
+        ...rows.map((r, i) => [
+          i + 1,
+          `"${String(r.uid||"").replace(/"/g,'""')}"`,
+          `"${String(r.name||"").replace(/"/g,'""')}"`,
+          Number(r.score||0)
+        ].join(","))
+      ].join("\n");
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
-      res.setHeader("Content-Disposition", `attachment; filename="all-scores.csv"`);
-      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Content-Disposition", `attachment; filename="royal-point-leaderboard.csv"`);
       return res.status(200).send(csv);
     }
 
-    // ปกติคืน JSON
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json(data);
+    // ปกติ: ส่ง JSON
+    return res.status(200).json({
+      status: "success",
+      data: data.data
+    });
 
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ status: "error", message: String(err || "Internal Error") });
+  } catch (e) {
+    return res.status(200).json({ status: "error", message: String(e) });
   }
 }
