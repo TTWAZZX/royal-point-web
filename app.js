@@ -7,10 +7,21 @@ const historyUrl     = "/api/score-history"; // สำหรับ modal ปร�
 // ------------------ LIFF ------------------
 const liffID = "2007053300-QoEvbXyn"; // ใส่ LIFF ID ของคุณ
 
-// ===== Admin config =====
-const ADMIN_UID = "Ucadb3c0f63ada96c0432a0aede267ff9";  // UID แอดมินของคุณ
+// ===== Admin config (อัปเดต/ทับของเดิมได้) =====
+const ADMIN_UID = "Ucadb3c0f63ada96c0432a0aede267ff9";
 const adminApiBase = "/api/admin";
-let __ADMIN_CACHE__ = []; // เก็บข้อมูลล่าสุดสำหรับ filter
+
+let __ADMIN_CACHE__ = [];
+let __ADMIN_SORT_KEY__ = "score";
+let __ADMIN_SORT_DIR__ = "desc"; // 'asc' | 'desc'
+let __ADMIN_PAGE__ = 1;
+let __ADMIN_PAGE_SIZE__ = 20;
+let __ADMIN_QUERY__ = "";
+let __ADMIN_MIN_SCORE__ = 0;
+
+const adminUserCanvas = new bootstrap.Offcanvas('#adminUserCanvas');
+let __ADMIN_CURRENT_USER__ = null; // เก็บ uid ที่เปิดดูรายละเอียด
+let MY_UID = null; // เก็บ uid ของแอดมิน/ผู้ใช้ที่ล็อกอินผ่าน LIFF
 
 // ------------------ STATE ------------------
 let html5QrcodeScanner;
@@ -91,6 +102,7 @@ $(document).ready(function () {
       $.LoadingOverlay("show", { image: "", fontawesome: "fa fa-spinner fa-spin", text: "กำลังโหลดข้อมูล..." });
       liff.getProfile().then(profile => {
         const uid = profile.userId;
+        MY_UID = uid; // <<< เพิ่มบรรทัดนี้
         $('#uid').val(uid);
         $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
         loadUserScore(uid);
@@ -210,27 +222,344 @@ $('#scoreModal').on('hidden.bs.modal', function () {
 
 function setupAdminIfNeeded(currentUid) {
   if (currentUid === ADMIN_UID) {
-    // แสดง panel
     $("#adminPanel").show();
 
-    // ตั้งลิงก์ Export CSV
+    // Export CSV link
     const csvUrl = `${adminApiBase}?uid=${encodeURIComponent(currentUid)}&format=csv`;
     $("#btnAdminExport").attr("href", csvUrl);
 
-    // bind ปุ่ม refresh
+    // Bind controls
     $("#btnAdminRefresh").off("click").on("click", () => fetchAllScores(currentUid));
-
-    // bind ค้นหา
-    $("#adminSearch").off("input").on("input", function () {
-      const q = $(this).val().toLowerCase().trim();
-      renderAdminTable(filterAdminData(q));
+    $("#adminSearch").off("input").on("input", function() {
+      __ADMIN_QUERY__ = $(this).val().toLowerCase().trim();
+      __ADMIN_PAGE__ = 1;
+      renderAdminTablePaged();
+    });
+    $("#adminMinScore").off("input").on("input", function() {
+      __ADMIN_MIN_SCORE__ = parseInt($(this).val() || "0", 10) || 0;
+      __ADMIN_PAGE__ = 1;
+      renderAdminTablePaged();
+    });
+    $("#adminPageSize").off("change").on("change", function() {
+      __ADMIN_PAGE_SIZE__ = parseInt($(this).val(), 10) || 20;
+      __ADMIN_PAGE__ = 1;
+      renderAdminTablePaged();
     });
 
-    // โหลดครั้งแรก
+    // Sort header click
+    $("thead th.sort").off("click").on("click", function() {
+      const key = $(this).data("key");
+      if (__ADMIN_SORT_KEY__ === key) {
+        __ADMIN_SORT_DIR__ = (__ADMIN_SORT_DIR__ === "asc" ? "desc" : "asc");
+      } else {
+        __ADMIN_SORT_KEY__ = key;
+        __ADMIN_SORT_DIR__ = (key === "score" ? "desc" : "asc");
+      }
+      updateSortIndicators();
+      renderAdminTablePaged();
+    });
+
+    updateSortIndicators();
     fetchAllScores(currentUid);
   } else {
     $("#adminPanel").hide();
   }
+}
+
+function fetchAllScores(currentUid) {
+  $("#adminTableBody").html(`
+    <tr><td colspan="4">
+      <div class="skeleton skeleton-row"></div>
+      <div class="skeleton skeleton-row"></div>
+      <div class="skeleton skeleton-row"></div>
+    </td></tr>
+  `);
+  $("#adminInfo").text("");
+  $("#adminRange").text("");
+
+  const url = `${adminApiBase}?uid=${encodeURIComponent(currentUid)}`;
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === "success" && Array.isArray(data.data)) {
+        __ADMIN_CACHE__ = data.data.map((v, idx) => ({
+          rank: idx + 1,
+          uid: v.uid || "",
+          name: v.name || "",
+          score: Number(v.score || 0)
+        }));
+        __ADMIN_PAGE__ = 1;
+        renderAdminTablePaged();
+      } else {
+        $("#adminTableBody").html(`<tr><td colspan="4" class="text-danger">โหลดไม่สำเร็จ: ${data.message || "Unknown error"}</td></tr>`);
+      }
+    })
+    .catch(err => {
+      $("#adminTableBody").html(`<tr><td colspan="4" class="text-danger">เกิดข้อผิดพลาด: ${err}</td></tr>`);
+    });
+}
+
+function filteredSortedData() {
+  // filter
+  let rows = __ADMIN_CACHE__.filter(r => {
+    const q = __ADMIN_QUERY__;
+    const passQ = !q || r.uid.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
+    const passMin = r.score >= __ADMIN_MIN_SCORE__;
+    return passQ && passMin;
+  });
+
+  // sort
+  rows.sort((a,b) => {
+    const k = __ADMIN_SORT_KEY__;
+    let A = a[k], B = b[k];
+    if (k === "name" || k === "uid") {
+      A = String(A || "").toLowerCase(); B = String(B || "").toLowerCase();
+      if (A < B) return __ADMIN_SORT_DIR__ === "asc" ? -1 : 1;
+      if (A > B) return __ADMIN_SORT_DIR__ === "asc" ? 1 : -1;
+      return 0;
+    } else {
+      // rank/score numeric
+      const cmp = Number(A) - Number(B);
+      return __ADMIN_SORT_DIR__ === "asc" ? cmp : -cmp;
+    }
+  });
+
+  return rows;
+}
+
+function renderAdminTablePaged() {
+  const rows = filteredSortedData();
+  const total = rows.length;
+  const pages = Math.max(1, Math.ceil(total / __ADMIN_PAGE_SIZE__));
+  if (__ADMIN_PAGE__ > pages) __ADMIN_PAGE__ = pages;
+
+  const start = (__ADMIN_PAGE__ - 1) * __ADMIN_PAGE_SIZE__;
+  const end = Math.min(total, start + __ADMIN_PAGE_SIZE__);
+  const pageRows = rows.slice(start, end);
+
+  const $tb = $("#adminTableBody");
+  if (!pageRows.length) {
+    $tb.html(`<tr><td colspan="4" class="text-muted">ไม่พบข้อมูล</td></tr>`);
+  } else {
+    const html = pageRows.map(r => `
+      <tr class="admin-row" data-uid="${r.uid}">
+        <td>${r.rank}</td>
+        <td>${escapeHtml(r.name)}</td>
+        <td class="text-break"><code>${escapeHtml(r.uid)}</code></td>
+        <td class="text-end"><span class="badge bg-primary">${r.score}</span></td>
+      </tr>
+    `).join("");
+    $tb.html(html);
+
+    // click → user detail
+    $(".admin-row").off("click").on("click", function() {
+      const uid = $(this).data("uid");
+      openUserDetail(uid);
+    });
+  }
+
+  function bindAdminUserButtons(targetUid) {
+  $('#btnAdminAdd').off('click').on('click', async () => {
+    const amt = parseInt($('#adminAmount').val() || '0', 10);
+    if (!amt || amt <= 0) return Swal.fire('กรุณากรอกจำนวนคะแนนมากกว่า 0','','info');
+    const note = $('#adminNote').val() || '';
+    const resp = await adminAdjustScore(targetUid, +amt, note);
+    if (resp.status === 'success') {
+      Swal.fire('สำเร็จ', `เพิ่มคะแนน +${amt}`, 'success');
+      // รีโหลดโปรไฟล์ & ประวัติ และตารางรวม
+      openUserDetail(targetUid);
+      fetchAllScores(MY_UID);
+    } else {
+      Swal.fire('ล้มเหลว', resp.message || 'ปรับคะแนนไม่สำเร็จ', 'error');
+    }
+  });
+
+  $('#btnAdminDeduct').off('click').on('click', async () => {
+    const amt = parseInt($('#adminAmount').val() || '0', 10);
+    if (!amt || amt <= 0) return Swal.fire('กรุณากรอกจำนวนคะแนนมากกว่า 0','','info');
+    const note = $('#adminNote').val() || '';
+    const resp = await adminAdjustScore(targetUid, -amt, note);
+    if (resp.status === 'success') {
+      Swal.fire('สำเร็จ', `หักคะแนน -${amt}`, 'success');
+      openUserDetail(targetUid);
+      fetchAllScores(MY_UID);
+    } else {
+      Swal.fire('ล้มเหลว', resp.message || 'ปรับคะแนนไม่สำเร็จ', 'error');
+    }
+  });
+
+  $('#btnAdminReset').off('click').on('click', async () => {
+    const note = $('#adminNote').val() || '';
+    const ok = await Swal.fire({
+      icon: 'warning',
+      title: 'ยืนยันล้างคะแนน?',
+      text: 'การล้างคะแนนจะตั้งเป็น 0 และบันทึกประวัติ',
+      showCancelButton: true,
+      confirmButtonText: 'ยืนยัน',
+      cancelButtonText: 'ยกเลิก'
+    });
+    if (!ok.isConfirmed) return;
+
+    const resp = await adminResetScore(targetUid, note);
+    if (resp.status === 'success') {
+      Swal.fire('สำเร็จ', 'ล้างคะแนนเรียบร้อย', 'success');
+      openUserDetail(targetUid);
+      fetchAllScores(MY_UID);
+    } else {
+      Swal.fire('ล้มเหลว', resp.message || 'ล้างคะแนนไม่สำเร็จ', 'error');
+    }
+  });
+}
+
+  // info + range + pager
+  $("#adminInfo").text(`ทั้งหมด ${total} รายการ`);
+  $("#adminRange").text(total ? `แสดง ${start+1}–${end} จาก ${total}` : "");
+  renderPager(pages);
+}
+
+function renderPager(pages) {
+  const $pg = $("#adminPager");
+  const p = __ADMIN_PAGE__;
+  if (pages <= 1) { $pg.html(""); return; }
+  const make = (label, page, disabled=false, active=false) =>
+    `<li class="page-item ${disabled?'disabled':''} ${active?'active':''}">
+      <a class="page-link" href="#" data-page="${page}">${label}</a>
+    </li>`;
+
+  let html = "";
+  html += make("&laquo;", 1, p===1);
+  html += make("&lsaquo;", Math.max(1, p-1), p===1);
+
+  // window of pages
+  const window = 2;
+  const from = Math.max(1, p - window);
+  const to = Math.min(pages, p + window);
+  for (let i=from; i<=to; i++) html += make(i, i, false, i===p);
+
+  html += make("&rsaquo;", Math.min(pages, p+1), p===pages);
+  html += make("&raquo;", pages, p===pages);
+  $pg.html(html);
+
+  $pg.find("a.page-link").off("click").on("click", function(e){
+    e.preventDefault();
+    const target = parseInt($(this).data("page"), 10);
+    if (!isNaN(target) && target>=1 && target<=pages) {
+      __ADMIN_PAGE__ = target;
+      renderAdminTablePaged();
+    }
+  });
+}
+
+function updateSortIndicators() {
+  $("thead th.sort").removeClass("asc desc");
+  const $th = $(`thead th.sort[data-key="${__ADMIN_SORT_KEY__}"]`);
+  $th.addClass(__ADMIN_SORT_DIR__);
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"'`=\/]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[c];
+  });
+}
+
+function openUserDetail(uid) {
+  __ADMIN_CURRENT_USER__ = uid;
+
+  // สร้าง skeleton ระหว่างโหลด
+  $("#adminUserBox").html(`
+    <div class="skeleton skeleton-card"></div>
+    <div class="skeleton skeleton-card"></div>
+  `);
+  $("#adminUserHistory").html(`
+    <li class="list-group-item"><div class="skeleton skeleton-row"></div></li>
+    <li class="list-group-item"><div class="skeleton skeleton-row"></div></li>
+  `);
+
+  // เปิด offcanvas
+  adminUserCanvas.show();
+
+  // ⬅️ เรียก bind ตรงนี้ เพื่อให้ปุ่มใน offcanvas ทำงานกับ uid นี้
+  bindAdminUserButtons(uid);
+
+  // โหลดโปรไฟล์ผู้ใช้
+  fetch(`/api/get-score?uid=${encodeURIComponent(uid)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === "success" && data.data) {
+        const u = data.data;
+        $("#adminUserBox").html(`
+          <div class="card border-0 shadow-sm mb-2">
+            <div class="card-body">
+              <div class="d-flex align-items-center justify-content-between">
+                <div>
+                  <div class="fw-bold">${escapeHtml(u.name || "(ไม่มีชื่อ)")}</div>
+                  <div class="text-muted small">UID: <code>${escapeHtml(u.uid)}</code></div>
+                </div>
+                <div class="text-end">
+                  <div class="small text-muted">คะแนน</div>
+                  <div class="h5 mb-0"><span class="badge bg-primary">${Number(u.score||0)}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card border-0 shadow-sm">
+            <div class="card-body">
+              <div class="row g-2 small">
+                <div class="col-6"><span class="text-muted">ส่วนงาน</span><br>${escapeHtml(u.classroom||"-")}</div>
+                <div class="col-6"><span class="text-muted">เบอร์</span><br>${escapeHtml(u.tel||"-")}</div>
+                <div class="col-12"><span class="text-muted">Passport/EmpID</span><br>${escapeHtml(u.passport||"-")}</div>
+              </div>
+            </div>
+          </div>
+        `);
+
+        // ปุ่มคัดลอก UID
+        $("#btnCopyUid").off("click").on("click", async ()=>{
+          try {
+            await navigator.clipboard.writeText(String(u.uid||""));
+            Swal.fire({icon:'success',title:'คัดลอกแล้ว',timer:1200,showConfirmButton:false});
+          } catch {
+            Swal.fire('คัดลอกไม่สำเร็จ','','error');
+          }
+        });
+      } else {
+        $("#adminUserBox").html(`<div class="alert alert-warning">ไม่พบข้อมูลผู้ใช้</div>`);
+      }
+    })
+    .catch(()=>{
+      $("#adminUserBox").html(`<div class="alert alert-danger">โหลดข้อมูลผู้ใช้ล้มเหลว</div>`);
+    });
+
+  // โหลดประวัติพ้อยท์
+  fetch(`/api/score-history?uid=${encodeURIComponent(uid)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === "success" && Array.isArray(data.data)) {
+        if (!data.data.length) {
+          $("#adminUserHistory").html(`<li class="list-group-item text-muted">ไม่มีประวัติ</li>`);
+          return;
+        }
+        $("#adminUserHistory").html(
+          data.data.slice(0,50).map(item => `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <div><b>${escapeHtml(item.code)}</b> <span class="text-muted">(${escapeHtml(item.type)})</span></div>
+                <small class="text-muted">${new Date(item.ts).toLocaleString()}</small>
+              </div>
+              <span class="badge ${Number(item.point||0) >= 0 ? 'bg-success' : 'bg-danger'}">
+                ${Number(item.point||0) > 0 ? '+' : ''}${Number(item.point||0)}
+              </span>
+            </li>
+          `).join("")
+        );
+      } else {
+        $("#adminUserHistory").html(`<li class="list-group-item text-danger">โหลดประวัติไม่สำเร็จ</li>`);
+      }
+    })
+    .catch(()=>{
+      $("#adminUserHistory").html(`<li class="list-group-item text-danger">เกิดข้อผิดพลาด</li>`);
+    });
 }
 
 function fetchAllScores(currentUid) {
@@ -280,6 +609,24 @@ function filterAdminData(q) {
     const name = (r.name ?? "").toLowerCase();
     return uid.includes(q) || name.includes(q);
   });
+}
+
+function adminAdjustScore(targetUid, delta, note) {
+  if (!MY_UID) return Swal.fire('ยังไม่ได้ล็อกอิน LIFF','','error');
+  return fetch('/api/admin-adjust', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminUid: MY_UID, targetUid, delta, note })
+  }).then(r => r.json());
+}
+
+function adminResetScore(targetUid, note) {
+  if (!MY_UID) return Swal.fire('ยังไม่ได้ล็อกอิน LIFF','','error');
+  return fetch('/api/admin-reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminUid: MY_UID, targetUid, note })
+  }).then(r => r.json());
 }
 
 // ------------------ HISTORY Modal ------------------

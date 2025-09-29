@@ -22,3 +22,31 @@
 @media (max-width: 576px) {
   .modal-dialog { max-width: 90%; }
 }
+
+/* Admin table enhancements */
+.admin-table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+.table thead th.sort { cursor: pointer; user-select: none; }
+.table thead th.sort::after {
+  content: " \f0dc"; /* fa-sort */
+  font-family: "Font Awesome 6 Free"; font-weight: 900; opacity: .35;
+}
+.table thead th.sort.asc::after { content: " \f160"; }  /* fa-sort-amount-up */
+.table thead th.sort.desc::after { content: " \f161"; } /* fa-sort-amount-down */
+
+/* Skeleton loader */
+.skeleton { position: relative; overflow: hidden; background: #e9ecef; border-radius: .5rem; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  transform: translateX(-100%); animation: skeleton 1.4s infinite;
+}
+.skeleton-row { height: 16px; margin: 8px 0; }
+.skeleton-card { height: 48px; margin: 10px 0; }
+
+@keyframes skeleton {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
