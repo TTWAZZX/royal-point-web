@@ -7,6 +7,11 @@ const historyUrl     = "/api/score-history"; // สำหรับ modal ปร�
 // ------------------ LIFF ------------------
 const liffID = "2007053300-QoEvbXyn"; // ใส่ LIFF ID ของคุณ
 
+// ===== Admin config =====
+const ADMIN_UID = "Ucadb3c0f63ada96c0432a0aede267ff9";  // UID แอดมินของคุณ
+const adminApiBase = "/api/admin";
+let __ADMIN_CACHE__ = []; // เก็บข้อมูลล่าสุดสำหรับ filter
+
 // ------------------ STATE ------------------
 let html5QrcodeScanner;
 
@@ -89,6 +94,7 @@ $(document).ready(function () {
         $('#uid').val(uid);
         $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
         loadUserScore(uid);
+        setupAdminIfNeeded(uid);
       });
     } else {
       liff.login();
@@ -201,6 +207,80 @@ $('#scoreModal').on('shown.bs.modal', function () {
 $('#scoreModal').on('hidden.bs.modal', function () {
   if (html5QrcodeScanner) html5QrcodeScanner.clear();
 });
+
+function setupAdminIfNeeded(currentUid) {
+  if (currentUid === ADMIN_UID) {
+    // แสดง panel
+    $("#adminPanel").show();
+
+    // ตั้งลิงก์ Export CSV
+    const csvUrl = `${adminApiBase}?uid=${encodeURIComponent(currentUid)}&format=csv`;
+    $("#btnAdminExport").attr("href", csvUrl);
+
+    // bind ปุ่ม refresh
+    $("#btnAdminRefresh").off("click").on("click", () => fetchAllScores(currentUid));
+
+    // bind ค้นหา
+    $("#adminSearch").off("input").on("input", function () {
+      const q = $(this).val().toLowerCase().trim();
+      renderAdminTable(filterAdminData(q));
+    });
+
+    // โหลดครั้งแรก
+    fetchAllScores(currentUid);
+  } else {
+    $("#adminPanel").hide();
+  }
+}
+
+function fetchAllScores(currentUid) {
+  $("#adminTableBody").html(`<tr><td colspan="3" class="text-muted">กำลังโหลด...</td></tr>`);
+  $("#adminInfo").text("");
+
+  const url = `${adminApiBase}?uid=${encodeURIComponent(currentUid)}`;
+  fetch(url)
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === "success" && Array.isArray(data.data)) {
+        __ADMIN_CACHE__ = data.data;
+        renderAdminTable(__ADMIN_CACHE__);
+        $("#adminInfo").text(`ทั้งหมด ${__ADMIN_CACHE__.length} รายการ`);
+      } else {
+        $("#adminTableBody").html(`<tr><td colspan="3" class="text-danger">โหลดไม่สำเร็จ: ${data.message || "Unknown error"}</td></tr>`);
+      }
+    })
+    .catch(err => {
+      $("#adminTableBody").html(`<tr><td colspan="3" class="text-danger">เกิดข้อผิดพลาด: ${err}</td></tr>`);
+    });
+}
+
+function renderAdminTable(rows) {
+  const $tb = $("#adminTableBody");
+  if (!rows || !rows.length) {
+    $tb.html(`<tr><td colspan="3" class="text-muted">ไม่พบข้อมูล</td></tr>`);
+    return;
+  }
+  const html = rows.map(r => {
+    const uid = r.uid ?? "";
+    const name = r.name ?? "";
+    const score = Number(r.score ?? 0);
+    return `<tr>
+      <td class="text-break">${uid}</td>
+      <td>${name}</td>
+      <td><span class="badge bg-primary">${score}</span></td>
+    </tr>`;
+  }).join("");
+  $tb.html(html);
+}
+
+function filterAdminData(q) {
+  if (!q) return __ADMIN_CACHE__;
+  return __ADMIN_CACHE__.filter(r => {
+    const uid = (r.uid ?? "").toLowerCase();
+    const name = (r.name ?? "").toLowerCase();
+    return uid.includes(q) || name.includes(q);
+  });
+}
 
 // ------------------ HISTORY Modal ------------------
 function loadHistory() {
