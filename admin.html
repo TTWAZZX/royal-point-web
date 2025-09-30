@@ -3,30 +3,36 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Royal Point — Admin</title>
+  <title>Royal Point — Admin (Mobile First)</title>
 
-  <!-- Bootstrap -->
+  <!-- Bootstrap + Font Awesome -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Font Awesome -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
-  <!-- Theme (เล็กน้อยให้ใช้งานสบายตา) -->
   <style>
     :root{
       --c-bg:#0b1220;--c-card:#101a2b;--c-soft:#13243d;--c-text:#cfe5ff;--c-mute:#87a6c6;--c-ac:#39d2c0;
     }
     body{background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--c-text)}
     .appbar{background:linear-gradient(90deg,#0f172a,#13243d);border-radius:18px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    .btn-soft{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
-    .btn-soft:hover{background:#1a2c4a}
-    .score-chip{display:inline-block;min-width:56px;padding:.2rem .5rem;border-radius:12px;background:#0f172a;border:1px solid rgba(255,255,255,.08)}
-    .table-dark td,.table-dark th{vertical-align:middle}
     .muted{color:var(--c-mute)}
     .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover}
     .search{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:var(--c-text)}
     .search:focus{box-shadow:0 0 0 .25rem rgba(57,210,192,.2);border-color:var(--c-ac)}
     .card{background:var(--c-card);border:1px solid rgba(255,255,255,.06)}
+    .btn-soft{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
+    .btn-soft:hover{background:#1a2c4a}
+    .score-chip{display:inline-block;min-width:64px;padding:.35rem .65rem;border-radius:12px;background:#0f172a;border:1px solid rgba(255,255,255,.08);font-weight:700}
+    .table-dark td,.table-dark th{vertical-align:middle}
+
+    /* Mobile-first touch targets */
+    @media (max-width: 576px){
+      .appbar{border-radius:0;margin: -8px -8px 8px}
+      .search{font-size:1rem;padding:.8rem .95rem;border-radius:12px}
+      .table thead th{font-size:.95rem}
+      .table td,.table th{padding:1rem .8rem}
+      .btn-group .btn{padding:.7rem .8rem;font-size:1.05rem;line-height:1}
+    }
   </style>
 </head>
 <body>
@@ -51,27 +57,24 @@
     </div>
   </div>
 
-  <!-- Filters -->
-  <div class="d-flex flex-wrap gap-2 mb-3">
-    <div class="flex-grow-1">
-      <input id="txtSearch" class="form-control form-control-lg search" placeholder="ค้นหา ชื่อ หรือ UID..." />
-    </div>
+  <!-- Search -->
+  <div class="mb-3">
+    <input id="txtSearch" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
   </div>
 
-  <!-- Users Table -->
+  <!-- Users Table (Mobile-first: ชื่อ / คะแนน / จัดการ) -->
   <div class="card border-0">
     <div class="table-responsive">
       <table class="table table-dark table-hover align-middle mb-0">
         <thead>
           <tr>
-            <th style="width:40%">ชื่อ</th>
-            <th style="width:25%">UID</th>
-            <th class="text-end" style="width:15%">คะแนน</th>
-            <th class="text-end" style="width:20%">จัดการ</th>
+            <th style="width:52%">ชื่อ</th>
+            <th class="text-end" style="width:18%">คะแนน</th>
+            <th class="text-end" style="width:30%">จัดการ</th>
           </tr>
         </thead>
         <tbody id="tbodyUsers">
-          <!-- แถวข้อมูลจะถูกเติมโดย admin.js -->
+          <!-- แถวข้อมูลเติมด้วยสคริปต์ -->
         </tbody>
       </table>
     </div>
@@ -89,7 +92,7 @@
         </div>
         <div class="modal-body pt-0">
           <div id="historyList" class="list-group list-group-flush">
-            <!-- รายการประวัติเติมโดย admin.js -->
+            <!-- รายการประวัติเติมโดยสคริปต์ -->
           </div>
         </div>
         <div class="modal-footer border-0">
@@ -101,33 +104,33 @@
 
 </div><!-- /.container -->
 
-<!-- ===== Dependencies (ลำดับสำคัญ) ===== -->
+<!-- ===== Dependencies ===== -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<!-- วางแทนที่บรรทัด <script src="/admin.js"></script> เดิม -->
+<!-- ===== Admin Script (inline, mobile-first + no UID column) ===== -->
 <script>
-// ============ CONFIG ============
+/* ============ CONFIG ============ */
 const LIFF_ID = "2007053300-QoEvbXyn";
 const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid=
 const API_SCORE_HISTORY = "/api/score-history";  // GET  ?uid=
 const API_ADMIN_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
 
-// UI helpers
+/* UI helpers */
 const overlay = {
   show: (text = "กำลังทำงาน...") => {
     if (window.$?.LoadingOverlay) {
-      $.LoadingOverlay("show", { image: "", fontawesome: "fa fa-spinner fa-spin", text });
+      $.LoadingOverlay("show", { image:"", fontawesome:"fa fa-spinner fa-spin", text });
     } else {
       if (document.getElementById("admin-ovl")) return;
       const el = document.createElement("div");
       el.id = "admin-ovl";
       el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff";
-      el.innerHTML = `<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>${text}</div>`;
+      el.innerHTML = '<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>'+text+'</div>';
       document.body.appendChild(el);
     }
   },
@@ -137,12 +140,12 @@ const overlay = {
   }
 };
 
-// ============ STATE ============
+/* ============ STATE ============ */
 let ADMIN_UID = "";
 let ALL_USERS = [];
 let FILTERED  = [];
 
-// ============ INIT ============
+/* ============ INIT ============ */
 $(async function () {
   overlay.show("กำลังเริ่มระบบแอดมิน...");
   try {
@@ -152,7 +155,7 @@ $(async function () {
     const prof = await liff.getProfile();
     ADMIN_UID = prof.userId || "";
 
-    $("#adminUid").text(ADMIN_UID ? `UID: ${ADMIN_UID}` : "UID: —");
+    $("#adminUid").text(ADMIN_UID ? "UID: " + ADMIN_UID : "UID: —");
     $("#adminName").text(prof.displayName || "—");
     $("#adminAvatar").attr("src", prof.pictureUrl || "https://placehold.co/36x36");
 
@@ -166,12 +169,12 @@ $(async function () {
   }
 });
 
-// ============ EVENTS ============
+/* ============ EVENTS ============ */
 function bindEvents() {
   $("#btnLogout").on("click", () => { liff.logout(); location.reload(); });
   $("#btnReload").on("click", async () => { await reloadAllUsers(); });
 
-  $("#txtSearch").on("input", function () {
+  $("#txtSearch").on("input", function(){
     const q = ($(this).val() || "").trim().toLowerCase();
     FILTERED = !q ? [...ALL_USERS] : ALL_USERS.filter(u =>
       (u.name || "").toLowerCase().includes(q) || String(u.uid || "").toLowerCase().includes(q)
@@ -180,31 +183,29 @@ function bindEvents() {
   });
 
   $("#tbodyUsers")
-    .on("click", ".btn-history", async function () {
-      const uid  = $(this).data("uid");
-      const name = $(this).data("name") || uid;
+    .on("click", ".btn-history", async function(){
+      const uid  = $(this).data("uid"), name = $(this).data("name") || uid;
       await openHistory(uid, name);
     })
-    .on("click", ".btn-plus", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
+    .on("click", ".btn-plus", async function(){
+      const uid  = $(this).data("uid"), name = $(this).data("name") || uid;
       await promptAdjust(uid, name, +1);
     })
-    .on("click", ".btn-minus", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
+    .on("click", ".btn-minus", async function(){
+      const uid  = $(this).data("uid"), name = $(this).data("name") || uid;
       await promptAdjust(uid, name, -1);
     })
-    .on("click", ".btn-reset", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
+    .on("click", ".btn-reset", async function(){
+      const uid  = $(this).data("uid"), name = $(this).data("name") || uid;
       await confirmReset(uid, name);
     });
 }
 
-// ============ LOAD & RENDER ============
+/* ============ LOAD & RENDER ============ */
 async function reloadAllUsers() {
   if (!ADMIN_UID) { ALL_USERS = []; FILTERED = []; renderTable(FILTERED); return; }
   overlay.show("กำลังโหลดรายชื่อผู้ใช้...");
   try {
-    // ต้องใช้ ?uid= กับ /api/all-scores (ฝั่ง API คาดหวังแบบนี้):contentReference[oaicite:0]{index=0}
     const res  = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, { cache: "no-store" });
     const json = await res.json();
     if (json.status === "success") {
@@ -222,17 +223,20 @@ async function reloadAllUsers() {
   } finally { overlay.hide(); }
 }
 
-function renderTable(rows) {
+/* >>> เปลี่ยนรูปแบบตาราง: ไม่มีคอลัมน์ UID และผูก data-uid ที่ <tr> <<< */
+function renderTable(rows){
   const $tbody = $("#tbodyUsers");
   if (!rows || rows.length === 0) {
-    $tbody.html(`<tr><td colspan="4" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>`); return;
+    $tbody.html('<tr><td colspan="3" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>');
+    return;
   }
   let html = "";
-  for (const r of rows) {
+  for (const r of rows){
     html += `
-      <tr>
-        <td><div class="fw-bold">${escapeHtml(r.name || "(ไม่ระบุ)")}</div></td>
-        <td class="small text-break">${escapeHtml(r.uid)}</td>
+      <tr data-uid="${attr(r.uid)}">
+        <td>
+          <div class="fw-bold">${escapeHtml(r.name || "(ไม่ระบุ)")}</div>
+        </td>
         <td class="text-end"><span class="score-chip">${Number(r.score || 0)}</span></td>
         <td class="text-end">
           <div class="btn-group">
@@ -247,24 +251,26 @@ function renderTable(rows) {
   $tbody.html(html);
 }
 
-// ============ ACTIONS ============
-async function openHistory(uid, name) {
+/* ============ ACTIONS ============ */
+async function openHistory(uid, name){
   overlay.show("กำลังโหลดประวัติ...");
-  try {
+  try{
     const res  = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`);
     const json = await res.json();
-    if (json.status === "success") {
+    if (json.status === "success"){
       const list = json.data || [];
       $("#historyUser").text(name || uid);
-      if (!list.length) {
-        $("#historyList").html(`<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`);
+      if (!list.length){
+        $("#historyList").html('<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>');
       } else {
         $("#historyList").html(list.map(i => {
-          const ts = formatDateTime(i.ts), p = Number(i.point || 0);
-          const sign = p >= 0 ? "+" : "", color = p >= 0 ? "#22c55e" : "#ef4444";
+          const ts = formatDateTime(i.ts);
+          const p  = Number(i.point || 0);
+          const sign = p >= 0 ? "+" : "";
+          const color = p >= 0 ? "#22c55e" : "#ef4444";
           return `<div class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
                     <div><div class="fw-bold">${escapeHtml(i.type || "—")}</div><div class="small muted">${escapeHtml(i.code || "")}</div></div>
-                    <div class="text-end"><div style="color:${color};font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
+                    <div class="text-end"><div style="color:${color}; font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
                   </div>`;
         }).join(""));
       }
@@ -272,12 +278,12 @@ async function openHistory(uid, name) {
     } else {
       Swal.fire("ผิดพลาด", json.message || "โหลดประวัติไม่สำเร็จ", "error");
     }
-  } catch (e) {
+  }catch(e){
     console.error(e); Swal.fire("ผิดพลาด", "ไม่สามารถโหลดประวัติได้", "error");
   } finally { overlay.hide(); }
 }
 
-async function promptAdjust(uid, name, direction) {
+async function promptAdjust(uid, name, direction){
   const title = direction > 0 ? "เพิ่มคะแนน" : "หักคะแนน";
   const { value: formValues } = await Swal.fire({
     title, icon: direction > 0 ? "success" : "warning",
@@ -292,54 +298,67 @@ async function promptAdjust(uid, name, direction) {
     }
   });
   if (!formValues) return;
-  const delta = direction > 0 ? formValues.amt : -formValues.amt;
 
+  const delta = direction > 0 ? formValues.amt : -formValues.amt;
   overlay.show("กำลังอัปเดตคะแนน...");
-  try {
+  try{
     const res  = await fetch(API_ADMIN_ADJUST, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: formValues.note || "" })
     });
     const json = await res.json();
-    if (json.status === "success") {
+    if (json.status === "success"){
       Swal.fire("สำเร็จ", `${title}ให้ ${escapeHtml(name)} จำนวน ${Math.abs(delta)} คะแนนแล้ว`, "success");
       const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
       updateRowScore(uid, newScore);
     } else {
       Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถปรับคะแนนได้", "error");
     }
-  } catch (e) {
+  }catch(e){
     console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error");
   } finally { overlay.hide(); }
 }
 
-async function confirmReset(uid, name) {
+async function confirmReset(uid, name){
   const ok = await Swal.fire({
-    title: "ล้างคะแนนทั้งหมด?", html: `คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`,
+    title: "ล้างคะแนนทั้งหมด?",
+    html: `คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`,
     icon: "warning", showCancelButton: true, confirmButtonText: "ยืนยัน", cancelButtonText: "ยกเลิก"
   });
   if (!ok.isConfirmed) return;
 
   overlay.show("กำลังล้างคะแนน...");
-  try {
+  try{
     const res  = await fetch(API_ADMIN_RESET, {
-      method: "POST", headers: { "Content-Type": "application/json" },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note: "Admin reset via UI" })
     });
     const json = await res.json();
-    if (json.status === "success") { Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success"); updateRowScore(uid, 0); }
-    else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error"); }
-  } catch (e) { console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error"); }
-  finally { overlay.hide(); }
+    if (json.status === "success"){
+      Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success");
+      updateRowScore(uid, 0);
+    } else {
+      Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error");
+    }
+  }catch(e){
+    console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error");
+  } finally { overlay.hide(); }
 }
 
-// ============ UTIL ============
-function getLocalScore(uid) { const f = ALL_USERS.find(x => x.uid === uid); return f ? Number(f.score || 0) : 0; }
-function updateRowScore(uid, newScore) {
-  for (const arr of [ALL_USERS, FILTERED]) { const i = arr.findIndex(x => x.uid === uid); if (i !== -1) arr[i].score = Number(newScore || 0); }
-  const $rows = $("#tbodyUsers tr"); let $row = null;
-  $rows.each(function(){ const uidCell = $(this).find("td:eq(1)").text().trim(); if (uidCell === uid) { $row = $(this); return false; } });
-  if ($row) { $row.find(".score-chip").text(Number(newScore || 0)); $row.addClass("table-success"); setTimeout(() => $row.removeClass("table-success"), 800); }
+/* ============ UTIL ============ */
+function getLocalScore(uid){ const f = ALL_USERS.find(x => x.uid === uid); return f ? Number(f.score || 0) : 0; }
+
+/* >>> อัปเดตแถวด้วย data-uid (ไม่พึ่งคอลัมน์ UID อีกต่อไป) <<< */
+function updateRowScore(uid, newScore){
+  for (const arr of [ALL_USERS, FILTERED]){ const i = arr.findIndex(x => x.uid === uid); if (i !== -1) arr[i].score = Number(newScore || 0); }
+  const $row = $("#tbodyUsers tr").filter(function(){ return $(this).data("uid") === uid; });
+  if ($row.length){
+    $row.find(".score-chip").text(Number(newScore || 0));
+    $row.addClass("table-success");
+    setTimeout(()=> $row.removeClass("table-success"), 800);
+  }
 }
 function escapeHtml(s){ return String(s||"").replace(/[&<>"'`=\/]/g, a => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a])); }
 function attr(s){ return String(s||"").replace(/"/g,"&quot;"); }
