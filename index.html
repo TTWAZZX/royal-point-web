@@ -170,25 +170,27 @@
   </nav>
 
   <!-- Modal: Add Score -->
-  <div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-fullscreen">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="scoreModalLabel"><i class="fa-solid fa-qrcode me-2"></i>เพิ่มคะแนนสะสม</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
-        </div>
-        <div class="modal-body text-center">
-          <div id="qr-reader" style="width: 100%; max-width: 420px; margin: auto;"></div>
-          <hr class="my-4" />
-          <div class="form-group" style="max-width:420px; margin:auto;">
-            <label for="secretCode" class="form-label">หรือกรอกรหัสลับเพื่อรับคะแนน</label>
-            <input type="text" id="secretCode" class="form-control text-center" placeholder="กรอกรหัสลับ">
-            <button onclick="submitSecretCode()" class="btn btn-primary mt-3 w-100 btn-icon"><i class="fa-solid fa-check"></i> ยืนยันรับคะแนน</button>
-          </div>
+  <!-- ต้องมี id ให้ตรงกับ app.js -->
+<div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="scoreModalLabel">เพิ่มคะแนนสะสม</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="qr-reader" style="width: 100%; max-width: 420px; margin: auto;"></div>
+        <hr class="my-4" />
+        <div class="form-group" style="max-width:420px; margin:auto;">
+          <label for="secretCode" class="form-label">หรือกรอกรหัสลับเพื่อรับคะแนน</label>
+          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
+          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
         </div>
       </div>
     </div>
   </div>
+</div>
+
 
   <!-- Scan Modal -->
 <div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
