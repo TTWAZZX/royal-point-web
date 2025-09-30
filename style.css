@@ -170,17 +170,21 @@ body{
   border:1px solid rgba(255,255,255,.08);
 }
 
+/* ปุ่มเข้า Admin แบบ FAB: ไอคอนล้วน, ไม่บังสแกน/แถบล่าง */
 .admin-entry{
   position: fixed;
-  top: 12px;
-  right: 12px;
-  z-index: 1080;
+  right: 16px;
+  /* ยกปุ่มขึ้นเหนือแถบล่าง/ปุ่มสแกน (~68-88px) + รองรับ safe area */
+  bottom: calc(92px + env(safe-area-inset-bottom));
+  z-index: 1040;
+  width: 48px; height: 48px;
+  border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
   backdrop-filter: blur(8px);
-  border-radius: 12px;
 }
-
-.admin-entry{
-  position: fixed; right: 16px; bottom: 20px; z-index: 2000;
-  border-radius: 12px; padding: 12px 14px;
+.admin-entry i{ font-size: 18px; }
+@media (min-width: 768px){
+  /* บนจอใหญ่เลื่อนลงอีกนิดให้บาลานซ์ */
+  .admin-entry{ bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
-@media (max-width:576px){ .admin-entry{ padding: 10px 12px; } }

@@ -22,6 +22,7 @@
     .card{background:var(--c-card);border:1px solid rgba(255,255,255,.06)}
     .btn-soft{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
     .btn-soft:hover{background:#1a2c4a}
+    .btn-group .btn{ padding: .7rem .8rem; line-height: 1; }
     .score-chip{display:inline-block;min-width:64px;padding:.35rem .65rem;border-radius:12px;background:#0f172a;border:1px solid rgba(255,255,255,.08);font-weight:700}
     .table-dark td,.table-dark th{vertical-align:middle}
 
@@ -43,13 +44,20 @@
       .table td,.table th{padding:1rem .8rem}
       .btn-group .btn{padding:.7rem .8rem;font-size:1.05rem;line-height:1}
     }
+    /* ติดขอบบน: หัว Appbar + ช่องค้นหา */
+.sticky-top-safe{
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 8px);
+  z-index: 1025;
+}
+.sticky-group-gap{ gap: 8px; }
   </style>
 </head>
 <body>
 <div class="container py-3">
 
   <!-- App Bar -->
-  <div class="appbar d-flex align-items-center gap-3 mb-3">
+  <div class="appbar d-flex align-items-center gap-3 mb-3 sticky-top-safe">
     <div class="d-flex align-items-center gap-2">
       <img id="adminAvatar" src="https://placehold.co/36x36" class="avatar" alt="avatar">
       <div>
@@ -69,9 +77,10 @@
 </div>
 
   <!-- Search -->
-  <div class="mb-3">
-    <input id="txtSearch" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
-  </div>
+  <div class="mb-3 sticky-top-safe">
+  <input id="txtSearch" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
+</div>
+
 
   <!-- Users Table (Mobile-first: ชื่อ / คะแนน / จัดการ) -->
   <div class="card border-0">
@@ -315,7 +324,8 @@ async function promptAdjust(uid, name, direction){
       body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: formValues.note || "" })
     });
     const json = await res.json();
-    if (json.status === "success"){
+    if (json.status === "success") {
+      navigator.vibrate?.(20);
       Swal.fire("สำเร็จ", `${title}ให้ ${escapeHtml(name)} จำนวน ${Math.abs(delta)} คะแนนแล้ว`, "success");
       const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
       updateRowScore(uid, newScore);
@@ -343,9 +353,10 @@ async function confirmReset(uid, name){
       body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note: "Admin reset via UI" })
     });
     const json = await res.json();
-    if (json.status === "success"){
-      Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success");
-      updateRowScore(uid, 0);
+    if (json.status === "success") {
+     navigator.vibrate?.(20);
+     Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success");
+     updateRowScore(uid, 0);
     } else {
       Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error");
     }

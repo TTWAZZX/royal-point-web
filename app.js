@@ -65,7 +65,7 @@ async function initApp() {
 
       const prof = await liff.getProfile();
       UID = prof.userId;
-      + showAdminEntry(ADMIN_UIDS.includes(UID));
+      showAdminEntry(ADMIN_UIDS.includes(UID));
 
     // fill UI
     if (el.username)   el.username.textContent = prof.displayName || "—";
