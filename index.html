@@ -1,252 +1,163 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Royal Point</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- jQuery + jQuery Form -->
-  <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery.form/4.3.0/jquery.form.min.js"></script>
+  <!-- Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
-  <!-- Bootstrap -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Bootstrap 5 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
 
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-
-  <!-- SweetAlert2 -->
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-  <!-- Loading Overlay -->
-  <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
-
-  <!-- LIFF SDK -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
-  <!-- html5-qrcode -->
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
-  <!-- THEME -->
-  <link rel="stylesheet" href="/style.css" />
+  <!-- Your styles -->
+  <link rel="stylesheet" href="/style.css"/>
 </head>
-
 <body>
-  <div class="container py-3">
 
-    <!-- HERO / USER CARD -->
-    <div class="hero rounded-xxl">
-      <div id="userCard" class="d-flex align-items-center gap-3">
-        <img id="profilePic" src="https://placehold.co/120x120" class="avatar" alt="avatar">
+  <main class="rp-container container py-3">
 
-        <div class="user-meta">
-          <div class="name" id="username">—</div>
-          <div class="sub">
-            <span id="phone" class="me-2"><i class="fa-solid fa-phone"></i></span>
-            <span class="badge tier-badge tier-silver" id="tierBadge">ระดับ Silver</span>
+    <!-- การ์ดหัวข้อโปรไฟล์ + คะแนน -->
+    <section class="rp-card rp-hero p-3 p-sm-4 mb-3">
+      <div class="d-flex align-items-center gap-3">
+        <img id="profilePic" class="rp-avatar" src="https://placehold.co/120x120" alt="profile"/>
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center gap-2">
+            <h1 class="rp-username mb-0" id="username">—</h1>
+            <span class="rp-tier-badge">ระดับ <span class="fw-bold">Silver</span></span>
           </div>
+          <div class="small text-secondary" id="next-tier">กำลังคำนวณขั้นถัดไป…</div>
         </div>
-
-        <div class="points-wrap ms-auto">
-          <div class="label"><i class="fa-solid fa-coins"></i> คะแนน</div>
-          <div class="points" id="points">0</div>
-        </div>
-      </div>
-
-      <!-- Progress -->
-      <div class="progress-card">
-        <div class="progress-label mb-1">
-          <span id="tier-label">ระดับ Silver</span>
-          <span class="text-muted">เป้าหมายถัดไป</span>
-        </div>
-        <svg viewBox="0 0 100 50" class="w-100">
-          <defs>
-            <linearGradient id="progGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#2dd4bf"/>
-              <stop offset="100%" stop-color="#60a5fa"/>
-            </linearGradient>
-          </defs>
-          <!-- background -->
-          <path d="M 10 50 A 40 40 0 0 1 90 50" stroke="rgba(255,255,255,.12)" stroke-width="10" fill="none"/>
-          <!-- foreground -->
-          <path id="progressCurve"
-                d="M 10 50 A 40 40 0 0 1 90 50"
-                stroke="url(#progGrad)" stroke-width="10" fill="none"
-                stroke-dasharray="126" stroke-dashoffset="126" stroke-linecap="round"/>
-        </svg>
-        <div class="mt-2 small" id="next-tier">สะสมอีก <strong>100</strong> พ้อยท์ ภายใน <strong>31/12/68</strong> เพื่อเลื่อนเป็น <strong>Gold</strong></div>
-      </div>
-
-      <!-- CTA -->
-      <div class="mt-3 d-flex gap-2">
-        <button class="fab-ghost btn btn-primary btn-icon flex-fill" data-bs-toggle="modal" data-bs-target="#scoreModal">
-          <i class="fa-solid fa-qrcode"></i> สแกนเพื่อรับคะแนน
-        </button>
-        <button class="btn btn-ghost btn-icon" onclick="refreshUserScore()">
+        <!-- ปุ่มรีเฟรช -->
+        <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
           <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
-    </div>
 
-    <!-- REGISTRATION -->
-    <div id="regSection" class="card mt-3 p-3" style="display:none;">
-      <h5 class="mb-2">สมัครใช้งาน</h5>
-      <form id="dataForm" class="list mt-3">
-        <div class="mb-3" style="display:none">
-          <label for="uid" class="form-label">UID</label>
-          <input type="text" class="form-control" id="uid" name="uid" readonly />
+      <div class="row align-items-center mt-3 g-3">
+        <div class="col-7 col-sm-8">
+          <!-- วงแหวนแสดงความคืบหน้า -->
+          <svg class="rp-progress" viewBox="0 0 48 24" preserveAspectRatio="xMidYMid meet">
+            <path d="M4,24 A20,20 0 0,1 44,24" class="rp-progress-bg"></path>
+            <path id="progressCurve" d="M4,24 A20,20 0 0,1 44,24" class="rp-progress-fg" />
+          </svg>
         </div>
-        <div class="mb-3">
-          <label for="name" class="form-label">ชื่อ - นามสกุล</label>
-          <input type="text" class="form-control" id="name" name="name" required />
+        <div class="col-5 col-sm-4 text-end">
+          <div class="rp-point-label">คะแนนสะสม</div>
+          <div class="rp-point-value" id="points">0</div>
         </div>
-        <div class="mb-3">
-          <label for="room" class="form-label">Section</label>
-          <select class="form-select" id="room" name="room" required>
-            <option value="" disabled selected>เลือก</option>
-            <option value="ACC">ACC</option><option value="C&FA">C&FA</option><option value="CS">CS</option>
-            <option value="CIC">CIC</option><option value="DIR">DIR</option><option value="ENG">ENG</option>
-            <option value="FIN">FIN</option><option value="GR">GR</option><option value="HP">HP</option>
-            <option value="HCM">HCM</option><option value="HRD">HRD</option><option value="HRM">HRM</option>
-            <option value="IT">IT</option><option value="L&S">L&S</option><option value="MTN">MTN</option>
-            <option value="MKT">MKT</option><option value="MC">MC</option><option value="OS">OS</option>
-            <option value="PD">PD</option><option value="PD1">PD1</option><option value="PD2">PD2</option>
-            <option value="PC">PC</option><option value="PE">PE</option><option value="PUR">PUR</option>
-            <option value="QA">QA</option><option value="QC">QC</option><option value="RDPP">RDPP</option>
-            <option value="R&D">R&D</option><option value="SHE">SHE</option><option value="SCM">SCM</option>
-            <option value="SYS-ENG">SYS-ENG</option><option value="TSH CENTER">TSH CENTER</option><option value="WH">WH</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <label for="dob" class="form-label">วันเกิด</label>
-          <input type="date" class="form-control" id="dob" name="dob" required />
-        </div>
-        <div class="mb-3">
-          <label for="passport" class="form-label">เลขประจำตัวพนักงาน/Passport</label>
-          <input type="text" class="form-control" id="passport" name="passport" required />
-        </div>
-        <div class="mb-3">
-          <label for="telephone" class="form-label">เบอร์โทรศัพท์</label>
-          <input type="text" class="form-control" id="telephone" name="telephone" required />
-        </div>
-        <button type="submit" class="btn btn-primary w-100">สมัครใช้งาน</button>
-      </form>
-    </div>
-
-    <!-- ADS -->
-    <div id="Ads" class="mt-4">
-      <div id="carouselAdsControls" class="carousel slide" data-bs-ride="carousel">
-        <div class="carousel-inner">
-          <div class="carousel-item active"><img src="https://lh3.googleusercontent.com/d/1j6_CKghy0tLKW2dJW7W1E8TLMKxMtJTl" class="d-block w-100" alt="Ad 1"></div>
-          <div class="carousel-item"><img src="https://lh3.googleusercontent.com/d/1SJkRqfgv8r5D_r0_z-GXCI464oLxhgkc" class="d-block w-100" alt="Ad 2"></div>
-          <div class="carousel-item"><img src="https://lh3.googleusercontent.com/d/16N6b_e-IcwKSX2HTGqj16mVBClGOpsHy" class="d-block w-100" alt="Ad 3"></div>
-        </div>
-        <button class="carousel-control-prev" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="prev">
-          <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-          <span class="visually-hidden">ก่อนหน้า</span>
-        </button>
-        <button class="carousel-control-next" type="button" data-bs-target="#carouselAdsControls" data-bs-slide="next">
-          <span class="carousel-control-next-icon" aria-hidden="true"></span>
-          <span class="visually-hidden">ถัดไป</span>
-        </button>
       </div>
-    </div>
+    </section>
 
-  </div><!-- /.container -->
+    <!-- ปุ่มดำเนินการหลัก -->
+    <section class="d-grid gap-2 mb-3">
+      <button class="btn btn-primary btn-lg rp-primary" data-bs-toggle="modal" data-bs-target="#scoreModal">
+        <i class="fa-solid fa-qrcode me-2"></i>สแกนเพื่อรับคะแนน
+      </button>
+      <button id="historyBtn" class="btn btn-outline-secondary">
+        <i class="fa-regular fa-clock me-2"></i>ประวัติการรับคะแนน
+      </button>
+    </section>
 
-  <!-- Floating scan button -->
-  <button class="fab-scan btn btn-lg" data-bs-toggle="modal" data-bs-target="#scoreModal">
-    <i class="fa-solid fa-qrcode me-2"></i>สแกนรับคะแนน
-  </button>
-
-  <!-- Bottom Nav -->
-  <nav class="bottom-nav">
-    <div class="nav-inner">
-      <a class="item active" href="#"><i class="fa-solid fa-house"></i><div class="small">หน้าแรก</div></a>
-      <a class="item" href="#" data-bs-toggle="modal" data-bs-target="#scoreModal"><i class="fa-solid fa-qrcode"></i><div class="small">สแกน</div></a>
-      <a class="item" href="#history"><i class="fa-regular fa-clock"></i><div class="small">ประวัติ</div></a>
-    </div>
-  </nav>
-
-  <!-- Modal: Add Score -->
-  <!-- ต้องมี id ให้ตรงกับ app.js -->
-<div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
-  <div class="modal-dialog modal-fullscreen">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="scoreModalLabel">เพิ่มคะแนนสะสม</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
+    <!-- ตัวอย่างโซนของรางวัล (ใส่/ลบได้ตามต้องการ) -->
+    <section class="rp-card p-3 p-sm-4">
+      <h5 class="mb-3">ของรางวัลยอดนิยม</h5>
+      <div class="row g-3">
+        <div class="col-6 col-md-4">
+          <div class="rp-gift">
+            <img src="https://placehold.co/600x400?text=Gift+1" alt="">
+            <div class="rp-gift-foot">
+              <span>ของรางวัล A</span>
+              <span class="rp-chip">70 pt</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="rp-gift">
+            <img src="https://placehold.co/600x400?text=Gift+2" alt="">
+            <div class="rp-gift-foot">
+              <span>ของรางวัล B</span>
+              <span class="rp-chip">80 pt</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4 d-none d-md-block">
+          <div class="rp-gift">
+            <img src="https://placehold.co/600x400?text=Gift+3" alt="">
+            <div class="rp-gift-foot">
+              <span>ของรางวัล C</span>
+              <span class="rp-chip">100 pt</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="modal-body text-center">
-        <div id="qr-reader" style="width: 100%; max-width: 420px; margin: auto;"></div>
-        <hr class="my-4" />
-        <div class="form-group" style="max-width:420px; margin:auto;">
-          <label for="secretCode" class="form-label">หรือกรอกรหัสลับเพื่อรับคะแนน</label>
-          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+    </section>
+
+  </main>
+
+  <!-- ปุ่ม Admin (โชว์เฉพาะแอดมิน ด้วย app.js) -->
+  <a id="btnAdmin" href="/admin.html"
+     class="btn btn-info shadow-lg admin-entry d-none"
+     aria-label="Admin">
+    <i class="fa-solid fa-shield-halved"></i>
+  </a>
+
+  <!-- โมดัล: สแกน + กรอกรหัส -->
+  <div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+      <div class="modal-content">
+        <div class="modal-header border-0">
+          <h5 class="modal-title">เพิ่มคะแนนสะสม</h5>
+          <button class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+        </div>
+        <div class="modal-body text-center">
+          <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
+          <hr class="my-4" />
+          <div class="form-group" style="max-width:420px;margin:auto;">
+            <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
+            <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-  <!-- Scan Modal -->
-<div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-fullscreen">
-    <div class="modal-content bg-dark text-light">
-      <div class="modal-header border-0">
-        <h5 class="modal-title">เพิ่มคะแนนสะสม</h5>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="ปิด"></button>
-      </div>
-      <div class="modal-body text-center">
-        <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-        <hr class="my-4" />
-        <div class="form-group" style="max-width:420px;margin:auto;">
-          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+  <!-- โมดัล: ประวัติคะแนน -->
+  <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header border-0">
+          <h5 class="modal-title">
+            <i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-primary" id="historyUser">—</span>
+          </h5>
+          <button class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-0">
+          <div id="historyList" class="list-group list-group-flush"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- History Bottom Sheet -->
-<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-lg">
-    <div class="modal-content bg-dark text-light">
-      <div class="modal-header border-0">
-        <h5 class="modal-title"><i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info" id="historyUser">—</span></h5>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body pt-0">
-        <div id="historyList" class="list-group list-group-flush"></div>
-      </div>
-      <div class="modal-footer border-0">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-      </div>
-    </div>
-  </div>
-</div>
+  <!-- JS Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
 
-<button id="historyBtn" class="btn btn-outline-light btn-sm">
-  <i class="fa-regular fa-clock"></i> ประวัติ
-</button>
-
-  <!-- footer -->
-  <footer class="text-center my-4 small text-muted">
-    © <script>document.write(new Date().getFullYear());</script> Royal Point · พัฒนาโดยสัตยา วงศ์ชมภู
-  </footer>
-
-  <!-- APP SCRIPT -->
+  <!-- App -->
   <script src="/app.js"></script>
-</body>
 
-<!-- Admin Entry (แสดงเฉพาะแอดมิน; ไอคอนล้วน, ไม่บัง UI) -->
+  <!-- Admin Entry (แสดงเฉพาะแอดมิน; ไอคอนล้วน, ไม่บัง UI) -->
 <a id="btnAdmin" href="/admin.html"
    class="btn btn-info shadow-lg admin-entry d-none"
    aria-label="Admin">
   <i class="fa-solid fa-shield-halved"></i>
 </a>
-
+</body>
 </html>

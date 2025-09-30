@@ -1,190 +1,119 @@
-/* ===== Royal Point 2025 — Mobile UI (for LIFF) ===== */
+/* ===== Royal Point – Light Theme (User) ===== */
 :root{
-  --bg: #0f1217;
-  --card: #141923;
-  --card-2: #1a2030;
-  --border: #263147;
-  --text: #e9eefc;
-  --muted: #9fb0d0;
-  --brand: #2dd4bf;     /* teal */
-  --brand-2:#60a5fa;    /* blue */
-  --warn: #f59e0b;
-  --danger:#ef4444;
-  --success:#22c55e;
-  --shadow: 0 10px 30px rgba(0,0,0,.35);
-  --radius-xl: 22px;
-  --radius-lg: 16px;
-  --radius: 12px;
+  --rp-bg: #f5f7fb;
+  --rp-card: #ffffff;
+  --rp-soft: #eef3fb;
+  --rp-border: #dbe4f3;
+  --rp-text: #1f2937;      /* slate-800 */
+  --rp-mute: #64748b;      /* slate-500 */
+  --rp-primary: #0ea5e9;   /* sky-500 */
+  --rp-primary-600:#0284c7;
+  --rp-chip: #f1f5f9;
 }
 
-*{box-sizing:border-box}
-html,body{height:100%}
+*{ box-sizing: border-box }
+html,body{ height:100% }
 body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
-  color:var(--text);
-  background:
-    radial-gradient(1200px 600px at 50% -10%, rgba(45,212,191,.15), transparent 55%),
-    radial-gradient(800px 400px at 10% 20%, rgba(96,165,250,.12), transparent 60%),
-    radial-gradient(1000px 500px at 90% 10%, rgba(99,102,241,.15), transparent 55%),
-    linear-gradient(180deg, #0b0e13, #0f1217 30%, #0f1217 100%);
-}
-.container{max-width:560px}
-
-/* HERO */
-.hero{
-  position:relative;
-  background:
-    radial-gradient(120% 150% at 0% 0%, rgba(96,165,250,.25), transparent 60%),
-    linear-gradient(135deg, rgba(45,212,191,.35), rgba(96,165,250,.2));
-  border:1px solid rgba(255,255,255,.06);
-  border-radius: var(--radius-xl);
-  padding:18px 16px;
-  box-shadow: var(--shadow);
-  overflow:hidden;
-}
-.hero::after{
-  content:"";
-  position:absolute; inset:0;
-  background: radial-gradient(500px 120px at 70% -10%, rgba(255,255,255,.15), transparent 70%);
-  pointer-events:none;
+  font-family: "Noto Sans Thai", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--rp-text);
+  background: linear-gradient(180deg, #eef2f7, var(--rp-bg));
 }
 
-/* USER ROW */
-.user-card{display:flex; align-items:center; gap:12px}
-.avatar{
-  width:64px; height:64px; flex:0 0 auto;
-  border-radius: 50%;
-  border:2px solid rgba(255,255,255,.25);
-  box-shadow: 0 6px 20px rgba(0,0,0,.35);
-  object-fit:cover;
+/* Container width */
+.rp-container{ max-width: 980px; }
+
+/* Cards */
+.rp-card{
+  background: var(--rp-card);
+  border: 1px solid var(--rp-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
 }
-.user-meta .name{font-weight:700; font-size:18px; line-height:1.2}
-.user-meta .sub{color:var(--muted); font-size:12px}
 
-/* POINTS */
-.points-wrap{margin-left:auto; text-align:right}
-.points-wrap .label{color:#ffd166; font-size:12px}
-.points-wrap .points{font-size:34px; font-weight:800; letter-spacing:.5px}
-
-/* BADGE (Tier) */
-.tier-badge{
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 10px; border-radius:999px;
-  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
-  border:1px solid rgba(255,255,255,.12);
-  color:#fff; font-weight:700; font-size:12px;
+/* Header Hero */
+.rp-hero{ position: relative; overflow: hidden }
+.rp-avatar{
+  width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+  border: 2px solid var(--rp-border);
 }
-.tier-silver{  background:linear-gradient(135deg,#c0c0c033,#f2f2f205); color:#e6e6e6;}
-.tier-gold{    background:linear-gradient(135deg,#facc1533,#fde68a10); color:#ffe08a;}
-.tier-diamond{ background:linear-gradient(135deg,#60a5fa33,#22d3ee10); color:#cfe6ff;}
-.tier-supreme{ background:linear-gradient(135deg,#f9731633,#ef444410); color:#ffd1b3; }
-
-/* OPTIONAL: เปลี่ยน mood การ์ดตาม tier */
-#userCard.bg-silver{ outline: 1px solid rgba(255,255,255,.08) }
-#userCard.bg-gold{ outline: 1px solid rgba(250,204,21,.35) }
-#userCard.bg-diamond{ outline: 1px solid rgba(96,165,250,.35) }
-#userCard.bg-supreme{ outline: 1px solid rgba(239,68,68,.35) }
-
-/* PROGRESS */
-.progress-card{
-  margin-top:14px;
-  background: var(--card);
-  border:1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding:10px 12px 6px;
+.rp-username{ font-size: clamp(1.1rem, 2.8vw, 1.4rem); font-weight: 700 }
+.rp-tier-badge{
+  background: var(--rp-soft);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border);
+  padding: .25rem .5rem; border-radius: 999px; font-size: .85rem;
 }
-.progress-label{
+.btn-icon{
+  width: 40px; height: 40px; padding:0; display:inline-flex; align-items:center; justify-content:center;
+  border-radius: 12px;
+}
+
+/* Progress ring (half circle) */
+.rp-progress{ width: 100%; height: auto; }
+.rp-progress-bg{ fill:none; stroke: #e5edf7; stroke-width: 8; stroke-linecap: round }
+.rp-progress-fg{
+  fill:none; stroke: var(--rp-primary); stroke-width: 8; stroke-linecap: round;
+  stroke-dasharray: 126; stroke-dashoffset: 0; transition: stroke-dashoffset .4s ease;
+}
+.rp-point-label{ color: var(--rp-mute) }
+.rp-point-value{ font-size: clamp(1.6rem, 4.6vw, 2.4rem); font-weight: 800 }
+
+/* Primary big button */
+.rp-primary{
+  background: var(--rp-primary);
+  border-color: var(--rp-primary);
+  font-weight: 700;
+}
+.rp-primary:hover{ background: var(--rp-primary-600); border-color: var(--rp-primary-600) }
+
+/* Gift cards (optional section) */
+.rp-gift{
+  border: 1px solid var(--rp-border);
+  border-radius: 14px; overflow: hidden; background: #fff;
+  box-shadow: 0 6px 18px rgba(15,23,42,.05);
+}
+.rp-gift img{ width: 100%; display: block; }
+.rp-gift-foot{
   display:flex; align-items:center; justify-content:space-between; gap:8px;
-  color:var(--muted); font-size:12px;
+  padding: .6rem .75rem; color: var(--rp-text);
+}
+.rp-chip{
+  background: var(--rp-chip);
+  border: 1px solid var(--rp-border);
+  padding: .15rem .45rem; border-radius: 999px; font-weight:700; font-size: .85rem;
 }
 
-/* BUTTONS */
-.btn-primary{
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  border:0; color:#08111a; font-weight:800;
-  box-shadow: 0 10px 20px rgba(45,212,191,.2), 0 8px 24px rgba(96,165,250,.15);
-}
-.btn-ghost{
-  background: transparent; color:#b8c7ea; border:1px solid rgba(255,255,255,.1);
-}
-.btn-icon{display:inline-flex; align-items:center; gap:8px; font-weight:700}
-
-/* CARDS */
-.card{
-  background: var(--card);
-  border:1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-}
-
-/* CAROUSEL IMG RADIUS */
-#Ads .carousel-inner img{border-radius: var(--radius-lg)}
-
-/* MODAL */
-.modal-content{
-  background: var(--card-2);
-  border-radius: var(--radius-xl);
-  border:1px solid var(--border);
-  color:var(--text);
-}
-.modal-header{
-  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent);
-  border-bottom-color: rgba(255,255,255,.08);
-}
-.modal-footer{ border-top-color: rgba(255,255,255,.08) }
-
-/* QR */
-#qr-reader{
-  border:1px dashed rgba(255,255,255,.18) !important;
-  border-radius: var(--radius-lg);
-  overflow:hidden;
-}
-
-/* FAB */
-.fab-scan{
-  position:fixed; left:50%; bottom:84px;
-  transform:translateX(-50%);
-  padding:14px 18px; border-radius:999px;
-  background: linear-gradient(135deg, var(--brand), var(--brand-2));
-  color:#08111a; font-weight:900; border:0;
-  box-shadow: 0 16px 40px rgba(45,212,191,.3), 0 10px 30px rgba(96,165,250,.22);
-  z-index:1010;
-}
-
-/* NAV */
-.bottom-nav{
-  position:fixed; left:0; right:0; bottom:0;
-  backdrop-filter: blur(10px);
-  background: rgba(8,12,18,.7);
-  border-top: 1px solid rgba(255,255,255,.1);
-  z-index:1011;
-}
-.bottom-nav .nav-inner{max-width:560px; margin:0 auto; display:flex; gap:8px; padding:8px 12px}
-.bottom-nav .item{
-  flex:1; text-align:center; color:var(--muted);
-  font-size:12px; padding:8px 0; border-radius:10px;
-}
-.bottom-nav .item.active{
-  color:#fff; background:linear-gradient(135deg, rgba(45,212,191,.15), rgba(96,165,250,.12));
-  border:1px solid rgba(255,255,255,.08);
-}
-
-/* ปุ่มเข้า Admin แบบ FAB: ไอคอนล้วน, ไม่บังสแกน/แถบล่าง */
+/* Admin floating button (show for admin only via JS) */
 .admin-entry{
   position: fixed;
   right: 16px;
-  /* ยกปุ่มขึ้นเหนือแถบล่าง/ปุ่มสแกน (~68-88px) + รองรับ safe area */
-  bottom: calc(92px + env(safe-area-inset-bottom));
+  bottom: calc(92px + env(safe-area-inset-bottom)); /* ไม่ทับปุ่ม/แถบล่าง */
   z-index: 1040;
-  width: 48px; height: 48px;
-  border-radius: 14px;
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 0;
-  backdrop-filter: blur(8px);
+  width: 52px; height: 52px; border-radius: 16px;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0; backdrop-filter: blur(8px);
 }
-.admin-entry i{ font-size: 18px; }
-@media (min-width: 768px){
-  /* บนจอใหญ่เลื่อนลงอีกนิดให้บาลานซ์ */
-  .admin-entry{ bottom: calc(72px + env(safe-area-inset-bottom)); }
+.admin-entry i{ font-size: 20px }
+
+/* Modal light look */
+.modal-content{
+  background: var(--rp-card);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border);
+}
+.modal-header, .modal-footer{ border-color: var(--rp-border) }
+
+/* Forms */
+.form-control{
+  background:#fff; border:1px solid var(--rp-border); color:var(--rp-text);
+}
+.form-control:focus{
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 .25rem rgba(14,165,233,.15);
+}
+
+/* Responsive */
+@media (max-width:576px){
+  .rp-avatar{ width:56px; height:56px }
+  .admin-entry{ bottom: calc(84px + env(safe-area-inset-bottom)); width:48px; height:48px }
 }
