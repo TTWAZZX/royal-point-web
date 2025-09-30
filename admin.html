@@ -73,9 +73,9 @@
   <div class="d-flex justify-content-between align-items-center mb-2">
   <h5 class="mb-0">จัดการของรางวัล</h5>
   <!-- ใส่ type="button" กัน submit -->
-  <button id="btnAddReward" type="button" class="btn btn-success btn-sm">
-    <i class="fa-solid fa-plus"></i> เพิ่มของรางวัล
-  </button>
+  <button id="btnAddReward" type="button" class="btn btn-success btn-sm" data-action="add-reward">
+  <i class="fa-solid fa-plus"></i> เพิ่มของรางวัล
+</button>
 </div>
 
 <div class="table-responsive">
@@ -377,6 +377,59 @@ async function confirmReset(uid, name){
   finally{ overlay.hide(); }
 }
 
+// ===== Add Reward (robust delegation) =====
+(function bindAddRewardDelegation(){
+  if (window.__bindAddRewardDelegationDone) return;
+  window.__bindAddRewardDelegationDone = true;
+
+  // สถานะกลาง (ใช้ร่วมกับโค้นส่วนอื่น)
+  const state = (window.state ||= { adminUid: window.state?.adminUid || null });
+
+  document.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('#btnAddReward,[data-action="add-reward"]');
+    if (!btn) return;
+
+    ev.preventDefault();
+    ev.stopPropagation();
+
+    try {
+      // ต้องยืนยันว่าเป็นแอดมินก่อน (โค้ดอื่นของคุณควรกำหนด state.adminUid ให้แล้ว)
+      if (!state.adminUid) {
+        alert('ยังไม่ได้ยืนยันสิทธิ์แอดมิน (adminUid ว่าง)');
+        return;
+      }
+
+      const name = prompt('ชื่อรางวัล:');
+      if (!name) return;
+
+      const img  = prompt('รูป (URL):', 'https://');
+      const cost = Number(prompt('แต้มที่ใช้:', '100') || 0);
+
+      const body = { adminUid: state.adminUid, name, img, cost, active: 1 };
+
+      const r = await fetch('/api/rewards-upsert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+
+      if (j.status === 'success') {
+        alert('เพิ่มแล้ว');
+        // ถ้ามีฟังก์ชันโหลดตาราง ให้เรียกรีเฟรช
+        if (typeof loadRewardsAdmin === 'function') {
+          await loadRewardsAdmin();
+        }
+      } else {
+        alert('ไม่สำเร็จ: ' + (j.message || ''));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('ไม่สามารถเพิ่มรายการได้');
+    }
+  }, { passive: false });
+})();
+
 /* ============ UTIL ============ */
 function getLocalScore(uid){ const f = ALL_USERS.find(x=>x.uid===uid); return f? Number(f.score||0):0; }
 function updateRowScore(uid, newScore){
@@ -391,4 +444,5 @@ function pad(n){ return n<10? "0"+n : String(n); }
 function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 </script>
 </body>
+<script src="/admin.page.js" defer></script>
 </html>
