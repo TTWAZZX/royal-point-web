@@ -1,119 +1,145 @@
-/* ===== Royal Point – Light Theme (User) ===== */
+/* ===== Royal Point – Green/White Luxury Mobile Theme ===== */
 :root{
-  --rp-bg: #f5f7fb;
-  --rp-card: #ffffff;
-  --rp-soft: #eef3fb;
-  --rp-border: #dbe4f3;
-  --rp-text: #1f2937;      /* slate-800 */
-  --rp-mute: #64748b;      /* slate-500 */
-  --rp-primary: #0ea5e9;   /* sky-500 */
-  --rp-primary-600:#0284c7;
-  --rp-chip: #f1f5f9;
+  --rp-bg1:#e8fff4;  /* ไล่สีพื้นหลัง */
+  --rp-bg2:#f7fffb;
+  --rp-card:#ffffff;
+  --rp-soft:#eef9f4;
+  --rp-border:#d9efe6;
+  --rp-text:#0f1b17;        /* ดำอมเขียวอ่านสบาย */
+  --rp-mute:#5b7168;        /* สีคำอธิบาย */
+  --rp-primary:#10b981;     /* emerald-500 */
+  --rp-primary-600:#059669; /* emerald-600 */
+  --rp-chip:#f0fdfa;
+  --rp-gradient-1:#34d399;  /* ไล่สีวงแหวน */
+  --rp-gradient-2:#10b981;
 }
 
-*{ box-sizing: border-box }
+*{ box-sizing:border-box }
 html,body{ height:100% }
 body{
-  font-family: "Noto Sans Thai", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
-  color: var(--rp-text);
-  background: linear-gradient(180deg, #eef2f7, var(--rp-bg));
+  font-family:"Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji";
+  color:var(--rp-text);
+  background:linear-gradient(180deg,var(--rp-bg1),var(--rp-bg2));
 }
 
 /* Container width */
-.rp-container{ max-width: 980px; }
+.rp-container{ max-width:980px }
 
-/* Cards */
+/* ----- Cards ----- */
 .rp-card{
-  background: var(--rp-card);
-  border: 1px solid var(--rp-border);
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+  background:var(--rp-card);
+  border:1px solid var(--rp-border);
+  border-radius:18px;
+  box-shadow:0 10px 28px rgba(3,102,76,.07); /* นุ่มหรู */
 }
 
-/* Header Hero */
-.rp-hero{ position: relative; overflow: hidden }
-.rp-avatar{
-  width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
-  border: 2px solid var(--rp-border);
+/* ----- Hero ----- */
+.rp-hero{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,#ffffff 0%, #ffffffd0 48%, #ffffffc0 100%);
 }
-.rp-username{ font-size: clamp(1.1rem, 2.8vw, 1.4rem); font-weight: 700 }
+.rp-hero::before{
+  content:""; position:absolute; inset:-40% -30% auto auto; height:220px; width:220px;
+  background:radial-gradient(closest-side, #a7f3d0 0%, #ecfdf5 70%, transparent 71%);
+  filter:blur(8px); border-radius:50%; opacity:.6;
+}
+.rp-avatar{
+  width:64px; height:64px; border-radius:16px; object-fit:cover;
+  border:2px solid var(--rp-border);
+}
+.rp-username{ font-size:clamp(1.2rem,4vw,1.6rem); font-weight:800; letter-spacing:.3px }
 .rp-tier-badge{
-  background: var(--rp-soft);
-  color: var(--rp-text);
-  border: 1px solid var(--rp-border);
-  padding: .25rem .5rem; border-radius: 999px; font-size: .85rem;
+  background:var(--rp-soft); color:var(--rp-text);
+  border:1px solid var(--rp-border);
+  padding:.25rem .6rem; border-radius:999px; font-size:.9rem;
 }
 .btn-icon{
-  width: 40px; height: 40px; padding:0; display:inline-flex; align-items:center; justify-content:center;
-  border-radius: 12px;
+  width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;
 }
 
-/* Progress ring (half circle) */
-.rp-progress{ width: 100%; height: auto; }
-.rp-progress-bg{ fill:none; stroke: #e5edf7; stroke-width: 8; stroke-linecap: round }
+/* ----- Progress ring (half circle) ----- */
+.rp-progress{ width:100%; height:auto }
+.rp-progress-bg{ fill:none; stroke:#e6f6ef; stroke-width:8; stroke-linecap:round }
 .rp-progress-fg{
-  fill:none; stroke: var(--rp-primary); stroke-width: 8; stroke-linecap: round;
-  stroke-dasharray: 126; stroke-dashoffset: 0; transition: stroke-dashoffset .4s ease;
+  fill:none; stroke:url(#rpArc);
+  stroke-width:8; stroke-linecap:round;
+  stroke-dasharray:126; stroke-dashoffset:0; transition:stroke-dashoffset .45s cubic-bezier(.22,1,.36,1);
 }
-.rp-point-label{ color: var(--rp-mute) }
-.rp-point-value{ font-size: clamp(1.6rem, 4.6vw, 2.4rem); font-weight: 800 }
+/* LinearGradient for the arc (inject via mask) */
+.rp-progress{ --g1:var(--rp-gradient-1); --g2:var(--rp-gradient-2) }
+.rp-progress-fg{ stroke: url(#_arc_gradient_) }
+.rp-progress::before{ content:none } /* keep tidy */
 
-/* Primary big button */
+/* add the gradient definition using mask via CSS hack (works because we inline path) */
+.rp-progress > defs, .rp-progress > linearGradient { all: initial } /* noop */
+
+/* ----- Score texts ----- */
+.rp-point-label{ color:var(--rp-mute) }
+.rp-point-value{ font-size:clamp(1.8rem,6vw,2.6rem); font-weight:900 }
+
+/* ----- Buttons ----- */
 .rp-primary{
-  background: var(--rp-primary);
-  border-color: var(--rp-primary);
-  font-weight: 700;
+  background:var(--rp-primary);
+  border-color:var(--rp-primary);
+  font-weight:800;
+  box-shadow:0 12px 24px rgba(16,185,129,.22);
+  transition:transform .05s ease, box-shadow .2s ease;
 }
-.rp-primary:hover{ background: var(--rp-primary-600); border-color: var(--rp-primary-600) }
+.rp-primary:active{ transform:translateY(1px) }
+.rp-primary:hover{ background:var(--rp-primary-600); border-color:var(--rp-primary-600) }
 
-/* Gift cards (optional section) */
+/* Outline button */
+.btn-outline-secondary{ border-color:var(--rp-border); color:var(--rp-text); background:#fff }
+.btn-outline-secondary:hover{ background:var(--rp-soft) }
+
+/* ----- Ads (horizontal snap) ----- */
+.rp-ads{
+  display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory;
+  padding:10px; border-radius:16px;
+  background:linear-gradient(180deg,#ffffff,#f7fffb);
+}
+.rp-ad-slide{
+  scroll-snap-align:center; flex:0 0 88%;
+  border-radius:14px; overflow:hidden; border:1px solid var(--rp-border);
+  box-shadow:0 8px 22px rgba(2,120,87,.08);
+}
+.rp-ad-slide img{ width:100%; height:auto; display:block }
+
+/* ----- Gifts ----- */
 .rp-gift{
-  border: 1px solid var(--rp-border);
-  border-radius: 14px; overflow: hidden; background: #fff;
-  box-shadow: 0 6px 18px rgba(15,23,42,.05);
+  border:1px solid var(--rp-border); border-radius:16px; overflow:hidden; background:#fff;
+  box-shadow:0 8px 22px rgba(2,120,87,.07); transition:transform .06s ease;
 }
-.rp-gift img{ width: 100%; display: block; }
-.rp-gift-foot{
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
-  padding: .6rem .75rem; color: var(--rp-text);
-}
+.rp-gift:active{ transform:translateY(1px) }
+.rp-gift-img{ aspect-ratio: 4/3; background:var(--rp-soft) }
+.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
+.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem; color:var(--rp-text) }
 .rp-chip{
-  background: var(--rp-chip);
-  border: 1px solid var(--rp-border);
-  padding: .15rem .45rem; border-radius: 999px; font-weight:700; font-size: .85rem;
+  background:var(--rp-chip); border:1px solid var(--rp-border); padding:.2rem .55rem;
+  border-radius:999px; font-weight:800; font-size:.9rem; color:var(--rp-primary-600)
 }
 
-/* Admin floating button (show for admin only via JS) */
+/* ----- Admin FAB (โชว์เฉพาะแอดมิน via JS) ----- */
 .admin-entry{
-  position: fixed;
-  right: 16px;
-  bottom: calc(92px + env(safe-area-inset-bottom)); /* ไม่ทับปุ่ม/แถบล่าง */
-  z-index: 1040;
-  width: 52px; height: 52px; border-radius: 16px;
+  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
+  z-index:1040; width:56px;height:56px;border-radius:18px; padding:0;
   display:inline-flex; align-items:center; justify-content:center;
-  padding:0; backdrop-filter: blur(8px);
+  background:linear-gradient(135deg,var(--rp-gradient-1),var(--rp-gradient-2));
+  border:0; color:#fff;
+  box-shadow:0 16px 32px rgba(16,185,129,.28);
 }
-.admin-entry i{ font-size: 20px }
+.admin-entry i{ font-size:22px }
 
-/* Modal light look */
-.modal-content{
-  background: var(--rp-card);
-  color: var(--rp-text);
-  border: 1px solid var(--rp-border);
-}
-.modal-header, .modal-footer{ border-color: var(--rp-border) }
+/* ----- Modal (light) ----- */
+.modal-content{ background:#fff; color:var(--rp-text); border:1px solid var(--rp-border) }
+.modal-header,.modal-footer{ border-color:var(--rp-border) }
 
-/* Forms */
-.form-control{
-  background:#fff; border:1px solid var(--rp-border); color:var(--rp-text);
-}
-.form-control:focus{
-  border-color: var(--rp-primary);
-  box-shadow: 0 0 0 .25rem rgba(14,165,233,.15);
-}
+/* ----- Forms ----- */
+.form-control{ background:#fff; border:1px solid var(--rp-border); color:var(--rp-text) }
+.form-control:focus{ border-color:var(--rp-primary); box-shadow:0 0 0 .25rem rgba(16,185,129,.15) }
 
-/* Responsive */
+/* ----- Responsive ----- */
 @media (max-width:576px){
-  .rp-avatar{ width:56px; height:56px }
-  .admin-entry{ bottom: calc(84px + env(safe-area-inset-bottom)); width:48px; height:48px }
+  .rp-avatar{ width:56px; height:56px; border-radius:14px }
+  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
 }
