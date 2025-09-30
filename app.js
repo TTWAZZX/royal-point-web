@@ -1,7 +1,12 @@
+// ==== ใส่ไว้ด้านบนไฟล์ app.js (ค่าคงที่) ====
+const ADMIN_UIDS = ['Ucadb3c0f63ada96c0432a0aede267ff9'];
+function isAdmin(uid){ return ADMIN_UIDS.includes(String(uid)); }
+
 // ================== CONFIG ==================
 const registerUrl    = "/api/register";
 const scoreUpdateUrl = "/api/redeem";
 const scoreFetchUrl  = "/api/get-score";
+const scoreHistoryUrl  = "/api/score-history";   // GET ?uid=
 const liffID         = "2007053300-QoEvbXyn"; // <- ใช้ LIFF ของคุณ
 
 // เกณฑ์เลื่อนระดับ
@@ -202,8 +207,11 @@ $(document).ready(function () {
       liff.getProfile().then(profile => {
         const uid = profile.userId;
         $('#uid').val(uid);
-        $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/120x120');
+        $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
         loadUserScore(uid);
+        if (isAdmin(uid)) {
+        $('#btnAdmin').removeClass('d-none');
+        }
       });
     } else {
       liff.login();
