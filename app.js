@@ -232,23 +232,55 @@ async function redeemCode(code, type){
 
 async function startScanner(){
   if(!els.qrReader) return;
+
+  const onScan = async (decoded) => {
+    try { await redeemCode(String(decoded||"").trim(), "SCAN"); }
+    finally { stopScanner(); }
+  };
+
   try{
-    const devices = await Html5Qrcode.getCameras();
-    const camId = (devices[0] && devices[0].id);
-    if(!camId) return;
     html5qrcode = new Html5Qrcode(els.qrReader.id);
+
+    // 1) พยายามเปิดด้วย facingMode: 'environment' ก่อน (กล้องหลัง)
+    try {
+      await html5qrcode.start(
+        { facingMode: { exact: "environment" } },   // บางเครื่องต้อง exact
+        { fps: 10, qrbox: { width: 260, height: 260 } },
+        onScan
+      );
+      return;
+    } catch (e1) {
+      // ลองแบบไม่ exact บางอุปกรณ์ (เช่น Android บางรุ่น)
+      try {
+        await html5qrcode.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 260, height: 260 } },
+          onScan
+        );
+        return;
+      } catch (e2) {
+        console.warn("facingMode fallback to device list", e2);
+      }
+    }
+
+    // 2) ถ้าไม่สำเร็จ ใช้วิธี list กล้องแล้วเลือกตัวที่น่าจะเป็น 'หลัง'
+    const devices = await Html5Qrcode.getCameras();
+    if (!devices || !devices.length) throw new Error("No camera devices");
+
+    // หา label ที่บ่งบอก back/rear/environment/wide/main
+    const re = /(back|rear|environment|wide|main)/i;
+    const preferred = devices.find(d => re.test(d.label)) || devices[devices.length - 1];
+    const camId = preferred.id;
+
     await html5qrcode.start(
       camId,
-      { fps:10, qrbox:{ width:260, height:260 } },
-      async (decoded)=>{ try{ await redeemCode(String(decoded||"").trim(), "SCAN"); } finally{ stopScanner(); } }
+      { fps: 10, qrbox: { width: 260, height: 260 } },
+      onScan
     );
-  }catch(e){ console.warn("Scanner start failed:", e); }
-}
-async function stopScanner(){
-  try{
-    if(html5qrcode){ await html5qrcode.stop(); await html5qrcode.clear(); html5qrcode=null; }
-    if(els.qrReader) els.qrReader.innerHTML="";
-  }catch{}
+  }catch(e){
+    console.warn("Scanner start failed:", e);
+    toastErr("ไม่สามารถเปิดกล้องหลังได้");
+  }
 }
 
 /* ================= History (FIX: pad hoist) ================= */
