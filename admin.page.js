@@ -1,3 +1,50 @@
+// ----- Global state (no ||= / optional chaining) -----
+if (!window.state) window.state = {};
+var state = window.state;
+
+// ดึง UID แอดมินจาก: ?uid= / ?adminUid= → LIFF → localStorage → prompt
+async function ensureAdminUid() {
+  if (state.adminUid) return state.adminUid;
+
+  try {
+    var qs = new URLSearchParams(location.search);
+    var uid = (qs.get('uid') || qs.get('adminUid') || '').trim();
+    if (uid) {
+      state.adminUid = uid;
+      try { localStorage.setItem('rp_adminUid', uid); } catch(_){}
+      return state.adminUid;
+    }
+  } catch(e) {}
+
+  try {
+    if (window.liff && typeof liff.getProfile === 'function') {
+      if (!liff.isLoggedIn()) { try { await liff.login(); } catch(_){} }
+      var pf = await liff.getProfile();
+      if (pf && pf.userId) {
+        state.adminUid = pf.userId;
+        try { localStorage.setItem('rp_adminUid', state.adminUid); } catch(_){}
+        return state.adminUid;
+      }
+    }
+  } catch(e) { console.warn('LIFF profile error', e); }
+
+  try {
+    var stored = localStorage.getItem('rp_adminUid');
+    if (stored) {
+      state.adminUid = stored;
+      return state.adminUid;
+    }
+  } catch(e){}
+
+  var typed = prompt('ใส่ Admin UID เพื่อจัดการของรางวัล:', '');
+  if (typed) {
+    state.adminUid = typed.trim();
+    try { localStorage.setItem('rp_adminUid', state.adminUid); } catch(_){}
+    return state.adminUid;
+  }
+  return null;
+}
+
 /***********************
  * Admin Frontend (client-only)
  * - โหลดตารางคะแนน
@@ -35,83 +82,78 @@ const API_REWARDS_LIST   = "/api/rewards";
 const API_REWARDS_UPSERT = "/api/rewards-upsert";
 const API_REWARDS_DELETE = "/api/rewards-delete";
 
-// กันกดซ้ำตอนกดบันทึก/ลบ
-let REWARD_BUSY = false;
-
 async function loadRewardsAdmin(){
-  const tbody = document.querySelector("#tblRewards tbody");
-  if(!tbody){ console.warn("tblRewards tbody not found"); return; }
-
-  tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">กำลังโหลด…</td></tr>`;
+  var tbody = document.querySelector("#tblRewards tbody");
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">กำลังโหลด…</td></tr>';
 
   try{
-    // ใส่ uid ของแอดมินไปด้วย เพื่อให้ดูรายการทั้งหมดได้
-    const r = await fetch(`${API_REWARDS_LIST}?uid=${encodeURIComponent(state.adminUid || "")}`, { cache: "no-store" });
-    const j = await r.json();
-    const list = j.data || [];
+    var uid = state.adminUid || '';
+    var r = await fetch(API_REWARDS_LIST + '?uid=' + encodeURIComponent(uid), { cache:'no-store' });
+    var j = await r.json();
+    var list = j.data || [];
 
     if (!list.length){
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">ไม่มีรายการ</td></tr>`;
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">ไม่มีรายการ</td></tr>';
       return;
     }
 
-    tbody.innerHTML = list.map(x=>`
-      <tr data-id="${escapeHtml(x.id)}">
-        <td class="small">${escapeHtml(x.id)}</td>
-        <td><input class="form-control form-control-sm in-name" value="${escapeHtml(x.name||'')}"></td>
-        <td><input class="form-control form-control-sm in-img"  value="${escapeHtml(x.img||'')}"></td>
-        <td style="max-width:90px"><input type="number" min="0" class="form-control form-control-sm in-cost" value="${Number(x.cost||0)}"></td>
-        <td class="text-center"><input type="checkbox" class="form-check-input in-active" ${String(x.active)!=="0"?'checked':''}></td>
-        <td class="text-center">
-          <button class="btn btn-primary btn-sm act-save"><i class="fa-regular fa-floppy-disk"></i></button>
-          <button class="btn btn-danger btn-sm act-del"><i class="fa-regular fa-trash-can"></i></button>
-        </td>
-      </tr>
-    `).join("");
+    tbody.innerHTML = list.map(function(x){
+      return (
+        '<tr data-id="'+ escapeHtml(x.id||'') +'">' +
+          '<td class="small">'+ escapeHtml(x.id||'') +'</td>' +
+          '<td><input class="form-control form-control-sm in-name" value="'+ escapeHtml(x.name||'') +'"></td>' +
+          '<td><input class="form-control form-control-sm in-img"  value="'+ escapeHtml(x.img||'')  +'"></td>' +
+          '<td style="max-width:90px"><input type="number" min="0" class="form-control form-control-sm in-cost" value="'+ Number(x.cost||0) +'"></td>' +
+          '<td class="text-center"><input type="checkbox" class="form-check-input in-active" '+ (String(x.active)!=='0'?'checked':'') +'></td>' +
+          '<td class="text-center">' +
+            '<button class="btn btn-primary btn-sm act-save"><i class="fa-regular fa-floppy-disk"></i></button> '+
+            '<button class="btn btn-danger btn-sm act-del"><i class="fa-regular fa-trash-can"></i></button>'+
+          '</td>' +
+        '</tr>'
+      );
+    }).join('');
 
-    // ใช้ handler แบบ property เพื่อ "มีแค่ตัวเดียว" ไม่ซ้ำหลายรอบ
-    tbody.onclick = async (ev) => {
-      const tr = ev.target.closest("tr[data-id]");
-      if(!tr) return;
-      const id = tr.dataset.id;
+    // delegation สำหรับปุ่มบันทึก/ลบ
+    tbody.onclick = async function(ev){
+      var tr = ev.target.closest('tr[data-id]');
+      if (!tr) return;
+      var id = tr.getAttribute('data-id');
 
-      if (ev.target.closest(".act-save")){
-        if (REWARD_BUSY) return;
-        REWARD_BUSY = true;
-        try{
-          const body = {
-            adminUid: state.adminUid,
-            id,
-            name: tr.querySelector(".in-name").value.trim(),
-            img:  tr.querySelector(".in-img").value.trim(),
-            cost: Number(tr.querySelector(".in-cost").value || 0),
-            active: tr.querySelector(".in-active").checked ? 1 : 0
-          };
-          const rr = await fetch(API_REWARDS_UPSERT, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
-          const jj = await rr.json();
-          alert(jj.status==="success" ? "บันทึกแล้ว" : ("บันทึกไม่สำเร็จ: " + (jj.message||"")));
-          await loadRewardsAdmin();
-        } finally { REWARD_BUSY = false; }
+      if (ev.target.closest('.act-save')){
+        var body = {
+          adminUid: state.adminUid,
+          id: id,
+          name: tr.querySelector('.in-name').value.trim(),
+          img:  tr.querySelector('.in-img').value.trim(),
+          cost: Number(tr.querySelector('.in-cost').value||0),
+          active: tr.querySelector('.in-active').checked ? 1 : 0
+        };
+        var rr = await fetch(API_REWARDS_UPSERT, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        var jj = await rr.json();
+        alert(jj.status==='success' ? 'บันทึกแล้ว' : ('บันทึกไม่สำเร็จ: '+(jj.message||'')));
+        await loadRewardsAdmin();
       }
 
-      if (ev.target.closest(".act-del")){
-        if(!confirm("ลบ (ปิดการใช้งาน) รายการนี้?")) return;
-        if (REWARD_BUSY) return;
-        REWARD_BUSY = true;
-        try{
-          const rr = await fetch(API_REWARDS_DELETE, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: state.adminUid, id }) });
-          const jj = await rr.json();
-          alert(jj.status==="success" ? "ลบแล้ว" : ("ไม่สำเร็จ: "+(jj.message||"")));
-          await loadRewardsAdmin();
-        } finally { REWARD_BUSY = false; }
+      if (ev.target.closest('.act-del')){
+        if (!confirm('ลบ (ปิดการใช้งาน) รายการนี้?')) return;
+        var rd = await fetch(API_REWARDS_DELETE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ adminUid: state.adminUid, id: id }) });
+        var jd = await rd.json();
+        alert(jd.status==='success' ? 'ลบแล้ว' : ('ไม่สำเร็จ: '+(jd.message||'')));
+        await loadRewardsAdmin();
       }
     };
-
   }catch(e){
     console.error(e);
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">โหลดไม่สำเร็จ</td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">โหลดไม่สำเร็จ</td></tr>';
   }
 }
+
+function escapeHtml(s){
+  s = String(s||'');
+  return s.replace(/[&<>"']/g, function(m){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]);});
+}
+
 
 function bindAddRewardButton(){
   const btn = document.getElementById("btnAddReward");
@@ -888,3 +930,51 @@ function RP_adminSafeInit() {
 }
 
 document.addEventListener('DOMContentLoaded', RP_adminSafeInit);
+
+(function bindAddRewardButton(){
+  if (window.__bindAddRewardButton) return;
+  window.__bindAddRewardButton = true;
+
+  document.addEventListener('click', async function(ev){
+    var btn = ev.target.closest('#btnAddReward,[data-action="add-reward"]');
+    if (!btn) return;
+
+    ev.preventDefault(); ev.stopPropagation();
+
+    if (!state.adminUid) {
+      alert('ยังไม่ได้ยืนยันสิทธิ์แอดมิน (adminUid ว่าง)');
+      return;
+    }
+
+    var name = prompt('ชื่อรางวัล:'); if (!name) return;
+    var img  = prompt('รูป (URL):','https://');
+    var cost = Number(prompt('แต้มที่ใช้:','100')||0);
+
+    try{
+      var r = await fetch('/api/rewards-upsert', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ adminUid: state.adminUid, name:name, img:img, cost:cost, active:1 })
+      });
+      var j = await r.json();
+      if (j.status==='success'){
+        alert('เพิ่มแล้ว');
+        await loadRewardsAdmin();
+      } else {
+        alert('ไม่สำเร็จ: '+(j.message||''));
+      }
+    }catch(err){
+      console.error(err);
+      alert('ไม่สามารถเพิ่มรายการได้');
+    }
+  });
+})();
+
+document.addEventListener('DOMContentLoaded', async function(){
+  await ensureAdminUid();                 // ตั้ง adminUid ให้ได้ก่อน
+  if (!state.adminUid) {
+    alert('ยังไม่ได้ยืนยันสิทธิ์แอดมิน (adminUid ว่าง)');
+    return;
+  }
+  await loadRewardsAdmin();               // แล้วค่อยโหลดตาราง
+});
