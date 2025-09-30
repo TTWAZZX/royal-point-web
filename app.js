@@ -1,4 +1,4 @@
-/* ============ Royal Point — User App (Horizontal Profile Card) ============ */
+/* ============ Royal Point — User App (Horizontal Profile Card, FIX) ============ */
 
 /** LIFF / API */
 const LIFF_ID = "2007053300-QoEvbXyn";
@@ -15,12 +15,19 @@ const els = {
   username: $("username"),
   profilePic: $("profilePic"),
   points: $("points"),
-  pointUnit: null, // ใช้ span ใน HTML แล้ว ไม่ต้องจับ
-  progressFill: $("progressFill"),
-  progressBar: $("progressBar"),
-  nextTier: $("next-tier"),
+
   levelBadge: $("levelBadge"),
   currentLevelText: $("currentLevelText"),
+
+  // Progress (legacy line) – ไม่ใช้ก็ได้
+  progressBar: $("progressBar"),
+  progressFill: $("progressFill"),
+
+  // Level Track ใหม่
+  levelTrack: $("levelTrack"),
+  trackFill: $("trackFill"),
+
+  nextTier: $("next-tier"),
 
   btnRefresh: $("refreshBtn"),
   btnAdmin: $("btnAdmin"),
@@ -42,7 +49,7 @@ let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
 
-/** Level mapping (ตามที่ขอ: Gold=500, Platinum=1200) */
+/** Level mapping (Gold=500, Platinum=1200) */
 const TIERS = [
   { key:"silver",   name:"Silver",   min:0,   next:500,      class:"rp-level-silver",   progClass:"prog-silver"   },
   { key:"gold",     name:"Gold",     min:500, next:1200,     class:"rp-level-gold",     progClass:"prog-gold"     },
@@ -50,7 +57,7 @@ const TIERS = [
 ];
 const TIER_EMOJI = { Silver:"🥈", Gold:"🥇", Platinum:"💎" };
 
-/* ============ Boot ============ */
+/* ================= Boot ================= */
 document.addEventListener("DOMContentLoaded", initApp);
 
 async function initApp(){
@@ -61,8 +68,8 @@ async function initApp(){
     const prof = await liff.getProfile();
     UID = prof.userId;
 
-    els.username && (els.username.textContent = prof.displayName || "—");
-    els.profilePic && (els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120");
+    if (els.username)   els.username.textContent = prof.displayName || "—";
+    if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
 
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
@@ -70,7 +77,7 @@ async function initApp(){
   }catch(e){ console.error(e); toastErr("เริ่มต้นระบบไม่สำเร็จ"); }
 }
 
-/* ============ UI Helpers ============ */
+/* ================= UI Helpers ================= */
 function bindUI(){
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
@@ -88,9 +95,8 @@ function bindUI(){
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
-async function safeJson(resp){ const t=await resp.text(); try{ return JSON.parse(t); }catch{ return {status: resp.ok?"success":"error", message:t}; } }
 
-/* ============ Score / Level / Progress ============ */
+/* ================= Score / Level / Progress ================= */
 function getTier(score){
   for(const t of TIERS){ if(score >= t.min && score < t.next) return t; }
   return TIERS[TIERS.length-1];
@@ -102,9 +108,9 @@ async function refreshUserScore(){
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
     const j = await safeJson(r);
     if(j.status === "success" && j.data){
-      const score = Number(j.data.score || 0);
-      setPoints(score);
-      localStorage.setItem("lastScore", String(score));
+      const sc = Number(j.data.score || 0);
+      setPoints(sc);
+      localStorage.setItem("lastScore", String(sc));
     }else{
       const cached = Number(localStorage.getItem("lastScore") || "0");
       setPoints(cached);
@@ -116,30 +122,28 @@ async function refreshUserScore(){
   }
 }
 
-function setPoints(score){
-  score = Number(score||0);
+function setPoints(sc){
+  const score = Number(sc||0);
 
   const tier = getTier(score);
   const idx = TIERS.findIndex(t=>t.key===tier.key);
   const nextTierObj = TIERS[idx+1] || null;
 
-  // 1) Username score count-up
+  // 1) คะแนนเด้งขึ้น
   if(els.points){
     const from = prevScore || Number(els.points.textContent || 0);
     animateCount(els.points, from, score, 600);
   }
 
-  // 2) Level badge + current level text
+  // 2) Badge / Current level
   if(els.levelBadge){
     els.levelBadge.textContent = tier.name;
     els.levelBadge.classList.remove("rp-level-silver","rp-level-gold","rp-level-platinum","sparkle");
     els.levelBadge.classList.add(tier.class);
   }
-  if(els.currentLevelText){
-    els.currentLevelText.textContent = tier.name;
-  }
+  if(els.currentLevelText) els.currentLevelText.textContent = tier.name;
 
-  // 3) Progress theme (bar color by level) + width
+  // 3) Progress line (ถ้าใช้)
   if(els.progressBar){
     els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
     els.progressBar.classList.add(tier.progClass);
@@ -149,7 +153,10 @@ function setPoints(score){
     els.progressFill.style.width = `${Math.max(0, Math.min(100, pct*100))}%`;
   }
 
-  // 4) Helper text (next level)
+  // 4) Level Track ใหม่ – ชัดเจน
+  updateLevelTrack(score);
+
+  // 5) ข้อความเลเวลถัดไป
   if(els.nextTier){
     if(!nextTierObj){
       els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
@@ -159,7 +166,7 @@ function setPoints(score){
     }
   }
 
-  // 5) Sparkle + Confetti on level-up
+  // 6) เอฟเฟกต์เลเวลอัป
   if(prevLevel && prevLevel !== tier.key){
     els.levelBadge?.classList.add("sparkle");
     setTimeout(()=> els.levelBadge?.classList.remove("sparkle"), 1300);
@@ -170,33 +177,41 @@ function setPoints(score){
   prevScore = score;
 }
 
-/* Count-up */
-function animateCount(el, from, to, duration=600){
-  if(from === to){ el.textContent = String(to); return; }
-  const start = performance.now();
-  const ease = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
-  function frame(now){
-    const p = Math.min(1, (now-start)/duration);
-    const v = Math.round(from + (to-from)*ease(p));
-    el.textContent = String(v);
-    if(p<1) requestAnimationFrame(frame);
+/* ====== Level Track updater (กันพลาด element ไม่มี) ====== */
+function updateLevelTrack(score){
+  const track = els.levelTrack;
+  const fill  = els.trackFill;
+  if(!track || !fill) return;
+
+  const max = TIERS[TIERS.length-1].min;       // 1200
+  const pct = Math.max(0, Math.min(100, (score / max) * 100));
+  fill.style.width = pct + "%";
+
+  // milestone positions (0, 500, 1200)
+  const stops = [0, 500, max];
+  const marks = track.querySelectorAll(".rp-track-milestone");
+  marks.forEach((m,i)=>{
+    const left = (stops[i] / max) * 100;
+    m.style.left = (i === stops.length-1 ? 100 : left) + "%";
+  });
+
+  // theme by level
+  track.classList.remove("track-silver","track-gold","track-platinum");
+  const map  = { silver:"track-silver", gold:"track-gold", platinum:"track-platinum" };
+  const tier = getTier(score);
+  track.classList.add(map[tier.key] || "track-silver");
+
+  // pulse feedback เล็ก ๆ
+  const rail = track.querySelector(".rp-track-rail");
+  if(rail){
+    rail.classList.remove("pulse"); // reset
+    void rail.offsetWidth;           // reflow
+    rail.classList.add("pulse");
+    setTimeout(()=>rail.classList.remove("pulse"), 600);
   }
-  requestAnimationFrame(frame);
 }
 
-/* Confetti */
-function launchConfetti(){
-  try{
-    const duration = 1200, end = Date.now()+duration;
-    (function frame(){
-      confetti({ particleCount:40, angle:60, spread:50, origin:{x:0} });
-      confetti({ particleCount:40, angle:120, spread:50, origin:{x:1} });
-      if(Date.now()<end) requestAnimationFrame(frame);
-    })();
-  }catch{}
-}
-
-/* ============ Redeem / Scanner ============ */
+/* ================= Redeem / Scanner ================= */
 async function redeemCode(code, type){
   try{
     const r = await fetch(API_REDEEM, { method:"POST", headers:{ "Content-Type":"application/json" },
@@ -236,14 +251,14 @@ async function stopScanner(){
   }catch{}
 }
 
-/* ============ History ============ */
+/* ================= History (FIX: pad hoist) ================= */
 async function openHistory(){
   if(!UID) return;
   try{
     const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`);
     const j = await safeJson(r);
-    if(j.status!=="success") return toastErr("โหลดประวัติไม่สำเร็จ");
-    els.historyUser && (els.historyUser.textContent = els.username?.textContent || "—");
+    if(j.status!=="success") return toastErr("ไม่สามารถโหลดประวัติได้");
+    if(els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
     if(!els.historyList) return;
 
     const list = j.data || [];
@@ -251,7 +266,10 @@ async function openHistory(){
       els.historyList.innerHTML = `<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`;
     }else{
       els.historyList.innerHTML = list.map(i=>{
-        const ts = fmtDT(i.ts), p = Number(i.point||0), sign = p>=0?"+":"", color = p>=0?"#16a34a":"#dc2626";
+        const ts = fmtDT(i.ts);
+        const p = Number(i.point||0);
+        const sign = p>=0?"+":"";
+        const color = p>=0?"#16a34a":"#dc2626";
         return `<div class="list-group-item d-flex justify-content-between align-items-center">
                   <div>
                     <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
@@ -268,33 +286,41 @@ async function openHistory(){
   }catch(e){ console.error(e); toastErr("ไม่สามารถโหลดประวัติได้"); }
 }
 
-function updateLevelTrack(score){
-  const track = document.getElementById("levelTrack");
-  const fill  = document.getElementById("trackFill");
-  if(!track || !fill) return;
-
-  // max = จุดเริ่ม Platinum (1200) จาก TIERS
-  const max = TIERS[TIERS.length-1].min;  // 1200
-  const pct = Math.max(0, Math.min(100, (score / max) * 100));
-  fill.style.width = pct + "%";
-
-  // set milestone positions: 0, 500, 1200
-  const milestones = track.querySelectorAll(".rp-track-milestone");
-  const stops = [0, 500, max];
-  milestones.forEach((m,i)=>{
-    const left = (stops[i] / max) * 100;
-    m.style.left = (i === stops.length-1 ? 100 : left) + "%";
-  });
-
-  // เปลี่ยนคลาสสีตามเลเวล
-  track.classList.remove("track-silver","track-gold","track-platinum");
-  const tier = getTier(score);
-  const map  = { silver:"track-silver", gold:"track-gold", platinum:"track-platinum" };
-  track.classList.add(map[tier.key] || "track-silver");
-}
-updateLevelTrack(score);
-
-/* Utils */
+/* ================= Utils ================= */
 function escapeHtml(s){return String(s||"").replace(/[&<>"'`=\/]/g,a=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a]))}
-const pad=n=>n<10?("0"+n):String(n);
-function fmtDT(ts){const d=new Date(ts);if(isNaN(d))return String(ts||"");return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;}
+function safeInt(n, d=0){ const x=Number(n); return Number.isFinite(x)?x:d; }
+async function safeJson(resp){ const t=await resp.text(); try{ return JSON.parse(t); }catch{ return {status: resp.ok?"success":"error", message:t}; } }
+
+/* HOISTED version ป้องกัน Error: Cannot access 'pad' before initialization */
+function pad(n){ n = safeInt(n,0); return n<10?("0"+n):String(n); }
+function fmtDT(ts){
+  const d = new Date(ts);
+  if (isNaN(d)) return String(ts||"");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/* Count-up */
+function animateCount(el, from, to, duration=600){
+  if(from === to){ el.textContent = String(to); return; }
+  const start = performance.now();
+  const ease = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2,3)/2;
+  function frame(now){
+    const p = Math.min(1, (now-start)/duration);
+    const v = Math.round(from + (to-from)*ease(p));
+    el.textContent = String(v);
+    if(p<1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* Confetti */
+function launchConfetti(){
+  try{
+    const duration = 1200, end = Date.now()+duration;
+    (function frame(){
+      confetti({ particleCount:40, angle:60, spread:50, origin:{x:0} });
+      confetti({ particleCount:40, angle:120, spread:50, origin:{x:1} });
+      if(Date.now()<end) requestAnimationFrame(frame);
+    })();
+  }catch{}
+}

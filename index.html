@@ -69,17 +69,20 @@
 
   <!-- ===== Action Zone (2-grid) ===== -->
   <section class="row g-2 mb-3">
-    <div class="col-6 d-grid">
-      <button class="btn btn-primary rp-primary h-100" data-bs-toggle="modal" data-bs-target="#scoreModal">
-        <i class="fa-solid fa-qrcode me-2"></i>สแกนเพื่อรับคะแนน
-      </button>
-    </div>
-    <div class="col-6 d-grid">
-      <button id="historyBtn" class="btn btn-outline-secondary h-100">
-        <i class="fa-regular fa-clock me-2"></i>ประวัติการรับคะแนน
-      </button>
-    </div>
-  </section>
+  <div class="col-6 d-grid">
+    <button class="btn rp-primary icon-btn h-100"
+            data-bs-toggle="modal" data-bs-target="#scoreModal"
+            aria-label="สแกนเพื่อรับคะแนน" title="สแกนเพื่อรับคะแนน">
+      <i class="fa-solid fa-qrcode"></i>
+    </button>
+  </div>
+  <div class="col-6 d-grid">
+    <button id="historyBtn" class="btn btn-outline-secondary icon-btn h-100"
+            aria-label="ประวัติการรับคะแนน" title="ประวัติการรับคะแนน">
+      <i class="fa-regular fa-clock"></i>
+    </button>
+  </div>
+</section>
 
   <!-- ===== Ads Carousel ===== -->
   <section class="rp-glass rp-card p-0 mb-3 hover-lift">
