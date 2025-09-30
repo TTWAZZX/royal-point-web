@@ -154,17 +154,18 @@ function renderTable(rows) {
   if (!$tbody.length) return;
 
   if (!rows || rows.length === 0) {
-    $tbody.html(`<tr><td colspan="4" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>`);
+    $tbody.html(`<tr><td colspan="3" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>`);
     return;
   }
 
   let html = "";
   for (const r of rows) {
     html += `
-      <tr>
-        <td><div class="fw-bold">${escapeHtml(r.name || "(ไม่ระบุ)")}</div></td>
-        <td class="small text-break">${escapeHtml(r.uid)}</td>
-        <td class="text-end"><span class="score-chip">${Number(r.score || 0)}</span></td>
+      <tr data-uid="${attr(r.uid)}">
+        <td>
+          <div class="fw-bold text-truncate">${escapeHtml(r.name || "(ไม่ระบุ)")}</div>
+          <div class="small text-muted">คะแนน: <span class="score-chip">${Number(r.score || 0)}</span></div>
+        </td>
         <td class="text-end">
           <div class="btn-group">
             <button class="btn btn-soft btn-sm btn-history" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="ประวัติ">
@@ -347,15 +348,9 @@ function updateRowScore(uid, newScore) {
     if (idx !== -1) arr[idx].score = Number(newScore || 0);
   }
 
-  // อัปเดต UI เฉพาะแถว (เร็ว)
-  const $rows = $("#tbodyUsers tr");
-  let $row = null;
-  $rows.each(function () {
-    const uidCell = $(this).find("td:eq(1)").text().trim();
-    if (uidCell === uid) { $row = $(this); return false; }
-  });
-
-  if ($row) {
+  // อัปเดต UI เฉพาะแถวด้วย data-uid (ไม่ผูกกับลำดับคอลัมน์อีกต่อไป)
+  const $row = $(`#tbodyUsers tr[data-uid="${CSS.escape(uid)}"]`);
+  if ($row.length) {
     $row.find(".score-chip").text(Number(newScore || 0));
     $row.addClass("table-success");
     setTimeout(() => $row.removeClass("table-success"), 800);

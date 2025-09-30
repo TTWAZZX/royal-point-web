@@ -30,6 +30,76 @@ const LIFF_ID   = "2007053300-QoEvbXyn";
 const API_LIST    = "/api/all-scores";     // ← ใช้อันนี้
 const API_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+const API_REWARDS_LIST   = "/api/rewards";
+const API_REWARDS_UPSERT = "/api/rewards-upsert";
+const API_REWARDS_DELETE = "/api/rewards-delete";
+
+async function loadRewardsAdmin(){
+  const tbody = document.querySelector("#tblRewards tbody");
+  tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">กำลังโหลด…</td></tr>`;
+  try{
+    const r = await fetch(`${API_REWARDS_LIST}?uid=${encodeURIComponent(state.adminUid)}`);
+    const j = await r.json();
+    const list = j.data || [];
+    tbody.innerHTML = list.map(x=>`
+      <tr data-id="${x.id}">
+        <td class="small">${x.id}</td>
+        <td><input class="form-control form-control-sm in-name" value="${escapeHtml(x.name||'')}"></td>
+        <td><input class="form-control form-control-sm in-img"  value="${escapeHtml(x.img||'')}"></td>
+        <td style="max-width:90px"><input type="number" min="0" class="form-control form-control-sm in-cost" value="${Number(x.cost||0)}"></td>
+        <td class="text-center"><input type="checkbox" class="form-check-input in-active" ${String(x.active)!=="0"?'checked':''}></td>
+        <td class="text-center">
+          <button class="btn btn-primary btn-sm act-save"><i class="fa-regular fa-floppy-disk"></i></button>
+          <button class="btn btn-danger btn-sm act-del"><i class="fa-regular fa-trash-can"></i></button>
+        </td>
+      </tr>
+    `).join("");
+
+    tbody.addEventListener("click", async (ev)=>{
+      const tr = ev.target.closest("tr"); if(!tr) return;
+      const id = tr.dataset.id;
+      if (ev.target.closest(".act-save")){
+        const body = {
+          adminUid: state.adminUid,
+          id,
+          name: tr.querySelector(".in-name").value.trim(),
+          img:  tr.querySelector(".in-img").value.trim(),
+          cost: Number(tr.querySelector(".in-cost").value||0),
+          active: tr.querySelector(".in-active").checked ? 1 : 0
+        };
+        const r = await fetch(API_REWARDS_UPSERT, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+        const j = await r.json();
+        alert(j.status==="success" ? "บันทึกแล้ว" : ("บันทึกไม่สำเร็จ: "+(j.message||"")));
+        loadRewardsAdmin();
+      }
+      if (ev.target.closest(".act-del")){
+        if(!confirm("ลบ (ปิดการใช้งาน) รายการนี้?")) return;
+        const r = await fetch(API_REWARDS_DELETE, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: state.adminUid, id }) });
+        const j = await r.json();
+        alert(j.status==="success" ? "ลบแล้ว" : ("ไม่สำเร็จ: "+(j.message||"")));
+        loadRewardsAdmin();
+      }
+    }, { once:true });
+  }catch(e){
+    console.error(e);
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">โหลดไม่สำเร็จ</td></tr>`;
+  }
+}
+
+document.getElementById("btnAddReward")?.addEventListener("click", async ()=>{
+  const name = prompt("ชื่อรางวัล:");
+  if(!name) return;
+  const img  = prompt("รูป (URL):","https://");
+  const cost = Number(prompt("แต้มที่ใช้:", "100")||0);
+  const body = { adminUid: state.adminUid, name, img, cost, active:1 };
+  const r = await fetch(API_REWARDS_UPSERT, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+  const j = await r.json();
+  alert(j.status==="success" ? "เพิ่มแล้ว" : ("ไม่สำเร็จ: "+(j.message||"")));
+  loadRewardsAdmin();
+});
+
+// เรียก loadRewardsAdmin() หลังจากที่ admin auth ผ่านแล้ว (จุดที่คุณโหลด all-scores เสร็จ)
+
 
 // State
 let MY_UID = null;

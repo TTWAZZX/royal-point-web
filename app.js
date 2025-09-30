@@ -16,31 +16,54 @@ const REWARDS = [
   { id:"D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
 ];
 
+// ===== Rewards (dynamic) =====
+const API_REWARDS = "/api/rewards";
+let REWARDS_CACHE = [];   // [{id,name,img,cost,active}...]
+
+async function loadRewards(){
+  try{
+    const r = await fetch(API_REWARDS, { cache:"no-store" });
+    const j = await safeJson(r);
+    if(j.status === "success" && Array.isArray(j.data)){
+      REWARDS_CACHE = j.data.filter(x => x.active !== "0" && x.active !== 0 && x.active !== false);
+    }else{
+      REWARDS_CACHE = [];
+    }
+  }catch(e){ console.error(e); REWARDS_CACHE = []; }
+}
+
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if(!rail) return;
-  rail.innerHTML = REWARDS.map(r=>{
-    const locked = currentScore < r.cost ? " locked" : "";
+  // โชว์ “ครบทุกชิ้น” แม้แต้มไม่พอ
+  rail.innerHTML = (REWARDS_CACHE||[]).map(r=>{
+    const locked = Number(currentScore) < Number(r.cost);
     return `
-      <div class="rp-reward-card${locked}" data-id="${r.id}" data-cost="${r.cost}">
-        <div class="rp-reward-img"><img src="${r.img}" alt="reward ${r.id}"></div>
-        <span class="rp-reward-cost">${r.cost} pt</span>
-        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${currentScore<r.cost?"disabled":""}>
+      <div class="rp-reward-card ${locked?'locked':''}" data-id="${r.id}" data-cost="${r.cost}">
+        <div class="rp-reward-img">
+          <img src="${r.img || 'https://placehold.co/640x480?text=Reward'}" alt="${(r.name||r.id)}">
+        </div>
+        <div class="rp-reward-body p-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-bold text-truncate">${escapeHtml(r.name||r.id)}</div>
+            <span class="rp-reward-cost">${Number(r.cost||0)} pt</span>
+          </div>
+        </div>
+        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked?"disabled":""}>
           <i class="fa-solid fa-gift"></i>
         </button>
       </div>
     `;
   }).join("");
 
-  // delegate click
-rail.addEventListener("click", async (ev) => {
-  const btn  = ev.target.closest(".rp-redeem-btn");
-  if (!btn) return;
-  const card = btn.closest(".rp-reward-card");
-  const id   = card.dataset.id;
-  const cost = Number(card.dataset.cost);
-  await redeemReward({ id, cost }, btn);
-});
+  // delegate click (ไม่มี {once:true})
+  rail.addEventListener("click", async (ev)=>{
+    const btn  = ev.target.closest(".rp-redeem-btn"); if(!btn) return;
+    const card = btn.closest(".rp-reward-card");
+    const id   = card.dataset.id;
+    const cost = Number(card.dataset.cost);
+    await redeemReward({ id, cost }, btn);
+  });
 }
 
 // ป้องกันกดซ้ำรัว ๆ
@@ -174,6 +197,9 @@ async function initApp(){
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
     await refreshUserScore();
+    await loadRewards();
+    renderRewards(prevScore || 0);
+
   }catch(e){ console.error(e); toastErr("เริ่มต้นระบบไม่สำเร็จ"); }
 }
 
@@ -255,6 +281,7 @@ function setPoints(score){
   }
   if (els.currentLevelText) els.currentLevelText.textContent = tier.name;
 
+   renderRewards(score);
   // Progress line (ถ้าใช้)
   if (els.progressBar){
     els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");

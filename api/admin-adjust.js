@@ -13,10 +13,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ status: "error", message: "Method not allowed" });
   }
 
-  const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
+  const endpoint = process.env.APPS_SCRIPT_ENDPOINT || process.env.GAS_WEBAPP_URL; // fallback รองรับสองชื่อ
   const secret   = process.env.API_SECRET;
   if (!endpoint || !secret) {
-    return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET env" });
+  return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT (or GAS_WEBAPP_URL) or API_SECRET env" });
   }
 
   // รองรับทั้ง JSON และ urlencoded

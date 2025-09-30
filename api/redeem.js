@@ -1,21 +1,15 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ status: "error", message: "Method Not Allowed" });
+    return res.status(405).json({ status: "error", message: "Method Not Allowed" });
   }
-
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-    const secret = process.env.API_SECRET;
+    const endpoint = process.env.APPS_SCRIPT_ENDPOINT || process.env.GAS_WEBAPP_URL; // ← เพิ่ม fallback
+    const secret   = process.env.API_SECRET;
     if (!endpoint || !secret) {
-      return res
-        .status(500)
-        .json({ status: "error", message: "Missing server env config" });
+      return res.status(500).json({ status: "error", message: "Missing server env config" });
     }
 
     const bodyObj = await readBodyAsObject(req);
-    // ควรมี { uid, code, type } จาก client
     const form = new URLSearchParams({ ...bodyObj, secret });
 
     const r = await fetch(endpoint, {
@@ -28,9 +22,7 @@ export default async function handler(req, res) {
     return res.status(r.ok ? 200 : r.status).json(data);
   } catch (err) {
     console.error(err);
-    return res
-      .status(500)
-      .json({ status: "error", message: String(err || "Internal Error") });
+    return res.status(500).json({ status: "error", message: String(err || "Internal Error") });
   }
 }
 
