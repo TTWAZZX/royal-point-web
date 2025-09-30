@@ -1,145 +1,371 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />
-  <title>Royal Point — Admin</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Royal Point — Admin (Bright)</title>
 
-  <!-- jQuery + Bootstrap + SweetAlert + LoadingOverlay -->
-  <script src="https://code.jquery.com/jquery-3.6.0.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet"/>
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
-
-  <!-- LIFF -->
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-
-  <!-- Font Awesome -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css"/>
-
-  <!-- your global styles -->
-  <link rel="stylesheet" href="/style.css"/>
+  <!-- Bootstrap + Font Awesome -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
   <style>
-    .admin-header { position: sticky; top: 0; z-index: 10; background: #fff; }
-    .admin-table-wrap { max-height: 65vh; overflow: auto; }
-    .table thead th.sort { cursor: pointer; user-select: none; }
-    .table thead th.sort::after { content: " \f0dc"; font-family:"Font Awesome 6 Free"; font-weight:900; opacity:.35; }
-    .table thead th.sort.asc::after { content: " \f160"; }
-    .table thead th.sort.desc::after { content: " \f161"; }
-    .skeleton { position: relative; overflow: hidden; background: #e9ecef; border-radius:.5rem; }
-    .skeleton::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); transform:translateX(-100%); animation: sk 1.4s infinite; }
-    .skeleton-row { height: 16px; margin: 8px 0; }
-    .skeleton-card { height: 48px; margin: 10px 0; }
-    @keyframes sk { 0%{transform:translateX(-100%)}100%{transform:translateX(100%)} }
-    .badge-score { font-size: .95rem; }
-    .quick-btns .btn { padding: .15rem .4rem; }
-    .uid-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    /* ===== Light, comfy theme ===== */
+    :root{
+      --c-bg:#f5f7fb;      /* page bg */
+      --c-card:#ffffff;    /* card */
+      --c-soft:#eef3fb;    /* soft button */
+      --c-text:#1f2937;    /* body text (slate-800) */
+      --c-mute:#6b7280;    /* muted text (slate-500) */
+      --c-ac:#0ea5e9;      /* accent (sky-500) */
+      --c-border:#dbe4f3;  /* subtle border */
+      --c-chip:#f1f5f9;    /* chip bg */
+    }
+    body{background:linear-gradient(180deg,#eef2f7,#f8fafc);color:var(--c-text)}
+    .appbar{
+      background:#fff;
+      border:1px solid var(--c-border);
+      border-radius:16px; padding:12px 14px;
+      box-shadow:0 8px 24px rgba(15,23,42,.06)
+    }
+    .muted{color:var(--c-mute)}
+    .btn-icon{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:12px}
+    .btn-soft{background:var(--c-soft);border:1px solid var(--c-border);color:#0f172a}
+    .btn-soft:hover{background:#e6effd}
+    .search{background:#fff;border:1px solid var(--c-border);color:var(--c-text)}
+    .search:focus{box-shadow:0 0 0 .25rem rgba(14,165,233,.15);border-color:var(--c-ac)}
+    .card{background:var(--c-card);border:1px solid var(--c-border);box-shadow:0 6px 18px rgba(15,23,42,.05)}
+    .user-card{border-radius:16px}
+    .name{font-weight:600;max-width:58vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .score-chip{display:inline-block;min-width:64px;padding:.4rem .7rem;border-radius:12px;background:var(--c-chip);border:1px solid var(--c-border);font-weight:800;text-align:center}
+    .sticky-top-safe{position:sticky;top:calc(env(safe-area-inset-top) + 8px);z-index:1025}
+    .offcanvas{--bs-offcanvas-bg:#ffffff;color:#0f172a;border-top:1px solid var(--c-border)}
+    .offcanvas .muted{color:#64748b}
+
+    @media (max-width:576px){
+      .appbar{border-radius:0;margin:-8px -8px 8px}
+      .btn-icon{width:40px;height:40px}
+      .search{font-size:1rem;padding:.85rem 1rem;border-radius:12px}
+    }
   </style>
 </head>
 <body>
-  <!-- Navbar -->
-  <nav class="navbar navbar-light bg-white border-bottom admin-header">
-    <div class="container-fluid">
-      <a class="navbar-brand fw-bold" href="#"><i class="fa-solid fa-shield-halved me-2"></i>Admin Dashboard</a>
-      <div class="d-flex gap-2">
-        <a href="/" class="btn btn-outline-secondary btn-sm"><i class="fa-solid fa-arrow-left"></i> กลับหน้าแรก</a>
-        <a id="btnAdminExport" class="btn btn-success btn-sm" href="#"><i class="fa-solid fa-file-arrow-down me-1"></i>Export CSV</a>
+<div class="container py-3">
+
+  <!-- App Bar (sticky) -->
+  <div class="appbar d-flex align-items-center gap-3 mb-3 sticky-top-safe">
+    <div class="d-flex align-items-center gap-2">
+      <!-- ไม่โชว์รูปผู้ใช้รายชื่อ แต่ส่วนหัวแอดมินคงไว้ -->
+      <div>
+        <div class="fw-bold" id="adminName">—</div>
+        <div class="small muted" id="adminUid">UID: —</div>
       </div>
     </div>
-  </nav>
-
-  <main class="container my-3">
-    <!-- Filters + Actions -->
-    <div class="row g-2 align-items-end mb-3">
-      <div class="col-md-4">
-        <label class="form-label small text-muted mb-1">ค้นหา (ชื่อ/UID)</label>
-        <input id="adminSearch" type="text" class="form-control" placeholder="พิมพ์เพื่อค้นหา...">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small text-muted mb-1">คะแนนขั้นต่ำ</label>
-        <input id="adminMinScore" type="number" min="0" class="form-control" placeholder="เช่น 50">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small text-muted mb-1">ต่อหน้า</label>
-        <select id="adminPageSize" class="form-select">
-          <option>10</option>
-          <option selected>20</option>
-          <option>50</option>
-          <option>100</option>
-        </select>
-      </div>
-      <div class="col-md-3 text-end">
-        <button id="btnAdminRefresh" class="btn btn-primary btn-sm"><i class="fa-solid fa-rotate me-1"></i>รีเฟรช</button>
-      </div>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <button id="btnReload" class="btn btn-info btn-icon" title="โหลดใหม่" aria-label="โหลดใหม่">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+      <button id="btnBackUser" class="btn btn-outline-secondary btn-icon" title="กลับหน้าผู้ใช้" aria-label="กลับหน้าผู้ใช้">
+        <i class="fa-solid fa-house"></i>
+      </button>
     </div>
+  </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <div id="adminInfo" class="small text-muted">กำลังโหลด...</div>
-      <div id="adminRange" class="small text-muted"></div>
+  <!-- Search (sticky) -->
+  <div class="mb-3 sticky-top-safe">
+    <input id="txtSearch" class="form-control search" placeholder="ค้นหาชื่อ..." />
+  </div>
+
+  <!-- List as Minimal Cards -->
+  <div id="listUsers" class="vstack gap-2 mb-5">
+    <!-- สคริปต์จะเติมการ์ด -->
+  </div>
+
+  <!-- Bottom Sheet: Manage (ไม่โชว์ UID ผู้ใช้) -->
+  <div class="offcanvas offcanvas-bottom" tabindex="-1" id="sheetManage" aria-labelledby="sheetManageLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="sheetManageLabel">
+        จัดการ — <span id="sheetName">—</span>
+      </h5>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
-
-    <!-- Table -->
-    <div class="table-responsive admin-table-wrap">
-      <table class="table table-hover align-middle mb-2">
-        <thead class="table-light sticky-top">
-          <tr>
-            <th class="sort" data-key="rank" style="width:70px;">#</th>
-            <th class="sort" data-key="name">ชื่อ</th>
-            <th class="sort" data-key="uid">UID</th>
-            <th class="sort text-end" data-key="score" style="width:150px;">คะแนน</th>
-            <th style="width:160px;">จัดการ</th>
-          </tr>
-        </thead>
-        <tbody id="adminTableBody">
-          <tr><td colspan="5">
-            <div class="skeleton skeleton-row"></div>
-            <div class="skeleton skeleton-row"></div>
-            <div class="skeleton skeleton-row"></div>
-          </td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <nav class="d-flex justify-content-between align-items-center">
-      <div class="small text-muted" id="adminPagerInfo"></div>
-      <ul id="adminPager" class="pagination pagination-sm mb-0"></ul>
-    </nav>
-  </main>
-
-  <!-- Modal: Quick Adjust -->
-  <div class="modal fade" id="adjustModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h6 class="modal-title"><i class="fa-solid fa-sliders me-2"></i>ปรับคะแนน <span id="adjName" class="fw-bold"></span></h6>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+    <div class="offcanvas-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="small muted">คะแนนปัจจุบัน</div>
+        <div><span class="score-chip" id="sheetScore">0</span></div>
+      </div>
+      <!-- Quick adjusts -->
+      <div class="mb-3">
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-soft" data-delta="-10">−10</button>
+          <button class="btn btn-soft" data-delta="-5">−5</button>
+          <button class="btn btn-soft" data-delta="-1">−1</button>
+          <button class="btn btn-soft" data-delta="+1">+1</button>
+          <button class="btn btn-soft" data-delta="+5">+5</button>
+          <button class="btn btn-soft" data-delta="+10">+10</button>
         </div>
-        <div class="modal-body">
-          <div class="mb-2"><span class="text-muted small">UID:</span> <code id="adjUid" class="uid-code"></code></div>
-          <div class="row g-2">
-            <div class="col-4">
-              <label class="form-label small text-muted mb-1">จำนวน</label>
-              <input type="number" id="adjAmount" class="form-control" placeholder="เช่น 10">
-            </div>
-            <div class="col-8">
-              <label class="form-label small text-muted mb-1">หมายเหตุ</label>
-              <input type="text" id="adjNote" class="form-control" placeholder="สาเหตุ">
-            </div>
-          </div>
+      </div>
+      <!-- Actions -->
+      <div class="row g-2">
+        <div class="col-6">
+          <button class="btn btn-outline-secondary w-100 py-3" id="actHistory">
+            <i class="fa-regular fa-clock me-1"></i> ประวัติ
+          </button>
         </div>
-        <div class="modal-footer justify-content-between">
-          <button id="btnAdjDeduct" class="btn btn-warning"><i class="fa-solid fa-minus"></i> หัก</button>
-          <div class="d-flex gap-2">
-            <button id="btnAdjReset" class="btn btn-danger"><i class="fa-solid fa-rotate-left"></i> ล้าง</button>
-            <button id="btnAdjAdd" class="btn btn-primary"><i class="fa-solid fa-plus"></i> เพิ่ม</button>
-          </div>
+        <div class="col-6">
+          <button class="btn btn-warning w-100 py-3" id="actMinus">
+            <i class="fa-solid fa-circle-minus me-1"></i> หักคะแนน
+          </button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-success w-100 py-3" id="actPlus">
+            <i class="fa-solid fa-circle-plus me-1"></i> เพิ่มคะแนน
+          </button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-danger w-100 py-3" id="actReset">
+            <i class="fa-solid fa-broom me-1"></i> ล้างคะแนน
+          </button>
         </div>
       </div>
     </div>
   </div>
 
-  <script defer src="/admin.page.js?v=1"></script>
+  <!-- History Modal -->
+  <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-primary" id="historyUser">—</span></h5>
+          <button class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-0">
+          <div id="historyList" class="list-group list-group-flush"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /.container -->
+
+<!-- ===== Dependencies ===== -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<!-- ===== Admin Script (bright + minimal list) ===== -->
+<script>
+/* ============ CONFIG ============ */
+const LIFF_ID = "2007053300-QoEvbXyn";
+const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid=
+const API_SCORE_HISTORY = "/api/score-history";  // GET  ?uid=
+const API_ADMIN_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
+const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+const USER_PAGE = "/index.html";
+
+/* UI helpers */
+const overlay = {
+  show:(text="กำลังทำงาน...")=>{
+    if (window.$?.LoadingOverlay) $.LoadingOverlay("show",{image:"",fontawesome:"fa fa-spinner fa-spin",text});
+    else { if(document.getElementById("admin-ovl"))return; const el=document.createElement("div"); el.id="admin-ovl";
+      el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;z-index:4000;color:#111";
+      el.innerHTML='<div class="bg-white rounded-3 px-3 py-2 border"><i class="fa fa-spinner fa-spin me-2"></i>'+text+'</div>'; document.body.appendChild(el);}
+  },
+  hide:()=>{ if (window.$?.LoadingOverlay) $.LoadingOverlay("hide"); else document.getElementById("admin-ovl")?.remove(); }
+};
+
+/* ============ STATE ============ */
+let ADMIN_UID = "";
+let ALL_USERS = [];
+let FILTERED  = [];
+let CURRENT   = { uid:"", name:"", score:0 };
+
+/* ============ INIT ============ */
+$(async function () {
+  overlay.show("กำลังเริ่มระบบแอดมิน...");
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+
+    const prof = await liff.getProfile();
+    ADMIN_UID = prof.userId || "";
+    $("#adminUid").text(ADMIN_UID ? "UID: " + ADMIN_UID : "UID: —");
+    $("#adminName").text(prof.displayName || "—");
+
+    bindEvents();
+    await reloadAllUsers();
+  } catch (err) {
+    console.error(err);
+    Swal.fire("ผิดพลาด", "เริ่มต้นระบบ LIFF/โหลดข้อมูลไม่สำเร็จ", "error");
+  } finally { overlay.hide(); }
+});
+
+/* ============ EVENTS ============ */
+function bindEvents() {
+  $("#btnBackUser").on("click", ()=>{ window.location.href = USER_PAGE; });
+  $("#btnReload").on("click", async ()=>{ await reloadAllUsers(); });
+
+  $("#txtSearch").on("input", function(){
+    const q = ($(this).val()||"").trim().toLowerCase();
+    FILTERED = !q ? [...ALL_USERS] : ALL_USERS.filter(u =>
+      (u.name||"").toLowerCase().includes(q) || String(u.uid||"").toLowerCase().includes(q) // ยังค้นด้วย UID ได้ แม้ไม่แสดง
+    );
+    renderList(FILTERED);
+  });
+
+  $("#sheetManage .btn-soft").on("click", async function(){
+    const delta = Number($(this).data("delta"));
+    if (!delta) return;
+    await quickAdjust(CURRENT.uid, CURRENT.name, delta);
+  });
+  $("#actHistory").on("click", async ()=>{ await openHistory(CURRENT.uid, CURRENT.name); });
+  $("#actPlus").on("click", async ()=>{ await promptAdjust(CURRENT.uid, CURRENT.name, +1); });
+  $("#actMinus").on("click", async ()=>{ await promptAdjust(CURRENT.uid, CURRENT.name, -1); });
+  $("#actReset").on("click", async ()=>{ await confirmReset(CURRENT.uid, CURRENT.name); });
+}
+
+/* ============ LOAD & RENDER ============ */
+async function reloadAllUsers(){
+  if (!ADMIN_UID){ ALL_USERS=[]; FILTERED=[]; renderList(FILTERED); return; }
+  overlay.show("กำลังโหลดรายชื่อผู้ใช้...");
+  try{
+    const res = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, {cache:"no-store"});
+    const json = await res.json();
+    if (json.status === "success") {
+      ALL_USERS = (json.data||[]).map(x=>({ uid:x.uid, name:x.name || "(ไม่ระบุ)", score:Number(x.score||0) }));
+      ALL_USERS.sort((a,b)=> b.score - a.score);
+      FILTERED = [...ALL_USERS];
+      renderList(FILTERED);
+    } else {
+      Swal.fire("โหลดข้อมูลไม่สำเร็จ", json.message || "Apps Script error", "error");
+      ALL_USERS=[]; FILTERED=[]; renderList(FILTERED);
+    }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ไม่สามารถดึงข้อมูลผู้ใช้ได้","error"); }
+  finally{ overlay.hide(); }
+}
+
+function renderList(rows){
+  const box = document.getElementById("listUsers");
+  if (!rows || rows.length===0){
+    box.innerHTML = `<div class="text-center muted py-5">— ไม่พบข้อมูล —</div>`;
+    return;
+  }
+  box.innerHTML = rows.map(r => `
+    <div class="card user-card" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" data-score="${Number(r.score||0)}">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div class="name">${escapeHtml(r.name||"(ไม่ระบุ)")}</div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="score-chip">${Number(r.score||0)}</span>
+          <button class="btn btn-soft btn-icon btn-manage" title="จัดการ" aria-label="จัดการ">
+            <i class="fa-solid fa-ellipsis"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  // attach manage opener
+  $("#listUsers .btn-manage").off("click").on("click", function(){
+    const card = $(this).closest(".user-card");
+    CURRENT.uid   = card.data("uid");
+    CURRENT.name  = card.data("name");
+    CURRENT.score = Number(card.data("score")||0);
+    $("#sheetName").text(CURRENT.name);
+    $("#sheetScore").text(CURRENT.score);
+    new bootstrap.Offcanvas(document.getElementById("sheetManage")).show();
+  });
+}
+
+/* ============ ACTIONS ============ */
+async function openHistory(uid, name){
+  overlay.show("กำลังโหลดประวัติ...");
+  try{
+    const res = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`);
+    const json = await res.json();
+    if (json.status === "success"){
+      const list = json.data || [];
+      $("#historyUser").text(name || uid);
+      if (!list.length){
+        $("#historyList").html('<div class="list-group-item bg-transparent text-center muted">ไม่มีรายการ</div>');
+      } else {
+        $("#historyList").html(list.map(i=>{
+          const ts = formatDateTime(i.ts), p = Number(i.point||0);
+          const sign = p>=0?"+":""; const color = p>=0?"#16a34a":"#dc2626";
+          return `<div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div><div class="fw-bold">${escapeHtml(i.type||"—")}</div><div class="small muted">${escapeHtml(i.code||"")}</div></div>
+                    <div class="text-end"><div style="color:${color};font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
+                  </div>`;
+        }).join(""));
+      }
+      new bootstrap.Modal(document.getElementById("historyModal")).show();
+    } else { Swal.fire("ผิดพลาด", json.message || "โหลดประวัติไม่สำเร็จ", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ไม่สามารถโหลดประวัติได้","error"); }
+  finally{ overlay.hide(); }
+}
+
+async function quickAdjust(uid, name, delta){
+  overlay.show("กำลังอัปเดตคะแนน...");
+  try{
+    const res = await fetch(API_ADMIN_ADJUST, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: "Quick adjust" })
+    });
+    const json = await res.json();
+    if (json.status === "success"){
+      navigator.vibrate?.(12);
+      const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
+      updateRowScore(uid, newScore);
+      $("#sheetScore").text(newScore);
+      Swal.fire("สำเร็จ", `${delta>0? "เพิ่ม":"หัก"} ${Math.abs(delta)} คะแนนแล้ว`, "success");
+    } else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถปรับคะแนนได้", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ","error"); }
+  finally{ overlay.hide(); }
+}
+
+async function promptAdjust(uid, name, direction){
+  const title = direction>0? "เพิ่มคะแนน":"หักคะแนน";
+  const { value: v } = await Swal.fire({
+    title, icon: direction>0? "success":"warning",
+    html:'<input id="adj-amount" type="number" class="swal2-input" placeholder="จำนวนคะแนน" />'+
+         '<input id="adj-note" type="text" class="swal2-input" placeholder="หมายเหตุ (ถ้ามี)" />',
+    showCancelButton:true, confirmButtonText:"ยืนยัน", cancelButtonText:"ยกเลิก",
+    preConfirm:()=>{ const amt=Number(document.getElementById("adj-amount").value||"0"); const note=document.getElementById("adj-note").value||""; if(!amt||amt<=0){ Swal.showValidationMessage("กรอกจำนวนคะแนน (>0)"); return false;} return {amt,note}; }
+  });
+  if (!v) return;
+  const delta = direction>0? v.amt : -v.amt;
+  await quickAdjust(uid, name, delta);
+}
+
+async function confirmReset(uid, name){
+  const ok = await Swal.fire({ title:"ล้างคะแนนทั้งหมด?", html:`คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`, icon:"warning", showCancelButton:true, confirmButtonText:"ยืนยัน", cancelButtonText:"ยกเลิก" });
+  if (!ok.isConfirmed) return;
+  overlay.show("กำลังล้างคะแนน...");
+  try{
+    const res = await fetch(API_ADMIN_RESET, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note:"Admin reset via UI" }) });
+    const json = await res.json();
+    if (json.status === "success"){ navigator.vibrate?.(16); updateRowScore(uid,0); $("#sheetScore").text(0); Swal.fire("สำเร็จ",`ล้างคะแนนของ ${escapeHtml(name)} แล้ว`,"success"); }
+    else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ","error"); }
+  finally{ overlay.hide(); }
+}
+
+/* ============ UTIL ============ */
+function getLocalScore(uid){ const f = ALL_USERS.find(x=>x.uid===uid); return f? Number(f.score||0):0; }
+function updateRowScore(uid, newScore){
+  for (const arr of [ALL_USERS, FILTERED]){ const i=arr.findIndex(x=>x.uid===uid); if(i!==-1) arr[i].score=Number(newScore||0); }
+  const card = $(`.user-card[data-uid="${uid}"]`);
+  if (card.length){ card.attr("data-score", Number(newScore||0)); card.find(".score-chip").text(Number(newScore||0));
+    card.addClass("border border-success"); setTimeout(()=> card.removeClass("border border-success"), 700); }
+}
+function escapeHtml(s){ return String(s||"").replace(/[&<>"'`=\/]/g, a=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a])); }
+function attr(s){ return String(s||"").replace(/"/g,"&quot;"); }
+function pad(n){ return n<10? "0"+n : String(n); }
+function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+</script>
 </body>
 </html>

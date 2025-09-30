@@ -1,41 +1,43 @@
 // /api/score-history.js
+// Proxy ไป Google Apps Script: doGet?action=history
+// ใช้ env: APPS_SCRIPT_ENDPOINT, API_SECRET
+
 export default async function handler(req, res) {
+  // CORS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+
   if (req.method !== "GET") {
-    return res.status(405).json({ status: "error", message: "Method Not Allowed" });
+    return res.status(405).json({ status: "error", message: "Method not allowed" });
+  }
+
+  const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
+  const secret   = process.env.API_SECRET;
+  if (!endpoint || !secret) {
+    return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET env" });
+  }
+
+  const uid = (req.query.uid || "").toString().trim();
+  if (!uid) {
+    return res.status(400).json({ status: "error", message: "Missing uid" });
   }
 
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT; // ต้องชี้ไปที่ .../exec
-    const secret   = process.env.API_SECRET;           // ต้องตรงกับ Script Properties: API_SECRET
-
-    if (!endpoint || !secret) {
-      return res.status(500).json({ status: "error", message: "Missing server env config" });
-    }
-
-    const uid = (req.query.uid || "").toString().trim();
-    if (!uid) {
-      return res.status(400).json({ status: "error", message: "Missing uid" });
-    }
-
-    const params = new URLSearchParams({
-      action: "history",
-      uid,
-      secret,
-    });
-    const url = `${endpoint}?${params.toString()}`;
-
-    const r = await fetch(url, { headers: { Accept: "application/json" } });
+    const url = `${endpoint}?action=history&secret=${encodeURIComponent(secret)}&uid=${encodeURIComponent(uid)}`;
+    const r = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
     const text = await r.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { status: r.ok ? "success" : "error", message: text };
-    }
 
-    return res.status(r.ok ? 200 : r.status).json(data);
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const json = JSON.parse(text);
+      return res.status(200).json(json);
+    } catch {
+      return res.status(r.ok ? 200 : 502).send(text);
+    }
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ status: "error", message: String(err || "Internal Error") });
+    console.error("score-history proxy error:", err);
+    return res.status(502).json({ status: "error", message: String(err) });
   }
 }

@@ -1,52 +1,808 @@
-.bg-silver { background: linear-gradient(135deg, #C0C0C0, #ffffff); color: #333; }
-.bg-gold   { background: linear-gradient(135deg, #FFD700, #FFF3B0); color: #333; }
-.bg-diamond{ background: linear-gradient(30deg, #3f87a6, #ebf8e1, #f69d3c); color: #333; }
-
-#displaySection { display: none; }
-
-.h1,.h2,.h3,.h4,.h5,.h6,h1,h2,h3,h4,h5,h6 { margin-top: 0; margin-bottom: 0; }
-
-.modal-fullscreen { width: 100%; max-width: none; height: 100%; margin: 0; }
-.modal-fullscreen .modal-content { width: 100%; height: 100%; border: 0; border-radius: 0; }
-.modal-fullscreen .modal-body { overflow-y: auto; }
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-  .container { padding: 10px; }
-  .btn-lg { width: 100%; }
-  .card-img-top { width: 100%; height: auto; }
-  h2 { font-size: 1.5rem; }
-  .modal-fullscreen { height: 100%; }
-  .modal-dialog { max-width: 90%; }
-}
-@media (max-width: 576px) {
-  .modal-dialog { max-width: 90%; }
+/* ===== Royal Point 2025 — Mobile UI (for LIFF) ===== */
+:root{
+  --bg: #0f1217;
+  --card: #141923;
+  --card-2: #1a2030;
+  --border: #263147;
+  --text: #e9eefc;
+  --muted: #9fb0d0;
+  --brand: #2dd4bf;     /* teal */
+  --brand-2:#60a5fa;    /* blue */
+  --warn: #f59e0b;
+  --danger:#ef4444;
+  --success:#22c55e;
+  --shadow: 0 10px 30px rgba(0,0,0,.35);
+  --radius-xl: 22px;
+  --radius-lg: 16px;
+  --radius: 12px;
 }
 
-/* Admin table enhancements */
-.admin-table-wrap {
-  max-height: 60vh;
-  overflow: auto;
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+  color:var(--text);
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(45,212,191,.15), transparent 55%),
+    radial-gradient(800px 400px at 10% 20%, rgba(96,165,250,.12), transparent 60%),
+    radial-gradient(1000px 500px at 90% 10%, rgba(99,102,241,.15), transparent 55%),
+    linear-gradient(180deg, #0b0e13, #0f1217 30%, #0f1217 100%);
 }
-.table thead th.sort { cursor: pointer; user-select: none; }
-.table thead th.sort::after {
-  content: " \f0dc"; /* fa-sort */
-  font-family: "Font Awesome 6 Free"; font-weight: 900; opacity: .35;
-}
-.table thead th.sort.asc::after { content: " \f160"; }  /* fa-sort-amount-up */
-.table thead th.sort.desc::after { content: " \f161"; } /* fa-sort-amount-down */
+.container{max-width:560px}
 
-/* Skeleton loader */
-.skeleton { position: relative; overflow: hidden; background: #e9ecef; border-radius: .5rem; }
-.skeleton::after {
-  content: ""; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
-  transform: translateX(-100%); animation: skeleton 1.4s infinite;
+/* HERO */
+.hero{
+  position:relative;
+  background:
+    radial-gradient(120% 150% at 0% 0%, rgba(96,165,250,.25), transparent 60%),
+    linear-gradient(135deg, rgba(45,212,191,.35), rgba(96,165,250,.2));
+  border:1px solid rgba(255,255,255,.06);
+  border-radius: var(--radius-xl);
+  padding:18px 16px;
+  box-shadow: var(--shadow);
+  overflow:hidden;
 }
-.skeleton-row { height: 16px; margin: 8px 0; }
-.skeleton-card { height: 48px; margin: 10px 0; }
+.hero::after{
+  content:"";
+  position:absolute; inset:0;
+  background: radial-gradient(500px 120px at 70% -10%, rgba(255,255,255,.15), transparent 70%);
+  pointer-events:none;
+}
 
-@keyframes skeleton {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+/* USER ROW */
+.user-card{display:flex; align-items:center; gap:12px}
+.avatar{
+  width:64px; height:64px; flex:0 0 auto;
+  border-radius: 50%;
+  border:2px solid rgba(255,255,255,.25);
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  object-fit:cover;
+}
+.user-meta .name{font-weight:700; font-size:18px; line-height:1.2}
+.user-meta .sub{color:var(--muted); font-size:12px}
+
+/* POINTS */
+.points-wrap{margin-left:auto; text-align:right}
+.points-wrap .label{color:#ffd166; font-size:12px}
+.points-wrap .points{font-size:34px; font-weight:800; letter-spacing:.5px}
+
+/* BADGE (Tier) */
+.tier-badge{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 10px; border-radius:999px;
+  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.12);
+  color:#fff; font-weight:700; font-size:12px;
+}
+.tier-silver{  background:linear-gradient(135deg,#c0c0c033,#f2f2f205); color:#e6e6e6;}
+.tier-gold{    background:linear-gradient(135deg,#facc1533,#fde68a10); color:#ffe08a;}
+.tier-diamond{ background:linear-gradient(135deg,#60a5fa33,#22d3ee10); color:#cfe6ff;}
+.tier-supreme{ background:linear-gradient(135deg,#f9731633,#ef444410); color:#ffd1b3; }
+
+/* OPTIONAL: เปลี่ยน mood การ์ดตาม tier */
+#userCard.bg-silver{ outline: 1px solid rgba(255,255,255,.08) }
+#userCard.bg-gold{ outline: 1px solid rgba(250,204,21,.35) }
+#userCard.bg-diamond{ outline: 1px solid rgba(96,165,250,.35) }
+#userCard.bg-supreme{ outline: 1px solid rgba(239,68,68,.35) }
+
+/* PROGRESS */
+.progress-card{
+  margin-top:14px;
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding:10px 12px 6px;
+}
+.progress-label{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  color:var(--muted); font-size:12px;
+}
+
+/* BUTTONS */
+.btn-primary{
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  border:0; color:#08111a; font-weight:800;
+  box-shadow: 0 10px 20px rgba(45,212,191,.2), 0 8px 24px rgba(96,165,250,.15);
+}
+.btn-ghost{
+  background: transparent; color:#b8c7ea; border:1px solid rgba(255,255,255,.1);
+}
+.btn-icon{display:inline-flex; align-items:center; gap:8px; font-weight:700}
+
+/* CARDS */
+.card{
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+
+/* CAROUSEL IMG RADIUS */
+#Ads .carousel-inner img{border-radius: var(--radius-lg)}
+
+/* MODAL */
+.modal-content{
+  background: var(--card-2);
+  border-radius: var(--radius-xl);
+  border:1px solid var(--border);
+  color:var(--text);
+}
+.modal-header{
+  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+  border-bottom-color: rgba(255,255,255,.08);
+}
+.modal-footer{ border-top-color: rgba(255,255,255,.08) }
+
+/* QR */
+#qr-reader{
+  border:1px dashed rgba(255,255,255,.18) !important;
+  border-radius: var(--radius-lg);
+  overflow:hidden;
+}
+
+/* FAB */
+.fab-scan{
+  position:fixed; left:50%; bottom:84px;
+  transform:translateX(-50%);
+  padding:14px 18px; border-radius:999px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2));
+  color:#08111a; font-weight:900; border:0;
+  box-shadow: 0 16px 40px rgba(45,212,191,.3), 0 10px 30px rgba(96,165,250,.22);
+  z-index:1010;
+}
+
+/* NAV */
+.bottom-nav{
+  position:fixed; left:0; right:0; bottom:0;
+  backdrop-filter: blur(10px);
+  background: rgba(8,12,18,.7);
+  border-top: 1px solid rgba(255,255,255,.1);
+  z-index:1011;
+}
+.bottom-nav .nav-inner{max-width:560px; margin:0 auto; display:flex; gap:8px; padding:8px 12px}
+.bottom-nav .item{
+  flex:1; text-align:center; color:var(--muted);
+  font-size:12px; padding:8px 0; border-radius:10px;
+}
+.bottom-nav .item.active{
+  color:#fff; background:linear-gradient(135deg, rgba(45,212,191,.15), rgba(96,165,250,.12));
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.admin-entry{
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1080;
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+}
+
+/* ปุ่มไอคอนล้วน ขนาดแตะง่ายบนมือถือ */
+.btn-icon{
+  width: 42px; height: 42px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border-radius: 12px;
+}
+@media (max-width: 576px){
+  .btn-icon{ width: 40px; height: 40px; }
+}
+
+.admin-entry{
+  position: fixed; right: 16px; bottom: 20px; z-index: 2000;
+  border-radius: 12px; padding: 12px 14px;
+}
+@media (max-width:576px){ .admin-entry{ padding: 10px 12px; } }
+
+/* ===== Royal Point – Light Theme (User) ===== */
+:root{
+  --rp-bg: #f5f7fb;
+  --rp-card: #ffffff;
+  --rp-soft: #eef3fb;
+  --rp-border: #dbe4f3;
+  --rp-text: #1f2937;      /* slate-800 */
+  --rp-mute: #64748b;      /* slate-500 */
+  --rp-primary: #0ea5e9;   /* sky-500 */
+  --rp-primary-600:#0284c7;
+  --rp-chip: #f1f5f9;
+}
+
+*{ box-sizing: border-box }
+html,body{ height:100% }
+body{
+  font-family: "Noto Sans Thai", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--rp-text);
+  background: linear-gradient(180deg, #eef2f7, var(--rp-bg));
+}
+
+/* Container width */
+.rp-container{ max-width: 980px; }
+
+/* Cards */
+.rp-card{
+  background: var(--rp-card);
+  border: 1px solid var(--rp-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+/* Header Hero */
+.rp-hero{ position: relative; overflow: hidden }
+.rp-avatar{
+  width: 64px; height: 64px; border-radius: 50%; object-fit: cover;
+  border: 2px solid var(--rp-border);
+}
+.rp-username{ font-size: clamp(1.1rem, 2.8vw, 1.4rem); font-weight: 700 }
+.rp-tier-badge{
+  background: var(--rp-soft);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border);
+  padding: .25rem .5rem; border-radius: 999px; font-size: .85rem;
+}
+.btn-icon{
+  width: 40px; height: 40px; padding:0; display:inline-flex; align-items:center; justify-content:center;
+  border-radius: 12px;
+}
+
+/* Progress ring (half circle) */
+.rp-progress{ width: 100%; height: auto; }
+.rp-progress-bg{ fill:none; stroke: #e5edf7; stroke-width: 8; stroke-linecap: round }
+.rp-progress-fg{
+  fill:none; stroke: var(--rp-primary); stroke-width: 8; stroke-linecap: round;
+  stroke-dasharray: 126; stroke-dashoffset: 0; transition: stroke-dashoffset .4s ease;
+}
+.rp-point-label{ color: var(--rp-mute) }
+.rp-point-value{ font-size: clamp(1.6rem, 4.6vw, 2.4rem); font-weight: 800 }
+
+/* Primary big button */
+.rp-primary{
+  background: var(--rp-primary);
+  border-color: var(--rp-primary);
+  font-weight: 700;
+}
+.rp-primary:hover{ background: var(--rp-primary-600); border-color: var(--rp-primary-600) }
+
+/* Gift cards (optional section) */
+.rp-gift{
+  border: 1px solid var(--rp-border);
+  border-radius: 14px; overflow: hidden; background: #fff;
+  box-shadow: 0 6px 18px rgba(15,23,42,.05);
+}
+.rp-gift img{ width: 100%; display: block; }
+.rp-gift-foot{
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding: .6rem .75rem; color: var(--rp-text);
+}
+.rp-chip{
+  background: var(--rp-chip);
+  border: 1px solid var(--rp-border);
+  padding: .15rem .45rem; border-radius: 999px; font-weight:700; font-size: .85rem;
+}
+
+/* Admin floating button (show for admin only via JS) */
+.admin-entry{
+  position: fixed;
+  right: 16px;
+  bottom: calc(92px + env(safe-area-inset-bottom)); /* ไม่ทับปุ่ม/แถบล่าง */
+  z-index: 1040;
+  width: 52px; height: 52px; border-radius: 16px;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0; backdrop-filter: blur(8px);
+}
+.admin-entry i{ font-size: 20px }
+
+/* Modal light look */
+.modal-content{
+  background: var(--rp-card);
+  color: var(--rp-text);
+  border: 1px solid var(--rp-border);
+}
+.modal-header, .modal-footer{ border-color: var(--rp-border) }
+
+/* Forms */
+.form-control{
+  background:#fff; border:1px solid var(--rp-border); color:var(--rp-text);
+}
+.form-control:focus{
+  border-color: var(--rp-primary);
+  box-shadow: 0 0 0 .25rem rgba(14,165,233,.15);
+}
+
+/* Responsive */
+@media (max-width:576px){
+  .rp-avatar{ width:56px; height:56px }
+  .admin-entry{ bottom: calc(84px + env(safe-area-inset-bottom)); width:48px; height:48px }
+}
+
+/* ===== Royal Point – Green/White Luxury Mobile Theme ===== */
+:root{
+  --rp-bg1:#e8fff4;  /* ไล่สีพื้นหลัง */
+  --rp-bg2:#f7fffb;
+  --rp-card:#ffffff;
+  --rp-soft:#eef9f4;
+  --rp-border:#d9efe6;
+  --rp-text:#0f1b17;        /* ดำอมเขียวอ่านสบาย */
+  --rp-mute:#5b7168;        /* สีคำอธิบาย */
+  --rp-primary:#10b981;     /* emerald-500 */
+  --rp-primary-600:#059669; /* emerald-600 */
+  --rp-chip:#f0fdfa;
+  --rp-gradient-1:#34d399;  /* ไล่สีวงแหวน */
+  --rp-gradient-2:#10b981;
+}
+
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  font-family:"Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji";
+  color:var(--rp-text);
+  background:linear-gradient(180deg,var(--rp-bg1),var(--rp-bg2));
+}
+
+/* Container width */
+.rp-container{ max-width:980px }
+
+/* ----- Cards ----- */
+.rp-card{
+  background:var(--rp-card);
+  border:1px solid var(--rp-border);
+  border-radius:18px;
+  box-shadow:0 10px 28px rgba(3,102,76,.07); /* นุ่มหรู */
+}
+
+/* ----- Hero ----- */
+.rp-hero{
+  position:relative; overflow:hidden;
+  background:linear-gradient(180deg,#ffffff 0%, #ffffffd0 48%, #ffffffc0 100%);
+}
+.rp-hero::before{
+  content:""; position:absolute; inset:-40% -30% auto auto; height:220px; width:220px;
+  background:radial-gradient(closest-side, #a7f3d0 0%, #ecfdf5 70%, transparent 71%);
+  filter:blur(8px); border-radius:50%; opacity:.6;
+}
+.rp-avatar{
+  width:64px; height:64px; border-radius:16px; object-fit:cover;
+  border:2px solid var(--rp-border);
+}
+.rp-username{ font-size:clamp(1.2rem,4vw,1.6rem); font-weight:800; letter-spacing:.3px }
+.rp-tier-badge{
+  background:var(--rp-soft); color:var(--rp-text);
+  border:1px solid var(--rp-border);
+  padding:.25rem .6rem; border-radius:999px; font-size:.9rem;
+}
+.btn-icon{
+  width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;
+}
+
+/* ----- Progress ring (half circle) ----- */
+.rp-progress{ width:100%; height:auto }
+.rp-progress-bg{ fill:none; stroke:#e6f6ef; stroke-width:8; stroke-linecap:round }
+.rp-progress-fg{
+  fill:none; stroke:url(#rpArc);
+  stroke-width:8; stroke-linecap:round;
+  stroke-dasharray:126; stroke-dashoffset:0; transition:stroke-dashoffset .45s cubic-bezier(.22,1,.36,1);
+}
+/* LinearGradient for the arc (inject via mask) */
+.rp-progress{ --g1:var(--rp-gradient-1); --g2:var(--rp-gradient-2) }
+.rp-progress-fg{ stroke: url(#_arc_gradient_) }
+.rp-progress::before{ content:none } /* keep tidy */
+
+/* add the gradient definition using mask via CSS hack (works because we inline path) */
+.rp-progress > defs, .rp-progress > linearGradient { all: initial } /* noop */
+
+/* ----- Score texts ----- */
+.rp-point-label{ color:var(--rp-mute) }
+.rp-point-value{ font-size:clamp(1.8rem,6vw,2.6rem); font-weight:900 }
+
+/* ----- Buttons ----- */
+.rp-primary{
+  background:var(--rp-primary);
+  border-color:var(--rp-primary);
+  font-weight:800;
+  box-shadow:0 12px 24px rgba(16,185,129,.22);
+  transition:transform .05s ease, box-shadow .2s ease;
+}
+.rp-primary:active{ transform:translateY(1px) }
+.rp-primary:hover{ background:var(--rp-primary-600); border-color:var(--rp-primary-600) }
+
+/* Outline button */
+.btn-outline-secondary{ border-color:var(--rp-border); color:var(--rp-text); background:#fff }
+.btn-outline-secondary:hover{ background:var(--rp-soft) }
+
+/* ----- Ads (horizontal snap) ----- */
+.rp-ads{
+  display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory;
+  padding:10px; border-radius:16px;
+  background:linear-gradient(180deg,#ffffff,#f7fffb);
+}
+.rp-ad-slide{
+  scroll-snap-align:center; flex:0 0 88%;
+  border-radius:14px; overflow:hidden; border:1px solid var(--rp-border);
+  box-shadow:0 8px 22px rgba(2,120,87,.08);
+}
+.rp-ad-slide img{ width:100%; height:auto; display:block }
+
+/* ----- Gifts ----- */
+.rp-gift{
+  border:1px solid var(--rp-border); border-radius:16px; overflow:hidden; background:#fff;
+  box-shadow:0 8px 22px rgba(2,120,87,.07); transition:transform .06s ease;
+}
+.rp-gift:active{ transform:translateY(1px) }
+.rp-gift-img{ aspect-ratio: 4/3; background:var(--rp-soft) }
+.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
+.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem; color:var(--rp-text) }
+.rp-chip{
+  background:var(--rp-chip); border:1px solid var(--rp-border); padding:.2rem .55rem;
+  border-radius:999px; font-weight:800; font-size:.9rem; color:var(--rp-primary-600)
+}
+
+/* ----- Admin FAB (โชว์เฉพาะแอดมิน via JS) ----- */
+.admin-entry{
+  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
+  z-index:1040; width:56px;height:56px;border-radius:18px; padding:0;
+  display:inline-flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,var(--rp-gradient-1),var(--rp-gradient-2));
+  border:0; color:#fff;
+  box-shadow:0 16px 32px rgba(16,185,129,.28);
+}
+.admin-entry i{ font-size:22px }
+
+/* ----- Modal (light) ----- */
+.modal-content{ background:#fff; color:var(--rp-text); border:1px solid var(--rp-border) }
+.modal-header,.modal-footer{ border-color:var(--rp-border) }
+
+/* ----- Forms ----- */
+.form-control{ background:#fff; border:1px solid var(--rp-border); color:var(--rp-text) }
+.form-control:focus{ border-color:var(--rp-primary); box-shadow:0 0 0 .25rem rgba(16,185,129,.15) }
+
+/* ----- Responsive ----- */
+@media (max-width:576px){
+  .rp-avatar{ width:56px; height:56px; border-radius:14px }
+  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
+}
+
+/* ===== Green × White — Luxury Glass Theme ===== */
+:root{
+  --bg1:#ecfdf5; --bg2:#ffffff;      /* page gradient */
+  --glass:#ffffffcc;                 /* glass card */
+  --border:#d9efe6;
+  --text:#0f1b17; --mute:#5b7168;
+  --p:#22c55e; --p600:#16a34a;       /* primary green */
+  --chip:#f0fdfa;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:"Inter","Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  color:var(--text);
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+}
+
+/* container */
+.rp-container{max-width:980px}
+
+/* glass card */
+.rp-glass{
+  background:var(--glass);
+  border:1px solid var(--border);
+  border-radius:18px;
+  backdrop-filter:saturate(160%) blur(12px);
+  box-shadow:0 10px 28px rgba(22,163,74,.08);
+}
+
+/* ===== Horizontal Profile Bar ===== */
+.rp-profile{
+  display:grid;
+  grid-template-columns: auto 1fr auto;
+  align-items:center;
+  gap:14px;
+}
+.rp-profile-left{display:flex;align-items:center;gap:12px;min-width:0}
+.rp-avatar{width:56px;height:56px;border-radius:14px;object-fit:cover;border:2px solid var(--border)}
+.rp-name-wrap{display:flex;align-items:center;gap:6px;min-width:0}
+.rp-username{
+  font-size:clamp(1.1rem,4vw,1.4rem);
+  font-weight:800; letter-spacing:.2px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.btn-icon{width:38px;height:38px;border-radius:12px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+
+.rp-profile-center{min-width:0}
+.rp-points{display:flex;align-items:flex-end;gap:10px}
+.rp-point-label{color:var(--mute);font-weight:600}
+.rp-point-value{font-size:clamp(1.6rem,6vw,2.3rem);font-weight:900;line-height:1}
+
+.rp-progress-line{margin-top:6px;height:10px;border-radius:999px;background:#e7f6ef;overflow:hidden;border:1px solid var(--border)}
+.rp-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#34d399,#22c55e,#16a34a);transition:width .45s cubic-bezier(.22,1,.36,1)}
+
+.rp-next{margin-top:6px}
+
+.rp-profile-right{display:flex;justify-content:end}
+.rp-level-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:.45rem .75rem;border-radius:999px;border:1px solid var(--border);
+  background:#ffffff; font-weight:800;
+}
+.rp-level-silver{color:#64748b;background:#f8fafc}
+.rp-level-gold{color:#854d0e;background:#fffbeb;border-color:#fde68a}
+.rp-level-platinum{color:#0ea5e9;background:#f0f9ff;border-color:#bae6fd}
+
+/* sparkle when level up */
+@keyframes sparkle{
+  0%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
+  50%{box-shadow:0 0 0 10px rgba(34,197,94,.15)}
+  100%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
+}
+.rp-level-badge.sparkle{animation:sparkle 1.2s ease}
+
+/* buttons */
+.rp-primary{
+  background:var(--p);border-color:var(--p);font-weight:800;
+  box-shadow:0 12px 24px rgba(34,197,94,.22);
+}
+.rp-primary:hover{background:var(--p600);border-color:var(--p600)}
+.btn-outline-secondary{border-color:var(--border);background:#fff;color:var(--text)}
+.btn-outline-secondary:hover{background:#f4fbf7}
+
+/* carousel */
+.carousel .carousel-indicators [data-bs-target]{background:#16a34a;width:8px;height:8px;border-radius:50%}
+
+/* gifts */
+.rp-gift{position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 8px 22px rgba(2,120,87,.07)}
+.rp-gift-img{aspect-ratio:4/3;background:#f4fbf7}
+.rp-gift-img img{width:100%;height:100%;object-fit:cover;display:block}
+.rp-gift-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:.7rem .8rem}
+.rp-chip{background:#f0fdfa;border:1px solid var(--border);padding:.2rem .55rem;border-radius:999px;font-weight:800;color:#047857}
+.rp-tag{position:absolute;left:10px;top:10px;padding:.25rem .5rem;border-radius:999px;font-weight:800;font-size:.85rem;color:#0f1b17;background:#ffffffcc;border:1px solid var(--border);backdrop-filter:blur(6px)}
+.rp-hit{border-color:#fecaca;background:#fff1f2}
+.rp-new{border-color:#c7d2fe;background:#eef2ff}
+
+/* Admin FAB */
+.admin-entry{
+  position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));
+  width:56px;height:56px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#34d399,#22c55e);
+  color:#fff;box-shadow:0 16px 32px rgba(34,197,94,.28);z-index:1040;border:0
+}
+.admin-entry i{font-size:22px}
+
+/* modal/light form */
+.modal-content{background:#fff;color:var(--text);border:1px solid var(--border)}
+.form-control{background:#fff;border:1px solid var(--border);color:var(--text)}
+.form-control:focus{border-color:var(--p);box-shadow:0 0 0 .25rem rgba(34,197,94,.15)}
+
+@media (max-width:576px){
+  .rp-avatar{width:52px;height:52px;border-radius:12px}
+  .admin-entry{bottom:calc(84px + env(safe-area-inset-bottom));width:52px;height:52px}
+}
+
+/* ===== Green × White — Glass + Mobile First ===== */
+:root{
+  --bg1:#ecfdf5; --bg2:#ffffff;
+  --glass:#ffffffcc; --border:#d9efe6;
+  --text:#0f1b17; --mute:#5b7168;
+  --p:#22c55e; --p600:#16a34a;
+  --chip:#f0fdfa;
+  /* level colors */
+  --silver:#9ca3af; --gold:#facc15; --platinum:#60a5fa;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:"Inter","Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  color:var(--text);
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+}
+
+.rp-container{max-width:980px}
+
+/* glass card */
+.rp-glass{
+  background:var(--glass);
+  border:1px solid var(--border);
+  border-radius:22px;
+  backdrop-filter:saturate(160%) blur(12px);
+  box-shadow:0 10px 28px rgba(22,163,74,.08);
+}
+
+/* ===== Profile Card ===== */
+.rp-profile-card{
+  display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;
+}
+
+/* ขยายโปรไฟล์จาก 72px → 92px (หรือขนาดที่ต้องการ) */
+.rp-avatar-wrap{ position:relative; width:92px; height:92px; }
+.rp-avatar-circle{ width:92px; height:92px; border-radius:50%; object-fit:cover; border:2px solid var(--border); }
+
+/* ปรับ badge ให้สมส่วนขึ้น */
+.rp-level-badge{
+  position:absolute; right:-8px; bottom:-8px;
+  padding:.35rem .7rem; border-radius:999px; background:#fff; border:1px solid var(--border);
+  font-weight:800; font-size:.85rem;
+}
+
+.rp-level-silver{ color:var(--silver); }
+.rp-level-gold{ color:#b45309; background:#fffbeb; border-color:#fde68a }
+.rp-level-platinum{ color:#0ea5e9; background:#f0f9ff; border-color:#bae6fd }
+
+.rp-right{ min-width:0 }
+.rp-username{
+  font-size:clamp(1.1rem,4vw,1.4rem); font-weight:800;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0;
+}
+.btn-icon{ width:36px; height:36px; border-radius:12px; padding:0; display:inline-flex; align-items:center; justify-content:center }
+
+/* big points */
+.rp-point-value{ font-size:clamp(1.8rem,6vw,2.4rem); font-weight:900; line-height:1 }
+.rp-point-unit{ font-size:1rem; color:var(--mute); font-weight:700 }
+
+/* progress */
+.rp-progress-line{ height:10px; border-radius:999px; background:#e7f6ef; overflow:hidden; border:1px solid var(--border) }
+.rp-progress-fill{ height:100%; width:0%; transition:width .45s cubic-bezier(.22,1,.36,1) }
+.prog-silver .rp-progress-fill{ background:linear-gradient(90deg,#d1d5db,#9ca3af) }
+.prog-gold .rp-progress-fill{ background:linear-gradient(90deg,#fde047,#facc15) }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#93c5fd,#60a5fa) }
+
+/* hover/active micro interaction */
+.hover-lift{ transition:transform .06s ease, box-shadow .2s ease }
+.hover-lift:hover{ transform:translateY(-1px); box-shadow:0 14px 32px rgba(22,163,74,.12) }
+.hover-lift:active{ transform:translateY(0) }
+
+/* action buttons */
+.rp-primary{
+  background:linear-gradient(135deg,#34d399,#22c55e);
+  border-color:#22c55e; font-weight:800;
+  box-shadow:0 12px 24px rgba(34,197,94,.22);
+}
+.rp-primary:hover{ background:linear-gradient(135deg,#22c55e,#16a34a); border-color:#16a34a }
+.btn-outline-secondary{ border-color:var(--border); background:#fff; color:var(--text) }
+.btn-outline-secondary:hover{ background:#f4fbf7 }
+
+/* ads carousel */
+.carousel .carousel-indicators [data-bs-target]{ background:#16a34a; width:8px; height:8px; border-radius:50% }
+
+/* gifts */
+.rp-gift{ position:relative; border:1px solid var(--border); border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 8px 22px rgba(2,120,87,.07) }
+.rp-gift-img{ aspect-ratio:4/3; background:#f4fbf7 }
+.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
+.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem }
+.rp-chip{ background:#f0fdfa; border:1px solid var(--border); padding:.2rem .55rem; border-radius:999px; font-weight:800; color:#047857 }
+.rp-tag{ position:absolute; left:10px; top:10px; padding:.25rem .5rem; border-radius:999px; font-weight:800; font-size:.85rem; color:#0f1b17; background:#ffffffcc; border:1px solid var(--border); backdrop-filter:blur(6px) }
+.rp-hit{ border-color:#fecaca; background:#fff1f2 }
+.rp-new{ border-color:#c7d2fe; background:#eef2ff }
+
+/* admin FAB */
+.admin-entry{
+  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
+  width:56px; height:56px; border-radius:18px; display:inline-flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#34d399,#22c55e); color:#fff; box-shadow:0 16px 32px rgba(34,197,94,.28); z-index:1040; border:0
+}
+.admin-entry i{ font-size:22px }
+
+/* modal / forms */
+.modal-content{ background:#fff; color:var(--text); border:1px solid var(--border) }
+.form-control{ background:#fff; border:1px solid var(--border); color:var(--text) }
+.form-control:focus{ border-color:var(--p); box-shadow:0 0 0 .25rem rgba(34,197,94,.15) }
+
+@media (max-width:576px){
+  .rp-avatar-wrap{ width:64px; height:64px }
+  .rp-avatar-circle{ width:64px; height:64px }
+  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
+}
+
+/* ========== Mobile Balance Tweaks ========== */
+
+/* พื้นที่ container ไม่ชิดขอบเกินไปบนจอเล็ก */
+:root{ --container-padding: clamp(12px, 4vw, 20px) }
+.container{ padding-left: var(--container-padding); padding-right: var(--container-padding); }
+
+/* ปรับระยะการ์ดให้แน่นขึ้นเล็กน้อย */
+.rp-card{ border-radius: 20px }
+.rp-glass{ box-shadow: 0 8px 22px rgba(22,163,74,.08) }
+
+/* -------- จอเล็กทั่วไป (<= 390px) -------- */
+@media (max-width: 390px){
+
+  /* โปรไฟล์: ย่อ avatar / badge / ปุ่ม refresh */
+  .rp-avatar-wrap{ width:56px;height:56px }
+  .rp-avatar-circle{ width:56px;height:56px }
+  .rp-level-badge{ right:-4px; bottom:-6px; transform: scale(.92) }
+  .btn-icon{ width:32px;height:32px;border-radius:10px }
+
+  /* ตัวอักษร balance ขนาดให้พอดีสายตา */
+  .rp-username{ font-size: clamp(1rem, 5vw, 1.25rem) }
+  .rp-point-value{ font-size: clamp(1.45rem, 7vw, 2rem) }
+  .rp-point-unit{ font-size: .95rem }
+
+  /* Progress ชัดแต่ไม่หนาเกิน */
+  .rp-progress-line{ height: 8px }
+  
+  /* ปุ่มกดสูงกำลังดี */
+  .rp-primary{ padding-block: .8rem }
+  .btn-outline-secondary{ padding-block: .8rem }
+
+  /* Carousel ไม่ให้สูงไป */
+  #adsCarousel .carousel-inner{ border-radius: inherit }
+  #adsCarousel .carousel-item img{
+    width:100%; height:auto; max-height: 26vh; object-fit: cover; border-radius: inherit;
+  }
+
+  /* การ์ดของรางวัล: เท่ากันและไม่ลอย */
+  .rp-gift{ display:flex; flex-direction: column }
+  .rp-gift-img{ aspect-ratio: 4 / 3; flex: 1 0 auto }
+  .rp-gift-foot{ min-height: 44px }
+}
+
+/* -------- จอเล็กมาก (<= 340px) : จัด layout ใหม่ให้สมดุล -------- */
+@media (max-width: 340px){
+  /* Profile card ยกซ้าย-ขวาให้เป็น 2 แถว (Stack) */
+  .rp-profile-card{ grid-template-columns: 1fr; grid-auto-rows: auto; gap: 12px }
+  .rp-left{ order: 1 }
+  .rp-right{ order: 2 }
+  .rp-avatar-wrap{ margin-bottom: .25rem }
+
+  /* ใต้โปรไฟล์: เลย์เอาต์กะทัดรัด */
+  .rp-point-value{ margin-top: .2rem }
+  .rp-progress-line{ margin-top: .25rem }
+
+  /* ปุ่มแอ็กชันวางแนวตั้ง 1 คอลัมน์ */
+  .row.g-2 > [class*='col-6']{ flex: 0 0 100%; max-width: 100% }
+}
+
+/* ข้อความบรรทัดช่วย (ให้ตัดคำสวย ๆ ถ้ารองรับ) */
+#next-tier{ text-wrap: balance; }
+
+@media (prefers-reduced-motion: reduce){
+  .rp-progress-fill{ transition: none }
+  .hover-lift{ transition: none }
+}
+
+.admin-entry{ bottom: calc(88px + env(safe-area-inset-bottom)) }
+body{ padding-bottom: env(safe-area-inset-bottom) }
+
+/* Icon-only action buttons */
+.icon-btn{
+  padding:0; aspect-ratio:1/1; border-radius:16px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.35rem;
+}
+@media (max-width:390px){ .icon-btn{ font-size:1.2rem } }
+
+/* pulse effect for level track rail */
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.18)} 100%{box-shadow:0 0 0 16px rgba(34,197,94,0)} }
+.rp-track-rail.pulse{ animation:pulse .6s ease }
+
+/* compact action buttons */
+.rp-actions { padding: .25rem 0; }
+.icon-btn{
+  display:flex; align-items:center; justify-content:center;
+  border-radius:16px; padding:0; font-size:1.25rem;
+}
+.icon-btn-sm{ width:64px; height:64px; }
+@media (max-width:390px){
+  .icon-btn-sm{ width:56px; height:56px; font-size:1.1rem; }
+}
+
+/* enlarge profile area */
+.rp-avatar-wrap{ width:92px; height:92px; }
+.rp-avatar-circle{ width:92px; height:92px; }
+.rp-username{ font-size: clamp(1.25rem, 5.2vw, 1.6rem); }
+.rp-point-value{ font-size: clamp(1.9rem, 6.8vw, 2.3rem); }
+.rp-level-badge{ transform: translate(2px,2px) scale(1.02); }
+@media (max-width:576px){
+  .rp-avatar-wrap,.rp-avatar-circle{ width:88px; height:88px; }
+}
+
+/* === Enlarge profile (override) === */
+.rp-avatar-wrap,.rp-avatar-circle{ width:92px; height:92px; }
+.rp-level-badge{ right:-8px; bottom:-8px; padding:.35rem .7rem; font-size:.85rem; }
+
+/* ให้ชื่อ/คะแนนเด่นขึ้น */
+.rp-username{ font-size: clamp(1.25rem, 5.2vw, 1.6rem); }
+.rp-point-value{ font-size: clamp(1.9rem, 6.8vw, 2.3rem); }
+
+/* มือถือเล็กมาก ปรับลงนิดให้ไม่อึดอัด */
+@media (max-width:576px){
+  .rp-avatar-wrap,.rp-avatar-circle{ width:88px; height:88px; }
 }
