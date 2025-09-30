@@ -76,7 +76,7 @@ async function initApp(){
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
     await refreshUserScore();
-    await loadRewards();
+    await renderRewards(window.prevScore || 0);
     renderRewards(prevScore || 0);
 
   }catch(e){ console.error(e); toastErr("เริ่มต้นระบบไม่สำเร็จ"); }
@@ -422,6 +422,16 @@ function renderRewards(currentScore){
       </div>
     `;
   }).join("");
+  // --- SHIM: ให้โค้ดเก่าเรียก loadRewards() ได้ ---
+if (typeof window.loadRewards !== 'function') {
+  window.loadRewards = function () {
+    try {
+      renderRewards(window.prevScore || 0);
+    } catch (e) {
+      console.error('loadRewards shim error:', e);
+    }
+  };
+}
 }
 
 /** 3) Hook: ให้ของรางวัลอัปเดตทุกครั้งที่คะแนนถูกตั้งค่า */
