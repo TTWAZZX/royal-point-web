@@ -30,20 +30,34 @@ const LIFF_ID   = "2007053300-QoEvbXyn";
 const API_LIST    = "/api/all-scores";     // ← ใช้อันนี้
 const API_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+
 const API_REWARDS_LIST   = "/api/rewards";
 const API_REWARDS_UPSERT = "/api/rewards-upsert";
 const API_REWARDS_DELETE = "/api/rewards-delete";
 
+// กันกดซ้ำตอนกดบันทึก/ลบ
+let REWARD_BUSY = false;
+
 async function loadRewardsAdmin(){
   const tbody = document.querySelector("#tblRewards tbody");
+  if(!tbody){ console.warn("tblRewards tbody not found"); return; }
+
   tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">กำลังโหลด…</td></tr>`;
+
   try{
-    const r = await fetch(`${API_REWARDS_LIST}?uid=${encodeURIComponent(state.adminUid)}`);
+    // ใส่ uid ของแอดมินไปด้วย เพื่อให้ดูรายการทั้งหมดได้
+    const r = await fetch(`${API_REWARDS_LIST}?uid=${encodeURIComponent(state.adminUid || "")}`, { cache: "no-store" });
     const j = await r.json();
     const list = j.data || [];
+
+    if (!list.length){
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">ไม่มีรายการ</td></tr>`;
+      return;
+    }
+
     tbody.innerHTML = list.map(x=>`
-      <tr data-id="${x.id}">
-        <td class="small">${x.id}</td>
+      <tr data-id="${escapeHtml(x.id)}">
+        <td class="small">${escapeHtml(x.id)}</td>
         <td><input class="form-control form-control-sm in-name" value="${escapeHtml(x.name||'')}"></td>
         <td><input class="form-control form-control-sm in-img"  value="${escapeHtml(x.img||'')}"></td>
         <td style="max-width:90px"><input type="number" min="0" class="form-control form-control-sm in-cost" value="${Number(x.cost||0)}"></td>
@@ -55,36 +69,97 @@ async function loadRewardsAdmin(){
       </tr>
     `).join("");
 
-    tbody.addEventListener("click", async (ev)=>{
-      const tr = ev.target.closest("tr"); if(!tr) return;
+    // ใช้ handler แบบ property เพื่อ "มีแค่ตัวเดียว" ไม่ซ้ำหลายรอบ
+    tbody.onclick = async (ev) => {
+      const tr = ev.target.closest("tr[data-id]");
+      if(!tr) return;
       const id = tr.dataset.id;
+
       if (ev.target.closest(".act-save")){
-        const body = {
-          adminUid: state.adminUid,
-          id,
-          name: tr.querySelector(".in-name").value.trim(),
-          img:  tr.querySelector(".in-img").value.trim(),
-          cost: Number(tr.querySelector(".in-cost").value||0),
-          active: tr.querySelector(".in-active").checked ? 1 : 0
-        };
-        const r = await fetch(API_REWARDS_UPSERT, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
-        const j = await r.json();
-        alert(j.status==="success" ? "บันทึกแล้ว" : ("บันทึกไม่สำเร็จ: "+(j.message||"")));
-        loadRewardsAdmin();
+        if (REWARD_BUSY) return;
+        REWARD_BUSY = true;
+        try{
+          const body = {
+            adminUid: state.adminUid,
+            id,
+            name: tr.querySelector(".in-name").value.trim(),
+            img:  tr.querySelector(".in-img").value.trim(),
+            cost: Number(tr.querySelector(".in-cost").value || 0),
+            active: tr.querySelector(".in-active").checked ? 1 : 0
+          };
+          const rr = await fetch(API_REWARDS_UPSERT, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(body) });
+          const jj = await rr.json();
+          alert(jj.status==="success" ? "บันทึกแล้ว" : ("บันทึกไม่สำเร็จ: " + (jj.message||"")));
+          await loadRewardsAdmin();
+        } finally { REWARD_BUSY = false; }
       }
+
       if (ev.target.closest(".act-del")){
         if(!confirm("ลบ (ปิดการใช้งาน) รายการนี้?")) return;
-        const r = await fetch(API_REWARDS_DELETE, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: state.adminUid, id }) });
-        const j = await r.json();
-        alert(j.status==="success" ? "ลบแล้ว" : ("ไม่สำเร็จ: "+(j.message||"")));
-        loadRewardsAdmin();
+        if (REWARD_BUSY) return;
+        REWARD_BUSY = true;
+        try{
+          const rr = await fetch(API_REWARDS_DELETE, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: state.adminUid, id }) });
+          const jj = await rr.json();
+          alert(jj.status==="success" ? "ลบแล้ว" : ("ไม่สำเร็จ: "+(jj.message||"")));
+          await loadRewardsAdmin();
+        } finally { REWARD_BUSY = false; }
       }
-    }, { once:true });
+    };
+
   }catch(e){
     console.error(e);
     tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">โหลดไม่สำเร็จ</td></tr>`;
   }
 }
+
+function bindAddRewardButton(){
+  const btn = document.getElementById("btnAddReward");
+  if(!btn){ console.warn("btnAddReward not found"); return; }
+
+  btn.addEventListener("click", async (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+
+    // กันเผื่อ state ยังไม่พร้อม
+    if (!state || !state.adminUid){
+      alert("ยังไม่ได้ยืนยันสิทธิ์แอดมิน");
+      return;
+    }
+
+    const name = prompt("ชื่อรางวัล:");
+    if(!name) return;
+    const img  = prompt("รูป (URL):","https://");
+    const cost = Number(prompt("แต้มที่ใช้:","100") || 0);
+
+    try{
+      const r = await fetch("/api/rewards-upsert", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ adminUid: state.adminUid, name, img, cost, active: 1 })
+      });
+      const j = await r.json();
+      if(j.status === "success"){
+        alert("เพิ่มแล้ว");
+        await loadRewardsAdmin();
+      }else{
+        alert("ไม่สำเร็จ: " + (j.message || ""));
+      }
+    }catch(err){
+      console.error(err);
+      alert("ไม่สามารถเพิ่มรายการได้");
+    }
+  });
+}
+
+async function initAdmin(){
+  // ... login + ตรวจ isAdmin ...
+  state.adminUid = profile.userId;      // ใส่ UID แอดมินที่ล็อกอิน
+  bindAddRewardButton();                // <- bind ปุ่มเพิ่ม
+  await loadRewardsAdmin();             // <- โหลดตารางรางวัล
+}
+document.addEventListener("DOMContentLoaded", initAdmin);
+
 
 document.getElementById("btnAddReward")?.addEventListener("click", async ()=>{
   const name = prompt("ชื่อรางวัล:");
