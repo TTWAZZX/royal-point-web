@@ -1,405 +1,52 @@
-/* ===== Green × White — Glass + Mobile First ===== */
-:root{
-  --bg1:#ecfdf5; --bg2:#ffffff;
-  --glass:#ffffffcc; --border:#d9efe6;
-  --text:#0f1b17; --mute:#5b7168;
-  --p:#22c55e; --p600:#16a34a;
-  --chip:#f0fdfa;
-  /* level colors */
-  --silver:#9ca3af; --gold:#facc15; --platinum:#60a5fa;
+.bg-silver { background: linear-gradient(135deg, #C0C0C0, #ffffff); color: #333; }
+.bg-gold   { background: linear-gradient(135deg, #FFD700, #FFF3B0); color: #333; }
+.bg-diamond{ background: linear-gradient(30deg, #3f87a6, #ebf8e1, #f69d3c); color: #333; }
+
+#displaySection { display: none; }
+
+.h1,.h2,.h3,.h4,.h5,.h6,h1,h2,h3,h4,h5,h6 { margin-top: 0; margin-bottom: 0; }
+
+.modal-fullscreen { width: 100%; max-width: none; height: 100%; margin: 0; }
+.modal-fullscreen .modal-content { width: 100%; height: 100%; border: 0; border-radius: 0; }
+.modal-fullscreen .modal-body { overflow-y: auto; }
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .container { padding: 10px; }
+  .btn-lg { width: 100%; }
+  .card-img-top { width: 100%; height: auto; }
+  h2 { font-size: 1.5rem; }
+  .modal-fullscreen { height: 100%; }
+  .modal-dialog { max-width: 90%; }
+}
+@media (max-width: 576px) {
+  .modal-dialog { max-width: 90%; }
 }
 
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  font-family:"Inter","Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,Arial;
-  color:var(--text);
-  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+/* Admin table enhancements */
+.admin-table-wrap {
+  max-height: 60vh;
+  overflow: auto;
 }
-
-.rp-container{max-width:980px}
-
-/* glass card */
-.rp-glass{
-  background:var(--glass);
-  border:1px solid var(--border);
-  border-radius:22px;
-  backdrop-filter:saturate(160%) blur(12px);
-  box-shadow:0 10px 28px rgba(22,163,74,.08);
+.table thead th.sort { cursor: pointer; user-select: none; }
+.table thead th.sort::after {
+  content: " \f0dc"; /* fa-sort */
+  font-family: "Font Awesome 6 Free"; font-weight: 900; opacity: .35;
 }
+.table thead th.sort.asc::after { content: " \f160"; }  /* fa-sort-amount-up */
+.table thead th.sort.desc::after { content: " \f161"; } /* fa-sort-amount-down */
 
-/* ===== Profile Card ===== */
-.rp-profile-card{
-  display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;
+/* Skeleton loader */
+.skeleton { position: relative; overflow: hidden; background: #e9ecef; border-radius: .5rem; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  transform: translateX(-100%); animation: skeleton 1.4s infinite;
 }
+.skeleton-row { height: 16px; margin: 8px 0; }
+.skeleton-card { height: 48px; margin: 10px 0; }
 
-/* ขยายโปรไฟล์จาก 72px → 92px (หรือขนาดที่ต้องการ) */
-.rp-avatar-wrap{ position:relative; width:92px; height:92px; }
-.rp-avatar-circle{ width:92px; height:92px; border-radius:50%; object-fit:cover; border:2px solid var(--border); }
-
-/* ปรับ badge ให้สมส่วนขึ้น */
-.rp-level-badge{
-  position:absolute; right:-8px; bottom:-8px;
-  padding:.35rem .7rem; border-radius:999px; background:#fff; border:1px solid var(--border);
-  font-weight:800; font-size:.85rem;
+@keyframes skeleton {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
-
-.rp-level-silver{ color:var(--silver); }
-.rp-level-gold{ color:#b45309; background:#fffbeb; border-color:#fde68a }
-.rp-level-platinum{ color:#0ea5e9; background:#f0f9ff; border-color:#bae6fd }
-
-.rp-right{ min-width:0 }
-.rp-username{
-  font-size:clamp(1.1rem,4vw,1.4rem); font-weight:800;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0;
-}
-.btn-icon{ width:36px; height:36px; border-radius:12px; padding:0; display:inline-flex; align-items:center; justify-content:center }
-
-/* big points */
-.rp-point-value{ font-size:clamp(1.8rem,6vw,2.4rem); font-weight:900; line-height:1 }
-.rp-point-unit{ font-size:1rem; color:var(--mute); font-weight:700 }
-
-/* progress */
-.rp-progress-line{ height:10px; border-radius:999px; background:#e7f6ef; overflow:hidden; border:1px solid var(--border) }
-.rp-progress-fill{ height:100%; width:0%; transition:width .45s cubic-bezier(.22,1,.36,1) }
-.prog-silver .rp-progress-fill{ background:linear-gradient(90deg,#d1d5db,#9ca3af) }
-.prog-gold .rp-progress-fill{ background:linear-gradient(90deg,#fde047,#facc15) }
-.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#93c5fd,#60a5fa) }
-
-/* hover/active micro interaction */
-.hover-lift{ transition:transform .06s ease, box-shadow .2s ease }
-.hover-lift:hover{ transform:translateY(-1px); box-shadow:0 14px 32px rgba(22,163,74,.12) }
-.hover-lift:active{ transform:translateY(0) }
-
-/* action buttons */
-.rp-primary{
-  background:linear-gradient(135deg,#34d399,#22c55e);
-  border-color:#22c55e; font-weight:800;
-  box-shadow:0 12px 24px rgba(34,197,94,.22);
-}
-.rp-primary:hover{ background:linear-gradient(135deg,#22c55e,#16a34a); border-color:#16a34a }
-.btn-outline-secondary{ border-color:var(--border); background:#fff; color:var(--text) }
-.btn-outline-secondary:hover{ background:#f4fbf7 }
-
-/* ads carousel */
-.carousel .carousel-indicators [data-bs-target]{ background:#16a34a; width:8px; height:8px; border-radius:50% }
-
-/* gifts */
-.rp-gift{ position:relative; border:1px solid var(--border); border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 8px 22px rgba(2,120,87,.07) }
-.rp-gift-img{ aspect-ratio:4/3; background:#f4fbf7 }
-.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
-.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem }
-.rp-chip{ background:#f0fdfa; border:1px solid var(--border); padding:.2rem .55rem; border-radius:999px; font-weight:800; color:#047857 }
-.rp-tag{ position:absolute; left:10px; top:10px; padding:.25rem .5rem; border-radius:999px; font-weight:800; font-size:.85rem; color:#0f1b17; background:#ffffffcc; border:1px solid var(--border); backdrop-filter:blur(6px) }
-.rp-hit{ border-color:#fecaca; background:#fff1f2 }
-.rp-new{ border-color:#c7d2fe; background:#eef2ff }
-
-/* admin FAB */
-.admin-entry{
-  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
-  width:56px; height:56px; border-radius:18px; display:inline-flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,#34d399,#22c55e); color:#fff; box-shadow:0 16px 32px rgba(34,197,94,.28); z-index:1040; border:0
-}
-.admin-entry i{ font-size:22px }
-
-/* modal / forms */
-.modal-content{ background:#fff; color:var(--text); border:1px solid var(--border) }
-.form-control{ background:#fff; border:1px solid var(--border); color:var(--text) }
-.form-control:focus{ border-color:var(--p); box-shadow:0 0 0 .25rem rgba(34,197,94,.15) }
-
-@media (max-width:576px){
-  .rp-avatar-wrap{ width:64px; height:64px }
-  .rp-avatar-circle{ width:64px; height:64px }
-  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
-}
-/* ========== Mobile Balance Tweaks ========== */
-
-/* พื้นที่ container ไม่ชิดขอบเกินไปบนจอเล็ก */
-:root{ --container-padding: clamp(12px, 4vw, 20px) }
-.container{ padding-left: var(--container-padding); padding-right: var(--container-padding); }
-
-/* ปรับระยะการ์ดให้แน่นขึ้นเล็กน้อย */
-.rp-card{ border-radius: 20px }
-.rp-glass{ box-shadow: 0 8px 22px rgba(22,163,74,.08) }
-
-/* -------- จอเล็กทั่วไป (<= 390px) -------- */
-@media (max-width: 390px){
-
-  /* โปรไฟล์: ย่อ avatar / badge / ปุ่ม refresh */
-  .rp-avatar-wrap{ width:56px;height:56px }
-  .rp-avatar-circle{ width:56px;height:56px }
-  .rp-level-badge{ right:-4px; bottom:-6px; transform: scale(.92) }
-  .btn-icon{ width:32px;height:32px;border-radius:10px }
-
-  /* ตัวอักษร balance ขนาดให้พอดีสายตา */
-  .rp-username{ font-size: clamp(1rem, 5vw, 1.25rem) }
-  .rp-point-value{ font-size: clamp(1.45rem, 7vw, 2rem) }
-  .rp-point-unit{ font-size: .95rem }
-
-  /* Progress ชัดแต่ไม่หนาเกิน */
-  .rp-progress-line{ height: 8px }
-  
-  /* ปุ่มกดสูงกำลังดี */
-  .rp-primary{ padding-block: .8rem }
-  .btn-outline-secondary{ padding-block: .8rem }
-
-  /* Carousel ไม่ให้สูงไป */
-  #adsCarousel .carousel-inner{ border-radius: inherit }
-  #adsCarousel .carousel-item img{
-    width:100%; height:auto; max-height: 26vh; object-fit: cover; border-radius: inherit;
-  }
-
-  /* การ์ดของรางวัล: เท่ากันและไม่ลอย */
-  .rp-gift{ display:flex; flex-direction: column }
-  .rp-gift-img{ aspect-ratio: 4 / 3; flex: 1 0 auto }
-  .rp-gift-foot{ min-height: 44px }
-}
-
-/* -------- จอเล็กมาก (<= 340px) : จัด layout ใหม่ให้สมดุล -------- */
-@media (max-width: 340px){
-  /* Profile card ยกซ้าย-ขวาให้เป็น 2 แถว (Stack) */
-  .rp-profile-card{ grid-template-columns: 1fr; grid-auto-rows: auto; gap: 12px }
-  .rp-left{ order: 1 }
-  .rp-right{ order: 2 }
-  .rp-avatar-wrap{ margin-bottom: .25rem }
-
-  /* ใต้โปรไฟล์: เลย์เอาต์กะทัดรัด */
-  .rp-point-value{ margin-top: .2rem }
-  .rp-progress-line{ margin-top: .25rem }
-
-  /* ปุ่มแอ็กชันวางแนวตั้ง 1 คอลัมน์ */
-  .row.g-2 > [class*='col-6']{ flex: 0 0 100%; max-width: 100% }
-}
-
-/* ข้อความบรรทัดช่วย (ให้ตัดคำสวย ๆ ถ้ารองรับ) */
-#next-tier{ text-wrap: balance; }
-
-@media (prefers-reduced-motion: reduce){
-  .rp-progress-fill{ transition: none }
-  .hover-lift{ transition: none }
-}
-
-.admin-entry{ bottom: calc(88px + env(safe-area-inset-bottom)) }
-body{ padding-bottom: env(safe-area-inset-bottom) }
-
-/* ===== Level Track (Milestone Rail) ===== */
-.rp-level-track .rp-track-rail{
-  position:relative; height:clamp(10px, 1.8vw, 14px);
-  border-radius:999px; background:#e7f6ef; overflow:hidden;
-  border:1px solid var(--border);
-}
-.rp-level-track .rp-track-fill{
-  position:absolute; inset:0 auto 0 0; width:0%;
-  /* ไล่สีผ่าน Silver -> Gold -> Platinum */
-  background:linear-gradient(90deg, #d1d5db, #facc15, #60a5fa);
-  border-radius:inherit; transition:width .5s cubic-bezier(.22,1,.36,1);
-}
-.rp-track-milestone{
-  position:absolute; top:50%; transform:translate(-50%,-50%);
-  width:clamp(12px,2vw,14px); height:clamp(12px,2vw,14px);
-  border-radius:50%; background:#fff; border:2px solid var(--border);
-  box-shadow:0 0 0 3px #fff inset;
-}
-.rp-track-milestone::after{
-  content:attr(data-label);
-  position:absolute; top:-22px; left:50%; transform:translateX(-50%);
-  white-space:nowrap; font-size:.72rem; color:var(--mute);
-}
-
-/* เปลี่ยนธีมสีตามเลเวลปัจจุบัน (เพิ่ม/ลบคลาสจาก JS) */
-.track-silver .rp-track-fill{ background:linear-gradient(90deg,#d1d5db,#9ca3af) }
-.track-gold .rp-track-fill{   background:linear-gradient(90deg,#fde047,#facc15) }
-.track-platinum .rp-track-fill{background:linear-gradient(90deg,#93c5fd,#60a5fa) }
-
-.rp-sticky-summary{ position:sticky; top:0; z-index:1010; backdrop-filter:blur(6px); background:#ffffffc9 }
-@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.2)} 100%{box-shadow:0 0 0 14px rgba(34,197,94,0)} }
-.rp-track-rail.pulse{ animation:pulse .6s ease }
-
-/* Icon-only action buttons */
-.icon-btn{
-  padding:0; aspect-ratio:1/1; border-radius:16px;
-  display:flex; align-items:center; justify-content:center;
-  font-size:1.35rem;
-}
-@media (max-width:390px){ .icon-btn{ font-size:1.2rem } }
-
-/* pulse effect for level track rail */
-@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.18)} 100%{box-shadow:0 0 0 16px rgba(34,197,94,0)} }
-.rp-track-rail.pulse{ animation:pulse .6s ease }
-
-/* compact action buttons */
-.rp-actions { padding: .25rem 0; }
-.icon-btn{
-  display:flex; align-items:center; justify-content:center;
-  border-radius:16px; padding:0; font-size:1.25rem;
-}
-.icon-btn-sm{ width:64px; height:64px; }
-@media (max-width:390px){
-  .icon-btn-sm{ width:56px; height:56px; font-size:1.1rem; }
-}
-
-/* === Enlarge profile (override) === */
-.rp-avatar-wrap,.rp-avatar-circle{ width:92px; height:92px; }
-.rp-level-badge{ right:-8px; bottom:-8px; padding:.35rem .7rem; font-size:.85rem; }
-
-/* ให้ชื่อ/คะแนนเด่นขึ้น */
-.rp-username{ font-size: clamp(1.25rem, 5.2vw, 1.6rem); }
-.rp-point-value{ font-size: clamp(1.9rem, 6.8vw, 2.3rem); }
-
-/* มือถือเล็กมาก ปรับลงนิดให้ไม่อึดอัด */
-@media (max-width:576px){
-  .rp-avatar-wrap,.rp-avatar-circle{ width:88px; height:88px; }
-}
-
-/* Actions: ปุ่มไอคอนเล็กลง แบบสมดุล */
-.rp-actions { padding:.25rem 0; }
-.icon-btn{ display:flex;align-items:center;justify-content:center;border-radius:16px;padding:0;font-size:1.25rem }
-.icon-btn-sm{ width:64px;height:64px }
-@media (max-width:390px){ .icon-btn-sm{ width:56px;height:56px;font-size:1.1rem } }
-
-/* โปรไฟล์ใหญ่ขึ้น (ถ้ายังไม่ได้ปรับ) */
-.rp-avatar-wrap,.rp-avatar-circle{ width:92px;height:92px }
-.rp-username{ font-size:clamp(1.25rem,5.2vw,1.6rem) }
-.rp-point-value{ font-size:clamp(1.9rem,6.8vw,2.3rem) }
-
-/* Reward rail – scroll-snap horizontal */
-.rp-reward-rail{
-  display:flex; gap:14px; overflow-x:auto; padding:6px 2px 10px;
-  scroll-snap-type:x mandatory;
-}
-.rp-reward-rail::-webkit-scrollbar{ height:8px }
-.rp-reward-rail::-webkit-scrollbar-thumb{ background:#cdeee0; border-radius:999px }
-
-.rp-reward-card{
-  position:relative; flex:0 0 auto; min-width:180px; max-width:220px;
-  border:1px solid var(--border); border-radius:18px; background:#fff;
-  scroll-snap-align:start; box-shadow:0 8px 22px rgba(2,120,87,.07); overflow:hidden;
-}
-.rp-reward-img{ aspect-ratio:4/3; background:#f4fbf7 }
-.rp-reward-img img{ width:100%;height:100%;object-fit:cover;display:block }
-.rp-reward-cost{
-  position:absolute; top:10px; right:10px;
-  background:#f0fdfa;border:1px solid var(--border);
-  padding:.25rem .55rem;border-radius:999px;font-weight:800;color:#047857
-}
-.rp-redeem-btn{
-  position:absolute; right:10px; bottom:10px;
-  width:40px;height:40px;border-radius:12px;border:1px solid var(--border);
-  display:flex;align-items:center;justify-content:center;background:#fff;color:#065f46;
-}
-.rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
-
-/* แนะนำ: เมื่อคะแนนไม่พอ ให้โชว์ overlay */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  background:rgba(255,255,255,.6); backdrop-filter:blur(2px); font-weight:800; color:#64748b
-}
-
-/* ปรับ card ให้ไม่ตัดบรรทัด/ไม่ล้น */
-.rp-profile-card{ grid-template-columns: auto 1fr; align-items: center; }
-.rp-profile-card p{ margin-bottom: .25rem; }
-
-/* ชื่อ/คะแนน balance มากขึ้น และไม่ล้น */
-.rp-username{
-  font-size: clamp(1.1rem, 4.8vw, 1.45rem);
-  line-height: 1.1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.rp-point-value{ font-size: clamp(1.7rem, 6.2vw, 2.2rem); line-height: 1; }
-
-/* แถวข้อความระดับ/ความคืบหน้า ให้เป็นบรรทัดเดียวได้ */
-.rp-level-row, #currentLevelText, .rp-level-badge{
-  white-space: nowrap;
-}
-
-/* จอเล็กมาก → บีบตัวอักษรลงอีกนิดเพื่อไม่ห่อบรรทัด */
-@media (max-width: 360px){
-  .rp-username{ font-size: clamp(1rem, 4.6vw, 1.3rem); }
-  .rp-point-value{ font-size: clamp(1.5rem, 5.6vw, 2rem); }
-}
-
-/* เล็กลง ~50% จากตัวอักษร正文 */
-#next-tier{
-  font-size: clamp(.6rem, 2.4vw, .8rem);
-  opacity: .85;
-}
-
-/* Reward rail */
-.rp-reward-rail{ display:flex; gap:14px; overflow-x:auto; padding:6px 2px 10px; scroll-snap-type:x mandatory; }
-.rp-reward-rail::-webkit-scrollbar{ height:8px } 
-.rp-reward-rail::-webkit-scrollbar-thumb{ background:#cdeee0; border-radius:999px }
-
-.rp-reward-card{
-  position:relative; flex:0 0 auto; min-width:200px; max-width:240px;
-  border:1px solid var(--border); border-radius:18px; background:#fff;
-  box-shadow:0 8px 22px rgba(2,120,87,.07); overflow:hidden; scroll-snap-align:start;
-}
-.rp-reward-img{ aspect-ratio:4/3; background:#f4fbf7; }
-.rp-reward-img img{ width:100%; height:100%; object-fit:cover; display:block; }
-.rp-reward-cost{
-  background:#f0fdfa; border:1px solid var(--border);
-  padding:.25rem .55rem; border-radius:999px; font-weight:800; color:#047857;
-  font-size:.85rem;
-}
-.rp-redeem-btn{
-  position:absolute; right:10px; bottom:10px;
-  width:42px; height:42px; border-radius:12px; border:1px solid var(--border);
-  display:flex; align-items:center; justify-content:center; background:#fff; color:#065f46;
-}
-.rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
-
-/* “คะแนนไม่พอ” — โปร่งให้เห็นรูปชัด */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ"; position:absolute; inset:0;
-  display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.55));
-  color:#475569; font-weight:800; letter-spacing:.3px;
-}
-
-/* Wide action buttons = width เท่าการ์ด */
-.rp-actions-wide .act-btn{
-  width:100%; height:64px; border-radius:16px; font-weight:700;
-}
-@media (max-width:380px){ .rp-actions-wide .act-btn{ height:56px; font-size:.95rem; } }
-
-/* ==== Rewards rail ==== */
-.rp-reward-rail{
-  display:flex; gap:14px; overflow-x:auto; padding:6px 2px 10px;
-  scroll-snap-type:x mandatory;
-}
-.rp-reward-rail::-webkit-scrollbar{ height:8px }
-.rp-reward-rail::-webkit-scrollbar-thumb{ background:#cdeee0; border-radius:999px }
-
-.rp-reward-card{
-  position:relative; flex:0 0 auto; min-width:200px; max-width:240px;
-  border:1px solid var(--border); border-radius:18px; background:#fff;
-  box-shadow:0 8px 22px rgba(2,120,87,.07); overflow:hidden; scroll-snap-align:start;
-}
-.rp-reward-img{ aspect-ratio:4/3; background:#f7faf9 }
-.rp-reward-img img{ width:100%; height:100%; object-fit:cover; display:block; }
-
-.rp-reward-body{ background:#fff }
-.rp-reward-cost{
-  background:#f0fdfa; border:1px solid var(--border);
-  padding:.25rem .55rem; border-radius:999px; font-weight:800; color:#047857; font-size:.85rem;
-}
-
-/* ปุ่มแลก (มุมขวาล่าง) */
-.rp-redeem-btn{
-  position:absolute; right:10px; bottom:10px;
-  width:42px; height:42px; border-radius:12px; border:1px solid var(--border);
-  display:flex; align-items:center; justify-content:center; background:#fff; color:#065f46;
-}
-.rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
-
-/* แต้มไม่พอ: ยังเห็นรูปชัด พร้อมฟิล์มบาง ๆ */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ"; position:absolute; inset:0;
-  display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.55));
-  color:#475569; font-weight:800; letter-spacing:.3px;
-}
-
-/* เล็กน้อย: ให้ปุ่มสแกน/ประวัติ กว้างเท่าการ์ดโปรไฟล์ */
-.rp-actions-wide .act-btn{ width:100%; height:64px; border-radius:16px; font-weight:700; }
-@media (max-width:380px){ .rp-actions-wide .act-btn{ height:56px; font-size:.95rem } }
