@@ -67,14 +67,13 @@
 
   </section>
 
-  <!-- ===== Action Zone (icons only, compact) ===== -->
+<!-- Actions (icons only, compact & centered) -->
 <section class="rp-actions d-flex justify-content-center align-items-center gap-3 mb-3">
   <button class="btn rp-primary icon-btn icon-btn-sm"
           data-bs-toggle="modal" data-bs-target="#scoreModal"
           aria-label="สแกนเพื่อรับคะแนน" title="สแกนเพื่อรับคะแนน">
     <i class="fa-solid fa-qrcode"></i>
   </button>
-
   <button id="historyBtn" class="btn btn-outline-secondary icon-btn icon-btn-sm"
           aria-label="ประวัติการรับคะแนน" title="ประวัติการรับคะแนน">
     <i class="fa-regular fa-clock"></i>
@@ -117,30 +116,13 @@
 
   <!-- ===== Popular Rewards ===== -->
   <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
-    <h5 class="mb-3">ของรางวัลยอดนิยม</h5>
-    <div class="row g-3">
-      <div class="col-6 col-md-4">
-        <div class="rp-gift">
-          <span class="rp-tag rp-hit">ฮิตที่สุด 🔥</span>
-          <div class="rp-gift-img"><img src="https://placehold.co/800x600?text=Gift+1" alt=""></div>
-          <div class="rp-gift-foot"><span>ของรางวัล A</span><span class="rp-chip">70 pt</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4">
-        <div class="rp-gift">
-          <span class="rp-tag rp-new">ใหม่ ✨</span>
-          <div class="rp-gift-img"><img src="https://placehold.co/800x600?text=Gift+2" alt=""></div>
-          <div class="rp-gift-foot"><span>ของรางวัล B</span><span class="rp-chip">80 pt</span></div>
-        </div>
-      </div>
-      <div class="col-6 col-md-4 d-none d-md-block">
-        <div class="rp-gift">
-          <div class="rp-gift-img"><img src="https://placehold.co/800x600?text=Gift+3" alt=""></div>
-          <div class="rp-gift-foot"><span>ของรางวัล C</span><span class="rp-chip">100 pt</span></div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <h5 class="mb-2">ของรางวัล</h5>
+
+  <!-- Horizontal reward rail -->
+  <div id="rewardRail" class="rp-reward-rail">
+    <!-- JS จะ render การ์ดให้ -->
+  </div>
+</section>
 
 </main>
 
@@ -158,6 +140,14 @@
         <button class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
       </div>
       <div class="modal-body text-center">
+        <div class="modal-body text-center">
+  <div class="d-flex justify-content-center gap-2 mb-2">
+    <button id="stopScanBtn" class="btn btn-outline-danger btn-sm"
+            aria-label="หยุดกล้อง" title="หยุดกล้อง">
+      <i class="fa-solid fa-stop"></i> หยุดกล้อง
+    </button>
+  </div>
+  <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
         <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
         <hr class="my-4" />
         <div class="form-group" style="max-width:420px;margin:auto;">

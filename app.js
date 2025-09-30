@@ -5,6 +5,85 @@ const LIFF_ID = "2007053300-QoEvbXyn";
 const API_GET_SCORE = "/api/get-score";
 const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
+// --- Client calls ---
+const API_SPEND = "/api/spend"; // (ไฟล์ serverless ด้านล่าง)
+
+// ตัวอย่างข้อมูลรางวัล (แก้ไขตามจริงได้)
+const REWARDS = [
+  { id:"A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
+  { id:"B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
+  { id:"C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
+  { id:"D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
+];
+
+function renderRewards(currentScore){
+  const rail = document.getElementById("rewardRail");
+  if(!rail) return;
+  rail.innerHTML = REWARDS.map(r=>{
+    const locked = currentScore < r.cost ? " locked" : "";
+    return `
+      <div class="rp-reward-card${locked}" data-id="${r.id}" data-cost="${r.cost}">
+        <div class="rp-reward-img"><img src="${r.img}" alt="reward ${r.id}"></div>
+        <span class="rp-reward-cost">${r.cost} pt</span>
+        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${currentScore<r.cost?"disabled":""}>
+          <i class="fa-solid fa-gift"></i>
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  // delegate click
+  rail.addEventListener("click", async (ev)=>{
+    const btn = ev.target.closest(".rp-redeem-btn");
+    if(!btn) return;
+    const card = btn.closest(".rp-reward-card");
+    const id   = card.dataset.id;
+    const cost = parseInt(card.dataset.cost,10);
+    await redeemReward({ id, cost });
+  }, { once:true }); // bind ใหม่เมื่อ render ใหม่
+}
+
+async function redeemReward(reward){
+  const scoreNow = prevScore || 0;
+  if(scoreNow < reward.cost){
+    return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+  }
+
+  // ยืนยันก่อน
+  const ok = window.Swal
+    ? await Swal.fire({
+        title:"ยืนยันการแลก?",
+        html:`จะใช้ <b>${reward.cost} pt</b> แลกรางวัล <b>${reward.id}</b>`,
+        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
+      }).then(r=>r.isConfirmed)
+    : confirm(`ใช้ ${reward.cost} pt แลกรางวัล ${reward.id}?`);
+
+  if(!ok) return;
+
+  try{
+    const r = await fetch(API_SPEND, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ uid: UID, cost: reward.cost, rewardId: reward.id })
+    });
+    const j = await safeJson(r);
+    if(j.status !== "success") throw new Error(j.message || "spend failed");
+
+    await refreshUserScore();
+
+    if(window.Swal){
+      await Swal.fire({
+        title:"แลกสำเร็จ ✅",
+        html:`ใช้ไป <b>${reward.cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
+        icon:"success"
+      });
+    }else{
+      alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
+    }
+  }catch(e){
+    console.error(e); toastErr("แลกรางวัลไม่สำเร็จ");
+  }
+}
+
 
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
@@ -93,6 +172,12 @@ function bindUI(){
     if(!code) return toastErr("กรอกรหัสลับก่อน");
     await redeemCode(code, "MANUAL");
   });
+  const stopBtn = document.getElementById("stopScanBtn");
+stopBtn && stopBtn.addEventListener("click", () => {
+  stopScanner();
+  const m = bootstrap.Modal.getInstance(els.modal);
+  m && m.hide();
+});
 }
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
@@ -123,6 +208,7 @@ async function refreshUserScore(){
     const cached = Number(localStorage.getItem("lastScore") || "0");
     setPoints(cached);
   }
+  renderRewards(score);
 }
 
 function setPoints(sc){
