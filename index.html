@@ -190,6 +190,49 @@
     </div>
   </div>
 
+  <!-- Scan Modal -->
+<div class="modal fade" id="scoreModal" tabindex="-1" aria-labelledby="scoreModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h4 class="modal-title" id="scoreModalLabel">
+          <i class="fa-solid fa-qrcode"></i> เพิ่มคะแนนสะสม
+        </h4>
+        <!-- ปุ่มย้อนกลับ/ปิด -->
+        <button type="button" class="btn btn-light btn-sm" id="btnCloseScan">
+          <i class="fa-solid fa-arrow-left"></i> กลับ
+        </button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="qr-reader" style="width: 100%; max-width: 420px; margin: auto;"></div>
+        <hr class="my-4" />
+        <div class="form-group">
+          <label for="secretCode" class="form-label">หรือกรอกรหัสลับเพื่อรับคะแนน</label>
+          <input type="text" id="secretCode" class="form-control text-center" placeholder="กรอกรหัสลับ" />
+          <button id="btnSubmitSecret" class="btn btn-success mt-3">
+            <i class="fa-solid fa-check"></i> ยืนยันรับคะแนน
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- History Bottom Sheet -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-slideup modal-dialog-centered">
+    <div class="modal-content" style="background:#0E1621;color:#E8F0FE">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-clock-rotate-left"></i> ประวัติพ้อยท์</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <ul id="historyList" class="list-group list-group-flush"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
   <!-- footer -->
   <footer class="text-center my-4 small text-muted">
     © <script>document.write(new Date().getFullYear());</script> Royal Point · พัฒนาโดยสัตยา วงศ์ชมภู

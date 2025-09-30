@@ -50,33 +50,26 @@
 
   <!-- Table -->
   <div class="card border-0" style="background:var(--c-card)">
-    <div class="table-responsive">
-      <table class="table table-dark table-hover align-middle mb-0">
-  <thead>
-    <tr>
-      <th class="sort" data-key="name">ชื่อ</th>
-      <th class="sort text-end" data-key="score">คะแนน</th>
-      <th class="text-center">จัดการ</th>
-    </tr>
-  </thead>
-  <tbody id="adminTableBody"></tbody>
-</table>
-<div class="d-flex justify-content-between align-items-center small text-secondary mt-2">
-  <div id="adminInfo"></div>
-  <div>
-    <span id="adminRange"></span>
-    <span class="ms-2" id="adminPagerInfo"></span>
-  </div>
+  <div class="table-responsive rounded-3">
+  <table class="table table-dark table-hover align-middle mb-0">
+    <thead>
+      <tr>
+        <th style="width:45%">ชื่อ</th>
+        <th style="width:20%">คะแนน</th>
+        <th style="width:35%">จัดการ</th>
+      </tr>
+    </thead>
+    <tbody id="adminTableBody">
+      <!-- rows will be injected -->
+    </tbody>
+  </table>
 </div>
-<nav>
-  <ul class="pagination pagination-sm my-2" id="adminPager"></ul>
-</nav>
 
-          <!-- rows will be injected -->
-        </tbody>
-      </table>
-    </div>
-  </div>
+<div class="d-flex align-items-center justify-content-between mt-3">
+  <div class="small text-muted" id="adminInfo"></div>
+  <nav>
+    <ul class="pagination pagination-sm mb-0" id="adminPager"></ul>
+  </nav>
 </div>
 
 <!-- Adjust Modal -->
