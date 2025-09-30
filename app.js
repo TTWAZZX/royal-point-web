@@ -33,55 +33,75 @@ function renderRewards(currentScore){
   }).join("");
 
   // delegate click
-  // เดิมอาจมี { once:true } → ทำให้คลิกได้ครั้งเดียว
-rail.addEventListener("click", async (ev)=>{
-  const btn = ev.target.closest(".rp-redeem-btn");
-  if(!btn) return;
+rail.addEventListener("click", async (ev) => {
+  const btn  = ev.target.closest(".rp-redeem-btn");
+  if (!btn) return;
   const card = btn.closest(".rp-reward-card");
   const id   = card.dataset.id;
-  const cost = parseInt(card.dataset.cost,10);
-  await redeemReward({ id, cost });
+  const cost = Number(card.dataset.cost);
+  await redeemReward({ id, cost }, btn);
 });
 }
 
-async function redeemReward(reward){
-  const scoreNow = prevScore || 0;
-  if(scoreNow < reward.cost){
-    return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
-  }
+// ป้องกันกดซ้ำรัว ๆ
+let REDEEMING = false;
 
-  // ยืนยันก่อน
-  const ok = window.Swal
-    ? await Swal.fire({
-        title:"ยืนยันการแลก?",
-        html:`จะใช้ <b>${reward.cost} pt</b> แลกรางวัล <b>${reward.id}</b>`,
-        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
-      }).then(r=>r.isConfirmed)
-    : confirm(`ใช้ ${reward.cost} pt แลกรางวัล ${reward.id}?`);
+async function redeemReward(reward, btn) {
+  if (REDEEMING) return;
+  if (!UID) return toastErr("ยังไม่พร้อมใช้งาน");
+  const id   = reward?.id;
+  const cost = Math.max(0, Number(reward?.cost) || 0);
+  if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  if(!ok) return;
+  // พอแต้มก่อน
+  const scoreNow = Number(prevScore || 0);
+  if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
-  try{
-    const r = await fetch(API_SPEND, {
-      method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ uid: UID, cost: reward.cost, rewardId: reward.id })
+  // ยืนยัน
+  const confirmed = window.Swal
+    ? (await Swal.fire({
+        title: "ยืนยันการแลก?",
+        html: `จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${id}</b>`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "แลกเลย"
+      })).isConfirmed
+    : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
+  if (!confirmed) return;
+
+  // ล็อกปุ่มกันกดซ้ำ
+  REDEEMING = true;
+  const oldDisabled = btn?.disabled;
+  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+
+  try {
+    const res = await fetch(API_SPEND, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: UID, cost, rewardId: id })
     });
-    const j = await safeJson(r);
-    if(j.status !== "success") throw new Error(j.message || "spend failed");
+    const payload = await safeJson(res);
+    if (payload?.status !== "success") {
+      throw new Error(payload?.message || "spend failed");
+    }
 
-    await refreshUserScore();
+    await refreshUserScore(); // คะแนนจะถูกหักแล้วอัปเดต UI
 
-    if(window.Swal){
+    if (window.Swal) {
       await Swal.fire({
-        title:"แลกสำเร็จ ✅",
-        html:`ใช้ไป <b>${reward.cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
-        icon:"success"
+        title: "แลกสำเร็จ ✅",
+        html: `ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
+        icon: "success"
       });
-    }else{
+    } else {
       alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
     }
-  }catch(e){
-    console.error(e); toastErr("แลกรางวัลไม่สำเร็จ");
+  } catch (err) {
+    console.error(err);
+    toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
+  } finally {
+    REDEEMING = false;
+    if (btn) { btn.disabled = oldDisabled ?? false; btn.classList.remove("is-loading"); }
   }
 }
 

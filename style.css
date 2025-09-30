@@ -317,3 +317,9 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
   .rp-username{ font-size: clamp(1rem, 4.6vw, 1.3rem); }
   .rp-point-value{ font-size: clamp(1.5rem, 5.6vw, 2rem); }
 }
+
+/* เล็กลง ~50% จากตัวอักษร正文 */
+#next-tier{
+  font-size: clamp(.6rem, 2.4vw, .8rem);
+  opacity: .85;
+}
