@@ -178,3 +178,9 @@ body{
   backdrop-filter: blur(8px);
   border-radius: 12px;
 }
+
+.admin-entry{
+  position: fixed; right: 16px; bottom: 20px; z-index: 2000;
+  border-radius: 12px; padding: 12px 14px;
+}
+@media (max-width:576px){ .admin-entry{ padding: 10px 12px; } }

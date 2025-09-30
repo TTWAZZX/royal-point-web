@@ -8,6 +8,14 @@ const API_GET_SCORE = "/api/get-score";       // GET  ?uid=...
 const API_REDEEM    = "/api/redeem";          // POST { uid, code, type } -> proxy to GAS
 const API_HISTORY   = "/api/score-history";   // GET  ?uid=...
 
+// ===== Admin gate for user page =====
+const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"]; // ใส่ UID แอดมินของคุณ
+function showAdminEntry(isAdmin) {
+  const btn = document.getElementById("btnAdmin");
+  if (!btn) return;
+  btn.classList.toggle("d-none", !isAdmin);
+}
+
 // DOM refs
 const el = {
   username:    document.getElementById("username"),
@@ -55,8 +63,10 @@ async function initApp() {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login(); return; }
 
-    const prof = await liff.getProfile();
-    UID = prof.userId;
+      const prof = await liff.getProfile();
+      UID = prof.userId;
+      + showAdminEntry(ADMIN_UIDS.includes(UID));
+
     // fill UI
     if (el.username)   el.username.textContent = prof.displayName || "—";
     if (el.profilePic) el.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
