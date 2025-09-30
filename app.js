@@ -49,6 +49,33 @@ function resolveUID(){
   return uid;
 }
 
+// ถ้าไม่มี UID ให้ถามผู้ใช้ครั้งแรก แล้วจำไว้ใน localStorage
+async function ensureUID() {
+  UID = resolveUID();
+  if (UID) return UID;
+
+  if (window.Swal) {
+    const { value } = await Swal.fire({
+      title: 'กรอก UID',
+      input: 'text',
+      inputPlaceholder: 'Uxxxxxxxxxxxxxxxxxxxx',
+      inputValidator: v => !String(v || '').trim() ? 'กรุณากรอก UID' : undefined,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      confirmButtonText: 'บันทึก'
+    });
+    UID = String(value || '').trim();
+  } else {
+    UID = String(prompt('กรุณากรอก UID')).trim();
+  }
+
+  if (!UID) throw new Error('UID is empty');
+
+  localStorage.setItem('rp_uid', UID);
+  window.UID = UID;
+  return UID;
+}
+
 /* ---------- Tier utils ---------- */
 function getTier(score){
   score = Number(score||0);
@@ -364,11 +391,10 @@ function bindUI(){
 
 /* ---------- Init ---------- */
 async function initApp(){
-  // 1) UID
-  UID = resolveUID();
-  window.UID = UID;
+  // 1) ให้แน่ใจก่อนว่าเรามี UID
+  await ensureUID();          // <— เพิ่มบรรทัดนี้
 
-  // 2) bind
+  // 2) bind ปุ่ม/อีเวนต์
   bindUI();
   bindRedeemClicks();
 
@@ -380,5 +406,13 @@ async function initApp(){
     if (window.Swal) Swal.fire('ผิดพลาด','โหลดข้อมูลไม่สำเร็จ','error');
   }
 }
+
+document.getElementById('btnSwitchUser')?.addEventListener('click', async () => {
+  localStorage.removeItem('rp_uid');
+  window.UID = '';
+  await ensureUID();
+  await refreshUserScore();
+});
+
 
 document.addEventListener('DOMContentLoaded', initApp);
