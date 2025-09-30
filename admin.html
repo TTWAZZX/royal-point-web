@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Royal Point — Admin (Mobile First)</title>
+  <title>Royal Point — Admin (Mobile Cards)</title>
 
   <!-- Bootstrap + Font Awesome -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -15,88 +15,111 @@
     }
     body{background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--c-text)}
     .appbar{background:linear-gradient(90deg,#0f172a,#13243d);border-radius:18px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-    .muted{color:var(--c-mute)}
     .avatar{width:36px;height:36px;border-radius:50%;object-fit:cover}
+    .muted{color:var(--c-mute)}
+    .btn-icon{width:42px;height:42px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:12px}
+    .btn-soft{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
+    .btn-soft:hover{background:#1a2c4a}
     .search{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:var(--c-text)}
     .search:focus{box-shadow:0 0 0 .25rem rgba(57,210,192,.2);border-color:var(--c-ac)}
     .card{background:var(--c-card);border:1px solid rgba(255,255,255,.06)}
-    .btn-soft{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
-    .btn-soft:hover{background:#1a2c4a}
-    .btn-group .btn{ padding: .7rem .8rem; line-height: 1; }
-    .score-chip{display:inline-block;min-width:64px;padding:.35rem .65rem;border-radius:12px;background:#0f172a;border:1px solid rgba(255,255,255,.08);font-weight:700}
-    .table-dark td,.table-dark th{vertical-align:middle}
+    .user-card{border-radius:16px}
+    .score-chip{display:inline-block;min-width:64px;padding:.35rem .7rem;border-radius:12px;background:#0f172a;border:1px solid rgba(255,255,255,.08);font-weight:800;text-align:center}
+    .uid{max-width:56vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .name{max-width:56vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-    /* ปุ่มไอคอนล้วน ขนาดแตะง่ายบนมือถือ */
-  .btn-icon{
-    width: 42px; height: 42px;
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 0; border-radius: 12px;
-  }
-  @media (max-width: 576px){
-    .btn-icon{ width: 40px; height: 40px; }
-  }
+    /* Sticky header & search */
+    .sticky-top-safe{position:sticky;top:calc(env(safe-area-inset-top) + 8px);z-index:1025}
+    .offcanvas{--bs-offcanvas-bg: #0f172a; color:#e6f2ff;}
 
-    /* Mobile-first touch targets */
-    @media (max-width: 576px){
-      .appbar{border-radius:0;margin: -8px -8px 8px}
-      .search{font-size:1rem;padding:.8rem .95rem;border-radius:12px}
-      .table thead th{font-size:.95rem}
-      .table td,.table th{padding:1rem .8rem}
-      .btn-group .btn{padding:.7rem .8rem;font-size:1.05rem;line-height:1}
+    @media (max-width:576px){
+      .appbar{border-radius:0;margin:-8px -8px 8px}
+      .btn-icon{width:40px;height:40px}
+      .search{font-size:1rem;padding:.85rem 1rem;border-radius:12px}
     }
-    /* ติดขอบบน: หัว Appbar + ช่องค้นหา */
-.sticky-top-safe{
-  position: sticky;
-  top: calc(env(safe-area-inset-top) + 8px);
-  z-index: 1025;
-}
-.sticky-group-gap{ gap: 8px; }
   </style>
 </head>
 <body>
 <div class="container py-3">
 
-  <!-- App Bar -->
+  <!-- App Bar (sticky) -->
   <div class="appbar d-flex align-items-center gap-3 mb-3 sticky-top-safe">
     <div class="d-flex align-items-center gap-2">
       <img id="adminAvatar" src="https://placehold.co/36x36" class="avatar" alt="avatar">
       <div>
         <div class="fw-bold" id="adminName">—</div>
-        <div class="small muted" id="adminUid">UID: —</div>
+        <div class="small muted uid" id="adminUid">UID: —</div>
       </div>
     </div>
     <div class="ms-auto d-flex align-items-center gap-2">
-  <!-- โหลดใหม่: ไอคอนล้วน -->
-  <button id="btnReload" class="btn btn-info btn-icon" title="โหลดใหม่" aria-label="โหลดใหม่">
-    <i class="fa-solid fa-rotate"></i>
-  </button>
-  <!-- กลับหน้าผู้ใช้: ไอคอนล้วน -->
-  <button id="btnLogout" class="btn btn-outline-light btn-icon" title="กลับหน้าผู้ใช้" aria-label="กลับหน้าผู้ใช้">
-    <i class="fa-solid fa-right-from-bracket"></i>
-  </button>
-</div>
+      <button id="btnReload" class="btn btn-info btn-icon" title="โหลดใหม่" aria-label="โหลดใหม่">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+      <button id="btnBackUser" class="btn btn-outline-light btn-icon" title="กลับหน้าผู้ใช้" aria-label="กลับหน้าผู้ใช้">
+        <i class="fa-solid fa-house"></i>
+      </button>
+    </div>
+  </div>
 
-  <!-- Search -->
+  <!-- Search (sticky) -->
   <div class="mb-3 sticky-top-safe">
-  <input id="txtSearch" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
-</div>
+    <input id="txtSearch" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
+  </div>
 
+  <!-- List as Cards -->
+  <div id="listUsers" class="vstack gap-2 mb-5">
+    <!-- สคริปต์จะเติมการ์ดรายการ -->
+  </div>
 
-  <!-- Users Table (Mobile-first: ชื่อ / คะแนน / จัดการ) -->
-  <div class="card border-0">
-    <div class="table-responsive">
-      <table class="table table-dark table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th style="width:52%">ชื่อ</th>
-            <th class="text-end" style="width:18%">คะแนน</th>
-            <th class="text-end" style="width:30%">จัดการ</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyUsers">
-          <!-- แถวข้อมูลเติมด้วยสคริปต์ -->
-        </tbody>
-      </table>
+  <!-- Bottom Sheet: Manage -->
+  <div class="offcanvas offcanvas-bottom" tabindex="-1" id="sheetManage" aria-labelledby="sheetManageLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="sheetManageLabel">
+        จัดการ — <span id="sheetName">—</span>
+      </h5>
+      <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div class="small muted uid" id="sheetUid">UID: —</div>
+        <div><span class="score-chip" id="sheetScore">0</span></div>
+      </div>
+
+      <!-- Quick adjusts -->
+      <div class="mb-3">
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-soft" data-delta="-10">−10</button>
+          <button class="btn btn-soft" data-delta="-5">−5</button>
+          <button class="btn btn-soft" data-delta="-1">−1</button>
+          <button class="btn btn-soft" data-delta="+1">+1</button>
+          <button class="btn btn-soft" data-delta="+5">+5</button>
+          <button class="btn btn-soft" data-delta="+10">+10</button>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="row g-2">
+        <div class="col-6">
+          <button class="btn btn-secondary w-100 py-3" id="actHistory">
+            <i class="fa-regular fa-clock me-1"></i> ประวัติ
+          </button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-warning w-100 py-3" id="actMinus">
+            <i class="fa-solid fa-circle-minus me-1"></i> หักคะแนน
+          </button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-success w-100 py-3" id="actPlus">
+            <i class="fa-solid fa-circle-plus me-1"></i> เพิ่มคะแนน
+          </button>
+        </div>
+        <div class="col-6">
+          <button class="btn btn-danger w-100 py-3" id="actReset">
+            <i class="fa-solid fa-broom me-1"></i> ล้างคะแนน
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -105,15 +128,11 @@
     <div class="modal-dialog modal-dialog-scrollable modal-lg">
       <div class="modal-content bg-dark text-light">
         <div class="modal-header border-0">
-          <h5 class="modal-title">
-            <i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info" id="historyUser">—</span>
-          </h5>
+          <h5 class="modal-title"><i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info" id="historyUser">—</span></h5>
           <button class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body pt-0">
-          <div id="historyList" class="list-group list-group-flush">
-            <!-- รายการประวัติเติมโดยสคริปต์ -->
-          </div>
+          <div id="historyList" class="list-group list-group-flush"></div>
         </div>
         <div class="modal-footer border-0">
           <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
@@ -131,7 +150,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<!-- ===== Admin Script (inline, mobile-first + no UID column) ===== -->
+<!-- ===== Admin Script (mobile-first cards + bottom sheet) ===== -->
 <script>
 /* ============ CONFIG ============ */
 const LIFF_ID = "2007053300-QoEvbXyn";
@@ -139,31 +158,24 @@ const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid=
 const API_SCORE_HISTORY = "/api/score-history";  // GET  ?uid=
 const API_ADMIN_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+const USER_PAGE = "/index.html";
 
 /* UI helpers */
 const overlay = {
-  show: (text = "กำลังทำงาน...") => {
-    if (window.$?.LoadingOverlay) {
-      $.LoadingOverlay("show", { image:"", fontawesome:"fa fa-spinner fa-spin", text });
-    } else {
-      if (document.getElementById("admin-ovl")) return;
-      const el = document.createElement("div");
-      el.id = "admin-ovl";
-      el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff";
-      el.innerHTML = '<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>'+text+'</div>';
-      document.body.appendChild(el);
-    }
+  show:(text="กำลังทำงาน...")=>{
+    if (window.$?.LoadingOverlay) $.LoadingOverlay("show",{image:"",fontawesome:"fa fa-spinner fa-spin",text});
+    else { if(document.getElementById("admin-ovl"))return; const el=document.createElement("div"); el.id="admin-ovl";
+      el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff";
+      el.innerHTML='<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>'+text+'</div>'; document.body.appendChild(el);}
   },
-  hide: () => {
-    if (window.$?.LoadingOverlay) $.LoadingOverlay("hide");
-    else document.getElementById("admin-ovl")?.remove();
-  }
+  hide:()=>{ if (window.$?.LoadingOverlay) $.LoadingOverlay("hide"); else document.getElementById("admin-ovl")?.remove(); }
 };
 
 /* ============ STATE ============ */
 let ADMIN_UID = "";
 let ALL_USERS = [];
 let FILTERED  = [];
+let CURRENT   = { uid:"", name:"", score:0 };
 
 /* ============ INIT ============ */
 $(async function () {
@@ -174,7 +186,6 @@ $(async function () {
 
     const prof = await liff.getProfile();
     ADMIN_UID = prof.userId || "";
-
     $("#adminUid").text(ADMIN_UID ? "UID: " + ADMIN_UID : "UID: —");
     $("#adminName").text(prof.displayName || "—");
     $("#adminAvatar").attr("src", prof.pictureUrl || "https://placehold.co/36x36");
@@ -184,94 +195,101 @@ $(async function () {
   } catch (err) {
     console.error(err);
     Swal.fire("ผิดพลาด", "เริ่มต้นระบบ LIFF/โหลดข้อมูลไม่สำเร็จ", "error");
-  } finally {
-    overlay.hide();
-  }
+  } finally { overlay.hide(); }
 });
 
 /* ============ EVENTS ============ */
-// กำหนดปลายทางหน้าผู้ใช้ตามโปรเจกต์ของคุณ (ถ้าอยู่รูทก็ /index.html)
-const USER_PAGE = "/index.html";
-
 function bindEvents() {
-  // กลับหน้าผู้ใช้ (ไม่ logout)
-  $("#btnLogout").on("click", () => {
-    window.location.href = USER_PAGE;
-  });
-
-  $("#btnReload").on("click", async () => { await reloadAllUsers(); });
+  $("#btnBackUser").on("click", ()=>{ window.location.href = USER_PAGE; });
+  $("#btnReload").on("click", async ()=>{ await reloadAllUsers(); });
 
   $("#txtSearch").on("input", function(){
-    const q = ($(this).val() || "").trim().toLowerCase();
+    const q = ($(this).val()||"").trim().toLowerCase();
     FILTERED = !q ? [...ALL_USERS] : ALL_USERS.filter(u =>
-      (u.name || "").toLowerCase().includes(q) || String(u.uid || "").toLowerCase().includes(q)
+      (u.name||"").toLowerCase().includes(q) || String(u.uid||"").toLowerCase().includes(q)
     );
-    renderTable(FILTERED);
+    renderList(FILTERED);
   });
 
-  $("#tbodyUsers")
-    .on("click", ".btn-history", async function(){ const uid=$(this).data("uid"), name=$(this).data("name")||uid; await openHistory(uid,name); })
-    .on("click", ".btn-plus",    async function(){ const uid=$(this).data("uid"), name=$(this).data("name")||uid; await promptAdjust(uid,name,+1); })
-    .on("click", ".btn-minus",   async function(){ const uid=$(this).data("uid"), name=$(this).data("name")||uid; await promptAdjust(uid,name,-1); })
-    .on("click", ".btn-reset",   async function(){ const uid=$(this).data("uid"), name=$(this).data("name")||uid; await confirmReset(uid,name); });
+  // bottom sheet actions
+  $("#sheetManage .btn-soft").on("click", async function(){
+    const delta = Number($(this).data("delta"));
+    if (!delta) return;
+    await quickAdjust(CURRENT.uid, CURRENT.name, delta);
+  });
+  $("#actHistory").on("click", async ()=>{ await openHistory(CURRENT.uid, CURRENT.name); });
+  $("#actPlus").on("click", async ()=>{ await promptAdjust(CURRENT.uid, CURRENT.name, +1); });
+  $("#actMinus").on("click", async ()=>{ await promptAdjust(CURRENT.uid, CURRENT.name, -1); });
+  $("#actReset").on("click", async ()=>{ await confirmReset(CURRENT.uid, CURRENT.name); });
 }
-
 
 /* ============ LOAD & RENDER ============ */
-async function reloadAllUsers() {
-  if (!ADMIN_UID) { ALL_USERS = []; FILTERED = []; renderTable(FILTERED); return; }
+async function reloadAllUsers(){
+  if (!ADMIN_UID){ ALL_USERS=[]; FILTERED=[]; renderList(FILTERED); return; }
   overlay.show("กำลังโหลดรายชื่อผู้ใช้...");
-  try {
-    const res  = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, { cache: "no-store" });
+  try{
+    const res = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, {cache:"no-store"});
     const json = await res.json();
     if (json.status === "success") {
-      ALL_USERS = (json.data || []).map(x => ({ uid: x.uid, name: x.name || "(ไม่ระบุ)", score: Number(x.score || 0) }));
-      ALL_USERS.sort((a,b) => b.score - a.score);
+      ALL_USERS = (json.data||[]).map(x=>({ uid:x.uid, name:x.name || "(ไม่ระบุ)", score:Number(x.score||0) }));
+      ALL_USERS.sort((a,b)=> b.score - a.score);
       FILTERED = [...ALL_USERS];
-      renderTable(FILTERED);
+      renderList(FILTERED);
     } else {
       Swal.fire("โหลดข้อมูลไม่สำเร็จ", json.message || "Apps Script error", "error");
-      ALL_USERS = []; FILTERED = []; renderTable(FILTERED);
+      ALL_USERS=[]; FILTERED=[]; renderList(FILTERED);
     }
-  } catch (e) {
-    console.error(e);
-    Swal.fire("ผิดพลาด", "ไม่สามารถดึงข้อมูลผู้ใช้ได้", "error");
-  } finally { overlay.hide(); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ไม่สามารถดึงข้อมูลผู้ใช้ได้","error"); }
+  finally{ overlay.hide(); }
 }
 
-/* >>> เปลี่ยนรูปแบบตาราง: ไม่มีคอลัมน์ UID และผูก data-uid ที่ <tr> <<< */
-function renderTable(rows){
-  const $tbody = $("#tbodyUsers");
-  if (!rows || rows.length === 0) {
-    $tbody.html('<tr><td colspan="3" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>');
+function renderList(rows){
+  const box = document.getElementById("listUsers");
+  if (!rows || rows.length===0){
+    box.innerHTML = `<div class="text-center text-muted py-5">— ไม่พบข้อมูล —</div>`;
     return;
   }
-  let html = "";
-  for (const r of rows){
-    html += `
-      <tr data-uid="${attr(r.uid)}">
-        <td>
-          <div class="fw-bold">${escapeHtml(r.name || "(ไม่ระบุ)")}</div>
-        </td>
-        <td class="text-end"><span class="score-chip">${Number(r.score || 0)}</span></td>
-        <td class="text-end">
-          <div class="btn-group">
-            <button class="btn btn-soft btn-sm btn-history" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="ประวัติ"><i class="fa-regular fa-clock"></i></button>
-            <button class="btn btn-soft btn-sm btn-minus"   data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="หักคะแนน"><i class="fa-solid fa-circle-minus"></i></button>
-            <button class="btn btn-soft btn-sm btn-plus"    data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="เพิ่มคะแนน"><i class="fa-solid fa-circle-plus"></i></button>
-            <button class="btn btn-danger btn-sm btn-reset" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="ล้างคะแนนทั้งหมด"><i class="fa-solid fa-broom"></i></button>
+  box.innerHTML = rows.map(r => `
+    <div class="card user-card" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" data-score="${Number(r.score||0)}">
+      <div class="card-body d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center gap-2">
+          <div class="avatar bg-secondary d-flex align-items-center justify-content-center" style="width:40px;height:40px;border-radius:50%">
+            <span>${escapeHtml((r.name||"?").charAt(0).toUpperCase())}</span>
           </div>
-        </td>
-      </tr>`;
-  }
-  $tbody.html(html);
+          <div>
+            <div class="fw-semibold name">${escapeHtml(r.name||"(ไม่ระบุ)")}</div>
+            <div class="small muted uid">${escapeHtml(r.uid)}</div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="score-chip">${Number(r.score||0)}</span>
+          <button class="btn btn-soft btn-icon btn-manage" title="จัดการ" aria-label="จัดการ">
+            <i class="fa-solid fa-ellipsis"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  // attach manage opener
+  $("#listUsers .btn-manage").off("click").on("click", function(){
+    const card = $(this).closest(".user-card");
+    CURRENT.uid   = card.data("uid");
+    CURRENT.name  = card.data("name");
+    CURRENT.score = Number(card.data("score")||0);
+    $("#sheetName").text(CURRENT.name);
+    $("#sheetUid").text("UID: " + CURRENT.uid);
+    $("#sheetScore").text(CURRENT.score);
+    const sheet = new bootstrap.Offcanvas(document.getElementById("sheetManage"));
+    sheet.show();
+  });
 }
 
 /* ============ ACTIONS ============ */
 async function openHistory(uid, name){
   overlay.show("กำลังโหลดประวัติ...");
   try{
-    const res  = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`);
+    const res = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`);
     const json = await res.json();
     if (json.status === "success"){
       const list = json.data || [];
@@ -279,106 +297,76 @@ async function openHistory(uid, name){
       if (!list.length){
         $("#historyList").html('<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>');
       } else {
-        $("#historyList").html(list.map(i => {
-          const ts = formatDateTime(i.ts);
-          const p  = Number(i.point || 0);
-          const sign = p >= 0 ? "+" : "";
-          const color = p >= 0 ? "#22c55e" : "#ef4444";
+        $("#historyList").html(list.map(i=>{
+          const ts = formatDateTime(i.ts), p = Number(i.point||0);
+          const sign = p>=0?"+":""; const color = p>=0?"#22c55e":"#ef4444";
           return `<div class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
-                    <div><div class="fw-bold">${escapeHtml(i.type || "—")}</div><div class="small muted">${escapeHtml(i.code || "")}</div></div>
-                    <div class="text-end"><div style="color:${color}; font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
+                    <div><div class="fw-bold">${escapeHtml(i.type||"—")}</div><div class="small muted">${escapeHtml(i.code||"")}</div></div>
+                    <div class="text-end"><div style="color:${color};font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
                   </div>`;
         }).join(""));
       }
       new bootstrap.Modal(document.getElementById("historyModal")).show();
-    } else {
-      Swal.fire("ผิดพลาด", json.message || "โหลดประวัติไม่สำเร็จ", "error");
-    }
-  }catch(e){
-    console.error(e); Swal.fire("ผิดพลาด", "ไม่สามารถโหลดประวัติได้", "error");
-  } finally { overlay.hide(); }
+    } else { Swal.fire("ผิดพลาด", json.message || "โหลดประวัติไม่สำเร็จ", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ไม่สามารถโหลดประวัติได้","error"); }
+  finally{ overlay.hide(); }
+}
+
+async function quickAdjust(uid, name, delta){
+  overlay.show("กำลังอัปเดตคะแนน...");
+  try{
+    const res = await fetch(API_ADMIN_ADJUST, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: "Quick adjust" })
+    });
+    const json = await res.json();
+    if (json.status === "success"){
+      navigator.vibrate?.(15);
+      const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
+      updateRowScore(uid, newScore);
+      $("#sheetScore").text(newScore);
+      Swal.fire("สำเร็จ", `${delta>0? "เพิ่ม":"หัก"} ${Math.abs(delta)} คะแนนแล้ว`, "success");
+    } else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถปรับคะแนนได้", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ","error"); }
+  finally{ overlay.hide(); }
 }
 
 async function promptAdjust(uid, name, direction){
-  const title = direction > 0 ? "เพิ่มคะแนน" : "หักคะแนน";
-  const { value: formValues } = await Swal.fire({
-    title, icon: direction > 0 ? "success" : "warning",
-    html:'<input id="adj-amount" type="number" class="swal2-input" placeholder="จำนวนคะแนน" />' +
-         '<input id="adj-note"   type="text"   class="swal2-input" placeholder="หมายเหตุ (ถ้ามี)" />',
-    showCancelButton: true, confirmButtonText: "ยืนยัน", cancelButtonText: "ยกเลิก",
-    preConfirm: () => {
-      const amt = Number(document.getElementById("adj-amount").value || "0");
-      const note = document.getElementById("adj-note").value || "";
-      if (!amt || amt <= 0) { Swal.showValidationMessage("กรอกจำนวนคะแนน (>0)"); return false; }
-      return { amt, note };
-    }
+  const title = direction>0? "เพิ่มคะแนน":"หักคะแนน";
+  const { value: v } = await Swal.fire({
+    title, icon: direction>0? "success":"warning",
+    html:'<input id="adj-amount" type="number" class="swal2-input" placeholder="จำนวนคะแนน" />'+
+         '<input id="adj-note" type="text" class="swal2-input" placeholder="หมายเหตุ (ถ้ามี)" />',
+    showCancelButton:true, confirmButtonText:"ยืนยัน", cancelButtonText:"ยกเลิก",
+    preConfirm:()=>{ const amt=Number(document.getElementById("adj-amount").value||"0"); const note=document.getElementById("adj-note").value||""; if(!amt||amt<=0){ Swal.showValidationMessage("กรอกจำนวนคะแนน (>0)"); return false;} return {amt,note}; }
   });
-  if (!formValues) return;
-
-  const delta = direction > 0 ? formValues.amt : -formValues.amt;
-  overlay.show("กำลังอัปเดตคะแนน...");
-  try{
-    const res  = await fetch(API_ADMIN_ADJUST, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: formValues.note || "" })
-    });
-    const json = await res.json();
-    if (json.status === "success") {
-      navigator.vibrate?.(20);
-      Swal.fire("สำเร็จ", `${title}ให้ ${escapeHtml(name)} จำนวน ${Math.abs(delta)} คะแนนแล้ว`, "success");
-      const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
-      updateRowScore(uid, newScore);
-    } else {
-      Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถปรับคะแนนได้", "error");
-    }
-  }catch(e){
-    console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error");
-  } finally { overlay.hide(); }
+  if (!v) return;
+  const delta = direction>0? v.amt : -v.amt;
+  await quickAdjust(uid, name, delta);
 }
 
 async function confirmReset(uid, name){
-  const ok = await Swal.fire({
-    title: "ล้างคะแนนทั้งหมด?",
-    html: `คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`,
-    icon: "warning", showCancelButton: true, confirmButtonText: "ยืนยัน", cancelButtonText: "ยกเลิก"
-  });
+  const ok = await Swal.fire({ title:"ล้างคะแนนทั้งหมด?", html:`คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`, icon:"warning", showCancelButton:true, confirmButtonText:"ยืนยัน", cancelButtonText:"ยกเลิก" });
   if (!ok.isConfirmed) return;
-
   overlay.show("กำลังล้างคะแนน...");
   try{
-    const res  = await fetch(API_ADMIN_RESET, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note: "Admin reset via UI" })
-    });
+    const res = await fetch(API_ADMIN_RESET, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note:"Admin reset via UI" }) });
     const json = await res.json();
-    if (json.status === "success") {
-     navigator.vibrate?.(20);
-     Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success");
-     updateRowScore(uid, 0);
-    } else {
-      Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error");
-    }
-  }catch(e){
-    console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error");
-  } finally { overlay.hide(); }
+    if (json.status === "success"){ navigator.vibrate?.(20); updateRowScore(uid,0); $("#sheetScore").text(0); Swal.fire("สำเร็จ",`ล้างคะแนนของ ${escapeHtml(name)} แล้ว`,"success"); }
+    else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error"); }
+  }catch(e){ console.error(e); Swal.fire("ผิดพลาด","ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ","error"); }
+  finally{ overlay.hide(); }
 }
 
 /* ============ UTIL ============ */
-function getLocalScore(uid){ const f = ALL_USERS.find(x => x.uid === uid); return f ? Number(f.score || 0) : 0; }
-
-/* >>> อัปเดตแถวด้วย data-uid (ไม่พึ่งคอลัมน์ UID อีกต่อไป) <<< */
+function getLocalScore(uid){ const f = ALL_USERS.find(x=>x.uid===uid); return f? Number(f.score||0):0; }
 function updateRowScore(uid, newScore){
-  for (const arr of [ALL_USERS, FILTERED]){ const i = arr.findIndex(x => x.uid === uid); if (i !== -1) arr[i].score = Number(newScore || 0); }
-  const $row = $("#tbodyUsers tr").filter(function(){ return $(this).data("uid") === uid; });
-  if ($row.length){
-    $row.find(".score-chip").text(Number(newScore || 0));
-    $row.addClass("table-success");
-    setTimeout(()=> $row.removeClass("table-success"), 800);
-  }
+  for (const arr of [ALL_USERS, FILTERED]){ const i=arr.findIndex(x=>x.uid===uid); if(i!==-1) arr[i].score=Number(newScore||0); }
+  const card = $(`.user-card[data-uid="${uid}"]`);
+  if (card.length){ card.attr("data-score", Number(newScore||0)); card.find(".score-chip").text(Number(newScore||0)); card.addClass("border-success");
+    setTimeout(()=> card.removeClass("border-success"), 700); }
 }
-function escapeHtml(s){ return String(s||"").replace(/[&<>"'`=\/]/g, a => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a])); }
+function escapeHtml(s){ return String(s||"").replace(/[&<>"'`=\/]/g, a=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a])); }
 function attr(s){ return String(s||"").replace(/"/g,"&quot;"); }
 function pad(n){ return n<10? "0"+n : String(n); }
 function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
