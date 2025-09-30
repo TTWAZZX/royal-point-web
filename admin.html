@@ -1,45 +1,67 @@
 <!doctype html>
 <html lang="th">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Royal Point — Admin</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
+  <style>
+    :root{
+      --c-bg:#0b1220;--c-card:#101a2b;--c-soft:#13243d;--c-text:#cfe5ff;--c-mute:#87a6c6;--c-ac:#39d2c0;
+    }
+    body{background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--c-text);}
+    .appbar{background:linear-gradient(90deg,#0f172a,#13243d);border-radius:18px;padding:14px 16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .badge-pill{border-radius:999px;padding:.45rem .8rem}
+    .btn-pill{border-radius:14px}
+    .table-dark th,.table-dark td{vertical-align:middle;}
+    .btn-icon{width:36px;height:36px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center}
+    .btn-ghost{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:#e6f2ff}
+    .btn-ghost:hover{background:#1a2c4a}
+    .skeleton{height:38px;border-radius:8px;background:linear-gradient(90deg,#0f1a2c 25%,#172742 37%,#0f1a2c 63%);background-size:400% 100%;animation:shimmer 1.2s infinite}
+    @keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+    .search{background:var(--c-soft);border:1px solid rgba(255,255,255,.06);color:var(--c-text);}
+    .search:focus{box-shadow:0 0 0 .25rem rgba(57,210,192,.2);border-color:var(--c-ac)}
+  </style>
 </head>
-<body class="bg-app">
-
+<body>
 <div class="container py-3">
+
   <!-- App bar -->
-  <div class="header-card d-flex align-items-center gap-3">
-    <div class="fs-5"><i class="fa-solid fa-shield-halved me-2 text-info"></i><b>Royal Point — Admin</b></div>
-    <span class="text-secondary small">จัดการผู้ใช้ · ปรับ/ลบคะแนน · ประวัติ</span>
-    <div class="ms-auto d-flex gap-2">
-      <a href="/" class="btn btn-ghost"><i class="fa-solid fa-house"></i> กลับหน้าหลัก</a>
-      <button id="btnExport" class="btn btn-success"><i class="fa-solid fa-file-arrow-down"></i> Export CSV</button>
+  <div class="appbar d-flex align-items-center gap-3 mb-3">
+    <div class="d-flex align-items-center gap-3">
+      <span class="fs-5"><i class="fa-solid fa-shield-halved me-2 text-info"></i><b>Royal Point — Admin</b></span>
+      <span class="text-secondary small">จัดการผู้ใช้ · ปรับ/ลบคะแนน · ดูประวัติ</span>
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <a href="/" class="btn btn-ghost btn-pill"><i class="fa-solid fa-house"></i> กลับหน้าหลัก</a>
+      <button id="btnExportCsv" class="btn btn-success btn-pill"><i class="fa-solid fa-file-arrow-down"></i> Export CSV</button>
     </div>
   </div>
 
   <!-- Filters -->
-  <div class="d-flex gap-2 mt-3">
-    <input id="q" class="form-control" placeholder="ค้นหา ชื่อ หรือ UID...">
-    <button id="btnReload" class="btn btn-info"><i class="fa-solid fa-rotate"></i> โหลดใหม่</button>
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <div class="flex-grow-1">
+      <input id="q" class="form-control search" placeholder="ค้นหา ชื่อ หรือ UID..." />
+    </div>
+    <button id="btnReload" class="btn btn-info btn-pill"><i class="fa-solid fa-rotate"></i> โหลดใหม่</button>
   </div>
 
   <!-- Table -->
-  <div class="card-pane mt-3 p-0">
+  <div class="card border-0" style="background:var(--c-card)">
     <div class="table-responsive">
-      <table class="table table-dark table-hover mb-0">
+      <table class="table table-dark table-hover align-middle mb-0">
         <thead>
-        <tr>
-          <th style="width:55%">ชื่อ</th>
-          <th style="width:15%" class="text-end">คะแนน</th>
-          <th style="width:30%" class="text-end">จัดการ</th>
-        </tr>
+          <tr>
+            <th style="width:55%">ชื่อ</th>
+            <th style="width:15%" class="text-end">คะแนน</th>
+            <th style="width:30%" class="text-end">จัดการ</th>
+          </tr>
         </thead>
-        <tbody id="tbody"></tbody>
+        <tbody id="tbody">
+          <!-- rows will be injected -->
+        </tbody>
       </table>
     </div>
   </div>
@@ -48,9 +70,9 @@
 <!-- Adjust Modal -->
 <div class="modal fade" id="adjustModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
-    <div class="modal-content modal-dark">
+    <div class="modal-content" style="background:#0f172a;color:#e6f2ff;border:1px solid rgba(255,255,255,.06)">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-sliders me-2 text-info"></i> ปรับคะแนน</h5>
+        <h5 class="modal-title"><i class="fa-solid fa-sliders me-2 text-info"></i>ปรับคะแนน</h5>
         <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -77,23 +99,7 @@
   </div>
 </div>
 
-<!-- History Modal -->
-<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable">
-    <div class="modal-content modal-dark">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="fa-solid fa-clock-rotate-left me-2 text-info"></i> ประวัติคะแนน</h5>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="histUser" class="small text-secondary mb-2">—</div>
-        <div id="histBody" class="vstack gap-2"></div>
-      </div>
-    </div>
-  </div>
-</div>
-
+<script defer src="/admin.page.js?v=2"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script defer src="/admin.page.js?v=6"></script>
 </body>
 </html>
