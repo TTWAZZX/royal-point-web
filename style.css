@@ -361,3 +361,45 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
   width:100%; height:64px; border-radius:16px; font-weight:700;
 }
 @media (max-width:380px){ .rp-actions-wide .act-btn{ height:56px; font-size:.95rem; } }
+
+/* ==== Rewards rail ==== */
+.rp-reward-rail{
+  display:flex; gap:14px; overflow-x:auto; padding:6px 2px 10px;
+  scroll-snap-type:x mandatory;
+}
+.rp-reward-rail::-webkit-scrollbar{ height:8px }
+.rp-reward-rail::-webkit-scrollbar-thumb{ background:#cdeee0; border-radius:999px }
+
+.rp-reward-card{
+  position:relative; flex:0 0 auto; min-width:200px; max-width:240px;
+  border:1px solid var(--border); border-radius:18px; background:#fff;
+  box-shadow:0 8px 22px rgba(2,120,87,.07); overflow:hidden; scroll-snap-align:start;
+}
+.rp-reward-img{ aspect-ratio:4/3; background:#f7faf9 }
+.rp-reward-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+.rp-reward-body{ background:#fff }
+.rp-reward-cost{
+  background:#f0fdfa; border:1px solid var(--border);
+  padding:.25rem .55rem; border-radius:999px; font-weight:800; color:#047857; font-size:.85rem;
+}
+
+/* ปุ่มแลก (มุมขวาล่าง) */
+.rp-redeem-btn{
+  position:absolute; right:10px; bottom:10px;
+  width:42px; height:42px; border-radius:12px; border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center; background:#fff; color:#065f46;
+}
+.rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
+
+/* แต้มไม่พอ: ยังเห็นรูปชัด พร้อมฟิล์มบาง ๆ */
+.rp-reward-card.locked::after{
+  content:"คะแนนไม่พอ"; position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.55));
+  color:#475569; font-weight:800; letter-spacing:.3px;
+}
+
+/* เล็กน้อย: ให้ปุ่มสแกน/ประวัติ กว้างเท่าการ์ดโปรไฟล์ */
+.rp-actions-wide .act-btn{ width:100%; height:64px; border-radius:16px; font-weight:700; }
+@media (max-width:380px){ .rp-actions-wide .act-btn{ height:56px; font-size:.95rem } }

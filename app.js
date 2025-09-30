@@ -8,127 +8,6 @@ const API_HISTORY   = "/api/score-history";
 // --- Client calls ---
 const API_SPEND = "/api/spend"; // (ไฟล์ serverless ด้านล่าง)
 
-// ตัวอย่างข้อมูลรางวัล (แก้ไขตามจริงได้)
-const REWARDS = [
-  { id:"A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
-  { id:"B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
-  { id:"C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
-  { id:"D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
-];
-
-// ===== Rewards (dynamic) =====
-const API_REWARDS = "/api/rewards";
-let REWARDS_CACHE = [];   // [{id,name,img,cost,active}...]
-
-async function loadRewards(){
-  try{
-    const r = await fetch(API_REWARDS, { cache:"no-store" });
-    const j = await safeJson(r);
-    if(j.status === "success" && Array.isArray(j.data)){
-      REWARDS_CACHE = j.data.filter(x => x.active !== "0" && x.active !== 0 && x.active !== false);
-    }else{
-      REWARDS_CACHE = [];
-    }
-  }catch(e){ console.error(e); REWARDS_CACHE = []; }
-}
-
-function renderRewards(currentScore){
-  const rail = document.getElementById("rewardRail");
-  if(!rail) return;
-  // โชว์ “ครบทุกชิ้น” แม้แต้มไม่พอ
-  rail.innerHTML = (REWARDS_CACHE||[]).map(r=>{
-    const locked = Number(currentScore) < Number(r.cost);
-    return `
-      <div class="rp-reward-card ${locked?'locked':''}" data-id="${r.id}" data-cost="${r.cost}">
-        <div class="rp-reward-img">
-          <img src="${r.img || 'https://placehold.co/640x480?text=Reward'}" alt="${(r.name||r.id)}">
-        </div>
-        <div class="rp-reward-body p-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="fw-bold text-truncate">${escapeHtml(r.name||r.id)}</div>
-            <span class="rp-reward-cost">${Number(r.cost||0)} pt</span>
-          </div>
-        </div>
-        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked?"disabled":""}>
-          <i class="fa-solid fa-gift"></i>
-        </button>
-      </div>
-    `;
-  }).join("");
-
-  // delegate click (ไม่มี {once:true})
-  rail.addEventListener("click", async (ev)=>{
-    const btn  = ev.target.closest(".rp-redeem-btn"); if(!btn) return;
-    const card = btn.closest(".rp-reward-card");
-    const id   = card.dataset.id;
-    const cost = Number(card.dataset.cost);
-    await redeemReward({ id, cost }, btn);
-  });
-}
-
-// ป้องกันกดซ้ำรัว ๆ
-let REDEEMING = false;
-
-async function redeemReward(reward, btn) {
-  if (REDEEMING) return;
-  if (!UID) return toastErr("ยังไม่พร้อมใช้งาน");
-  const id   = reward?.id;
-  const cost = Math.max(0, Number(reward?.cost) || 0);
-  if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
-
-  // พอแต้มก่อน
-  const scoreNow = Number(prevScore || 0);
-  if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
-
-  // ยืนยัน
-  const confirmed = window.Swal
-    ? (await Swal.fire({
-        title: "ยืนยันการแลก?",
-        html: `จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${id}</b>`,
-        icon: "question",
-        showCancelButton: true,
-        confirmButtonText: "แลกเลย"
-      })).isConfirmed
-    : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
-  if (!confirmed) return;
-
-  // ล็อกปุ่มกันกดซ้ำ
-  REDEEMING = true;
-  const oldDisabled = btn?.disabled;
-  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
-
-  try {
-    const res = await fetch(API_SPEND, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: UID, cost, rewardId: id })
-    });
-    const payload = await safeJson(res);
-    if (payload?.status !== "success") {
-      throw new Error(payload?.message || "spend failed");
-    }
-
-    await refreshUserScore(); // คะแนนจะถูกหักแล้วอัปเดต UI
-
-    if (window.Swal) {
-      await Swal.fire({
-        title: "แลกสำเร็จ ✅",
-        html: `ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
-        icon: "success"
-      });
-    } else {
-      alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
-    }
-  } catch (err) {
-    console.error(err);
-    toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
-  } finally {
-    REDEEMING = false;
-    if (btn) { btn.disabled = oldDisabled ?? false; btn.classList.remove("is-loading"); }
-  }
-}
-
-
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
 
@@ -510,3 +389,149 @@ function launchConfetti(){
     })();
   }catch{}
 }
+
+/* ===== Rewards (STATIC) + Redeem flow ===== */
+
+/** 1) ของรางวัลแบบเดิม (แก้ได้ตามต้องการ) */
+const REWARDS = [
+  { id: "COUPON_50",  name: "คูปองส่วนลด 50฿",  img: "https://placehold.co/640x480?text=Coupon+50",  cost: 50  },
+  { id: "DRINK",      name: "เครื่องดื่ม 1 แก้ว", img: "https://placehold.co/640x480?text=Drink",     cost: 120 },
+  { id: "T_SHIRT",    name: "เสื้อยืดสวยๆ",      img: "https://placehold.co/640x480?text=T-Shirt",   cost: 300 },
+  { id: "PREMIUM",    name: "ของพรีเมียม",        img: "https://placehold.co/640x480?text=Premium",   cost: 500 }
+];
+
+/** 2) ฟังก์ชันเรนเดอร์การ์ดของรางวัล */
+function renderRewards(currentScore){
+  const rail = document.getElementById("rewardRail");
+  if(!rail) return;
+  rail.innerHTML = (REWARDS||[]).map(r=>{
+    const locked = Number(currentScore||0) < Number(r.cost||0);
+    return `
+      <div class="rp-reward-card ${locked?'locked':''}" data-id="${r.id}" data-cost="${r.cost}">
+        <div class="rp-reward-img">
+          <img src="${r.img || 'https://placehold.co/640x480?text=Reward'}" alt="${(r.name||r.id)}">
+        </div>
+        <div class="rp-reward-body p-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <div class="fw-bold text-truncate">${escapeHtml(r.name||r.id)}</div>
+            <span class="rp-reward-cost">${Number(r.cost||0)} pt</span>
+          </div>
+        </div>
+        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked?"disabled":""}>
+          <i class="fa-solid fa-gift"></i>
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+/** 3) Hook: ให้ของรางวัลอัปเดตทุกครั้งที่คะแนนถูกตั้งค่า */
+(function hookSetPointsForRewards(){
+  // ถ้ามีฟังก์ชัน setPoints ในระบบเดิม ให้ครอบไว้เพื่อเรียก renderRewards ต่อท้าย
+  if (typeof window.setPoints === "function") {
+    const _orig = window.setPoints;
+    window.setPoints = function(score){
+      try { _orig.call(this, score); } catch(_){}
+      try { renderRewards(score); } catch(_){}
+    };
+  } else {
+    // ถ้าไม่มี setPoints ให้ลองเรียกหลังโหลดหน้า
+    document.addEventListener("DOMContentLoaded", ()=>{
+      try { renderRewards(window.prevScore || 0); } catch(_){}
+    });
+  }
+})();
+
+/** 4) กดแลกรางวัล → เรียก /api/spend → หักคะแนน → รีเฟรชยอด */
+let REDEEMING = false;
+async function redeemReward(reward, btn) {
+  if (REDEEMING) return;
+  if (!window.UID) return toastErr && toastErr("ยังไม่พร้อมใช้งาน");
+
+  const id   = reward?.id;
+  const cost = Math.max(0, Number(reward?.cost) || 0);
+  if (!id || !cost) return toastErr && toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
+
+  const scoreNow = Number(window.prevScore || 0);
+  if (scoreNow < cost) {
+    // โชว์ป้าย “คะแนนไม่พอ” อยู่แล้ว แต่กันคลิกซ้ำ
+    return toastErr && toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+  }
+
+  // ยืนยันก่อน
+  const confirmed = window.Swal
+    ? (await Swal.fire({
+        title: "ยืนยันการแลก?",
+        html: `จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${id}</b>`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "แลกเลย"
+      })).isConfirmed
+    : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
+  if (!confirmed) return;
+
+  REDEEMING = true;
+  const oldDisabled = btn?.disabled;
+  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+
+  try {
+    const r = await fetch("/api/spend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: window.UID, cost, rewardId: id })
+    });
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch { j = { status: r.ok ? "success" : "error", message: t }; }
+    if (j.status !== "success") throw new Error(j.message || "spend failed");
+
+    // รีเฟรชคะแนน/บาร์/ปุ่มล็อก
+    if (typeof window.refreshUserScore === "function") {
+      await window.refreshUserScore();
+    } else if (typeof window.setPoints === "function") {
+      // fallback: ลดคะแนนในหน้า แล้วเรนเดอร์ใหม่
+      const next = Math.max(0, scoreNow - cost);
+      window.prevScore = next;
+      window.setPoints(next);
+    } else {
+      window.prevScore = Math.max(0, scoreNow - cost);
+      renderRewards(window.prevScore);
+    }
+
+    if (window.Swal) {
+      await Swal.fire({
+        title: "แลกสำเร็จ ✅",
+        html: `ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
+        icon: "success"
+      });
+    } else {
+      alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
+    }
+  } catch (err) {
+    console.error(err);
+    if (typeof toastErr === "function") toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
+  } finally {
+    REDEEMING = false;
+    if (btn) { btn.disabled = oldDisabled ?? false; btn.classList.remove("is-loading"); }
+  }
+}
+
+/** 5) Delegation: จับคลิกปุ่มแลกบนรางของรางวัล */
+(function bindRedeemClicks(){
+  const rail = document.getElementById("rewardRail");
+  if (!rail) return;
+  rail.addEventListener("click", async (ev)=>{
+    const btn  = ev.target.closest(".rp-redeem-btn");
+    if (!btn) return;
+    const card = btn.closest(".rp-reward-card");
+    const id   = card?.dataset?.id;
+    const cost = Number(card?.dataset?.cost || 0);
+    await redeemReward({ id, cost }, btn);
+  });
+})();
+
+/** 6) Helper เล็ก ๆ (ถ้าในโปรเจกต์คุณมีอยู่แล้ว ส่วนนี้จะไม่ชน) */
+function escapeHtml(s){
+  s = String(s||'');
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
