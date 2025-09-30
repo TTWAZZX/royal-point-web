@@ -14,6 +14,7 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="/style.css"/>
+  <link rel="icon" href="/favicon.ico">
 </head>
 <body>
 
@@ -144,17 +145,17 @@
       <i class="fa-solid fa-stop"></i> หยุดกล้อง
     </button>
   </div>
+
+  <!-- เหลือ qr-reader แค่อันเดียว -->
   <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-        <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-        <hr class="my-4" />
-        <div class="form-group" style="max-width:420px;margin:auto;">
-          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
-        </div>
-      </div>
-    </div>
+
+  <hr class="my-4" />
+  <div class="form-group" style="max-width:420px;margin:auto;">
+    <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
+    <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
   </div>
 </div>
+
 
 <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-lg">

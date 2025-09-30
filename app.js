@@ -160,7 +160,6 @@ function setPoints(score){
   }
   if (els.currentLevelText) els.currentLevelText.textContent = tier.name;
 
-   renderRewards(score);
   // Progress line (ถ้าใช้)
   if (els.progressBar){
     els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
