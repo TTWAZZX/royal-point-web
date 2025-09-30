@@ -210,7 +210,9 @@ $(document).ready(function () {
         $('#profilePic').attr('src', profile.pictureUrl || 'https://placehold.co/60x60');
         loadUserScore(uid);
         if (isAdmin(uid)) {
-        $('#btnAdmin').removeClass('d-none');
+          $('#btnAdmin')
+            .removeClass('d-none')
+            .attr('href', '/admin.html?uid=' + encodeURIComponent(uid));
         }
       });
     } else {
