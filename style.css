@@ -1,145 +1,114 @@
-/* ===== Royal Point – Green/White Luxury Mobile Theme ===== */
+/* ===== Green × White — Luxury Glass Theme ===== */
 :root{
-  --rp-bg1:#e8fff4;  /* ไล่สีพื้นหลัง */
-  --rp-bg2:#f7fffb;
-  --rp-card:#ffffff;
-  --rp-soft:#eef9f4;
-  --rp-border:#d9efe6;
-  --rp-text:#0f1b17;        /* ดำอมเขียวอ่านสบาย */
-  --rp-mute:#5b7168;        /* สีคำอธิบาย */
-  --rp-primary:#10b981;     /* emerald-500 */
-  --rp-primary-600:#059669; /* emerald-600 */
-  --rp-chip:#f0fdfa;
-  --rp-gradient-1:#34d399;  /* ไล่สีวงแหวน */
-  --rp-gradient-2:#10b981;
+  --bg1:#ecfdf5; --bg2:#ffffff;      /* page gradient */
+  --glass:#ffffffcc;                 /* glass card */
+  --border:#d9efe6;
+  --text:#0f1b17; --mute:#5b7168;
+  --p:#22c55e; --p600:#16a34a;       /* primary green */
+  --chip:#f0fdfa;
 }
 
-*{ box-sizing:border-box }
-html,body{ height:100% }
+*{box-sizing:border-box}
+html,body{height:100%}
 body{
-  font-family:"Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji";
-  color:var(--rp-text);
-  background:linear-gradient(180deg,var(--rp-bg1),var(--rp-bg2));
+  font-family:"Inter","Noto Sans Thai",system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  color:var(--text);
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
 }
 
-/* Container width */
-.rp-container{ max-width:980px }
+/* container */
+.rp-container{max-width:980px}
 
-/* ----- Cards ----- */
-.rp-card{
-  background:var(--rp-card);
-  border:1px solid var(--rp-border);
+/* glass card */
+.rp-glass{
+  background:var(--glass);
+  border:1px solid var(--border);
   border-radius:18px;
-  box-shadow:0 10px 28px rgba(3,102,76,.07); /* นุ่มหรู */
+  backdrop-filter:saturate(160%) blur(12px);
+  box-shadow:0 10px 28px rgba(22,163,74,.08);
 }
 
-/* ----- Hero ----- */
-.rp-hero{
-  position:relative; overflow:hidden;
-  background:linear-gradient(180deg,#ffffff 0%, #ffffffd0 48%, #ffffffc0 100%);
+/* ===== Horizontal Profile Bar ===== */
+.rp-profile{
+  display:grid;
+  grid-template-columns: auto 1fr auto;
+  align-items:center;
+  gap:14px;
 }
-.rp-hero::before{
-  content:""; position:absolute; inset:-40% -30% auto auto; height:220px; width:220px;
-  background:radial-gradient(closest-side, #a7f3d0 0%, #ecfdf5 70%, transparent 71%);
-  filter:blur(8px); border-radius:50%; opacity:.6;
+.rp-profile-left{display:flex;align-items:center;gap:12px;min-width:0}
+.rp-avatar{width:56px;height:56px;border-radius:14px;object-fit:cover;border:2px solid var(--border)}
+.rp-name-wrap{display:flex;align-items:center;gap:6px;min-width:0}
+.rp-username{
+  font-size:clamp(1.1rem,4vw,1.4rem);
+  font-weight:800; letter-spacing:.2px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.rp-avatar{
-  width:64px; height:64px; border-radius:16px; object-fit:cover;
-  border:2px solid var(--rp-border);
-}
-.rp-username{ font-size:clamp(1.2rem,4vw,1.6rem); font-weight:800; letter-spacing:.3px }
-.rp-tier-badge{
-  background:var(--rp-soft); color:var(--rp-text);
-  border:1px solid var(--rp-border);
-  padding:.25rem .6rem; border-radius:999px; font-size:.9rem;
-}
-.btn-icon{
-  width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;
-}
+.btn-icon{width:38px;height:38px;border-radius:12px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 
-/* ----- Progress ring (half circle) ----- */
-.rp-progress{ width:100%; height:auto }
-.rp-progress-bg{ fill:none; stroke:#e6f6ef; stroke-width:8; stroke-linecap:round }
-.rp-progress-fg{
-  fill:none; stroke:url(#rpArc);
-  stroke-width:8; stroke-linecap:round;
-  stroke-dasharray:126; stroke-dashoffset:0; transition:stroke-dashoffset .45s cubic-bezier(.22,1,.36,1);
+.rp-profile-center{min-width:0}
+.rp-points{display:flex;align-items:flex-end;gap:10px}
+.rp-point-label{color:var(--mute);font-weight:600}
+.rp-point-value{font-size:clamp(1.6rem,6vw,2.3rem);font-weight:900;line-height:1}
+
+.rp-progress-line{margin-top:6px;height:10px;border-radius:999px;background:#e7f6ef;overflow:hidden;border:1px solid var(--border)}
+.rp-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#34d399,#22c55e,#16a34a);transition:width .45s cubic-bezier(.22,1,.36,1)}
+
+.rp-next{margin-top:6px}
+
+.rp-profile-right{display:flex;justify-content:end}
+.rp-level-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:.45rem .75rem;border-radius:999px;border:1px solid var(--border);
+  background:#ffffff; font-weight:800;
 }
-/* LinearGradient for the arc (inject via mask) */
-.rp-progress{ --g1:var(--rp-gradient-1); --g2:var(--rp-gradient-2) }
-.rp-progress-fg{ stroke: url(#_arc_gradient_) }
-.rp-progress::before{ content:none } /* keep tidy */
+.rp-level-silver{color:#64748b;background:#f8fafc}
+.rp-level-gold{color:#854d0e;background:#fffbeb;border-color:#fde68a}
+.rp-level-platinum{color:#0ea5e9;background:#f0f9ff;border-color:#bae6fd}
 
-/* add the gradient definition using mask via CSS hack (works because we inline path) */
-.rp-progress > defs, .rp-progress > linearGradient { all: initial } /* noop */
+/* sparkle when level up */
+@keyframes sparkle{
+  0%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
+  50%{box-shadow:0 0 0 10px rgba(34,197,94,.15)}
+  100%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
+}
+.rp-level-badge.sparkle{animation:sparkle 1.2s ease}
 
-/* ----- Score texts ----- */
-.rp-point-label{ color:var(--rp-mute) }
-.rp-point-value{ font-size:clamp(1.8rem,6vw,2.6rem); font-weight:900 }
-
-/* ----- Buttons ----- */
+/* buttons */
 .rp-primary{
-  background:var(--rp-primary);
-  border-color:var(--rp-primary);
-  font-weight:800;
-  box-shadow:0 12px 24px rgba(16,185,129,.22);
-  transition:transform .05s ease, box-shadow .2s ease;
+  background:var(--p);border-color:var(--p);font-weight:800;
+  box-shadow:0 12px 24px rgba(34,197,94,.22);
 }
-.rp-primary:active{ transform:translateY(1px) }
-.rp-primary:hover{ background:var(--rp-primary-600); border-color:var(--rp-primary-600) }
+.rp-primary:hover{background:var(--p600);border-color:var(--p600)}
+.btn-outline-secondary{border-color:var(--border);background:#fff;color:var(--text)}
+.btn-outline-secondary:hover{background:#f4fbf7}
 
-/* Outline button */
-.btn-outline-secondary{ border-color:var(--rp-border); color:var(--rp-text); background:#fff }
-.btn-outline-secondary:hover{ background:var(--rp-soft) }
+/* carousel */
+.carousel .carousel-indicators [data-bs-target]{background:#16a34a;width:8px;height:8px;border-radius:50%}
 
-/* ----- Ads (horizontal snap) ----- */
-.rp-ads{
-  display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory;
-  padding:10px; border-radius:16px;
-  background:linear-gradient(180deg,#ffffff,#f7fffb);
-}
-.rp-ad-slide{
-  scroll-snap-align:center; flex:0 0 88%;
-  border-radius:14px; overflow:hidden; border:1px solid var(--rp-border);
-  box-shadow:0 8px 22px rgba(2,120,87,.08);
-}
-.rp-ad-slide img{ width:100%; height:auto; display:block }
+/* gifts */
+.rp-gift{position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 8px 22px rgba(2,120,87,.07)}
+.rp-gift-img{aspect-ratio:4/3;background:#f4fbf7}
+.rp-gift-img img{width:100%;height:100%;object-fit:cover;display:block}
+.rp-gift-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:.7rem .8rem}
+.rp-chip{background:#f0fdfa;border:1px solid var(--border);padding:.2rem .55rem;border-radius:999px;font-weight:800;color:#047857}
+.rp-tag{position:absolute;left:10px;top:10px;padding:.25rem .5rem;border-radius:999px;font-weight:800;font-size:.85rem;color:#0f1b17;background:#ffffffcc;border:1px solid var(--border);backdrop-filter:blur(6px)}
+.rp-hit{border-color:#fecaca;background:#fff1f2}
+.rp-new{border-color:#c7d2fe;background:#eef2ff}
 
-/* ----- Gifts ----- */
-.rp-gift{
-  border:1px solid var(--rp-border); border-radius:16px; overflow:hidden; background:#fff;
-  box-shadow:0 8px 22px rgba(2,120,87,.07); transition:transform .06s ease;
-}
-.rp-gift:active{ transform:translateY(1px) }
-.rp-gift-img{ aspect-ratio: 4/3; background:var(--rp-soft) }
-.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
-.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem; color:var(--rp-text) }
-.rp-chip{
-  background:var(--rp-chip); border:1px solid var(--rp-border); padding:.2rem .55rem;
-  border-radius:999px; font-weight:800; font-size:.9rem; color:var(--rp-primary-600)
-}
-
-/* ----- Admin FAB (โชว์เฉพาะแอดมิน via JS) ----- */
+/* Admin FAB */
 .admin-entry{
-  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
-  z-index:1040; width:56px;height:56px;border-radius:18px; padding:0;
-  display:inline-flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,var(--rp-gradient-1),var(--rp-gradient-2));
-  border:0; color:#fff;
-  box-shadow:0 16px 32px rgba(16,185,129,.28);
+  position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));
+  width:56px;height:56px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#34d399,#22c55e);
+  color:#fff;box-shadow:0 16px 32px rgba(34,197,94,.28);z-index:1040;border:0
 }
-.admin-entry i{ font-size:22px }
+.admin-entry i{font-size:22px}
 
-/* ----- Modal (light) ----- */
-.modal-content{ background:#fff; color:var(--rp-text); border:1px solid var(--rp-border) }
-.modal-header,.modal-footer{ border-color:var(--rp-border) }
+/* modal/light form */
+.modal-content{background:#fff;color:var(--text);border:1px solid var(--border)}
+.form-control{background:#fff;border:1px solid var(--border);color:var(--text)}
+.form-control:focus{border-color:var(--p);box-shadow:0 0 0 .25rem rgba(34,197,94,.15)}
 
-/* ----- Forms ----- */
-.form-control{ background:#fff; border:1px solid var(--rp-border); color:var(--rp-text) }
-.form-control:focus{ border-color:var(--rp-primary); box-shadow:0 0 0 .25rem rgba(16,185,129,.15) }
-
-/* ----- Responsive ----- */
 @media (max-width:576px){
-  .rp-avatar{ width:56px; height:56px; border-radius:14px }
-  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
+  .rp-avatar{width:52px;height:52px;border-radius:12px}
+  .admin-entry{bottom:calc(84px + env(safe-area-inset-bottom));width:52px;height:52px}
 }
