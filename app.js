@@ -1,44 +1,103 @@
-// ===== Royal Point – App (Recovery Build) =====
+/* ============ Royal Point — User App (UX Pack) ============ */
 
-// LIFF
+/** LIFF / API */
 const LIFF_ID = "2007053300-QoEvbXyn";
-
-// APIs (Vercel)
 const API_GET_SCORE = "/api/get-score";       // GET  ?uid=...
-const API_REDEEM    = "/api/redeem";          // POST { uid, code, type } -> proxy to GAS
+const API_REDEEM    = "/api/redeem";          // POST { uid, code, type }
 const API_HISTORY   = "/api/score-history";   // GET  ?uid=...
 
-// ===== Admin gate for user page =====
-const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"]; // ใส่ UID แอดมินของคุณ
-function showAdminEntry(isAdmin) {
-  const btn = document.getElementById("btnAdmin");
-  if (!btn) return;
-  btn.classList.toggle("d-none", !isAdmin);
-}
+/** Admin gate (โชว์ปุ่มเฉพาะแอดมิน) */
+const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
 
-// DOM refs
-const el = {
-  username:    document.getElementById("username"),
-  phone:       document.getElementById("phone"),
-  profilePic:  document.getElementById("profilePic"),
-  points:      document.getElementById("points"),
-  tierBadge:   document.getElementById("tierBadge"),
-  progress:    document.getElementById("progressCurve"),
-  nextTier:    document.getElementById("next-tier"),
-  refreshBtn:  document.querySelector('[onclick="refreshUserScore()"]') || document.getElementById("refreshBtn"),
-  // modal/scan
-  scoreModal:  document.getElementById("scoreModal"),
-  qrReader:    document.getElementById("qr-reader"),
-  secretInput: document.getElementById("secretCode"),
-  submitBtn:   document.getElementById("submitCodeBtn")
+/** Elements (มีตัวไหนไม่มีในหน้า ก็จะ no-op ไม่ error) */
+const $ = (id) => document.getElementById(id);
+const els = {
+  // header
+  username: $("username"),
+  profilePic: $("profilePic"),
+  points: $("points"),
+  progress: $("progressCurve"),
+  nextTier: $("next-tier"),
+
+  // buttons
+  btnRefresh: $("refreshBtn"),
+  btnAdmin: $("btnAdmin"),
+  btnOpenHistory: $("historyBtn"), // ถ้ามีปุ่มดูประวัติ
+
+  // scanner modal + manual
+  modal: $("scoreModal"),
+  qrReader: $("qr-reader"),
+  secretInput: $("secretCode"),
+  submitBtn: $("submitCodeBtn"),
+
+  // history modal
+  historyModal: $("historyModal"),
+  historyList: $("historyList"),
+  historyUser: $("historyUser"),
 };
 
-// state
+/** State */
 let UID = "";
-let html5qrcode = null;    // instance
-let lastVideoDeviceId = null;
+let html5qrcode = null;
+let lastCamera = null;
 
-// ---------- helpers ----------
+/* ============ Boot ============ */
+document.addEventListener("DOMContentLoaded", initApp);
+
+async function initApp() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+
+    const prof = await liff.getProfile();
+    UID = prof.userId;
+
+    // Header fill
+    if (els.username)   els.username.textContent = prof.displayName || "—";
+    if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
+
+    // Show admin entry only for admin UIDs
+    showAdminEntry(ADMIN_UIDS.includes(UID));
+
+    // Bind events
+    bindUI();
+
+    // First load
+    await refreshUserScore();
+  } catch (e) {
+    console.error(e);
+    toastErr("เริ่มต้นระบบไม่สำเร็จ");
+  }
+}
+
+/* ============ UI & Helpers ============ */
+function bindUI() {
+  if (els.btnRefresh) els.btnRefresh.addEventListener("click", refreshUserScore);
+
+  // History (ถ้าหน้าคุณมีปุ่ม id="historyBtn")
+  if (els.btnOpenHistory) els.btnOpenHistory.addEventListener("click", openHistory);
+
+  // Modal events -> start/stop camera
+  if (els.modal) {
+    els.modal.addEventListener("shown.bs.modal", startScanner);
+    els.modal.addEventListener("hidden.bs.modal", stopScanner);
+  }
+
+  // Manual redeem
+  if (els.submitBtn) {
+    els.submitBtn.addEventListener("click", async () => {
+      const code = (els.secretInput?.value || "").trim();
+      if (!code) return toastErr("กรอกรหัสลับก่อน");
+      await redeemCode(code, "MANUAL");
+    });
+  }
+}
+
+function showAdminEntry(isAdmin) {
+  if (!els.btnAdmin) return;
+  els.btnAdmin.classList.toggle("d-none", !isAdmin);
+}
+
 function toastOk(msg) {
   if (window.Swal) return Swal.fire("สำเร็จ", msg || "", "success");
   alert(msg || "สำเร็จ");
@@ -47,79 +106,42 @@ function toastErr(msg) {
   if (window.Swal) return Swal.fire("ผิดพลาด", msg || "", "error");
   alert(msg || "ผิดพลาด");
 }
-function setPoints(n) {
-  el.points && (el.points.textContent = Number(n || 0));
-  // progress ring ~126 length (ตาม index.html)
-  if (el.progress) {
-    const total = 126, max = 1000; // ปรับสูตรตาม tier จริงภายหลัง
-    const pct = Math.max(0, Math.min(1, Number(n || 0) / max));
-    el.progress.setAttribute("stroke-dashoffset", String(total * (1 - pct)));
-  }
-}
 
-// ---------- LIFF + Profile ----------
-async function initApp() {
-  try {
-    await liff.init({ liffId: LIFF_ID });
-    if (!liff.isLoggedIn()) { liff.login(); return; }
-
-      const prof = await liff.getProfile();
-      UID = prof.userId;
-      showAdminEntry(ADMIN_UIDS.includes(UID));
-
-    // fill UI
-    if (el.username)   el.username.textContent = prof.displayName || "—";
-    if (el.profilePic) el.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
-
-    await refreshUserScore();
-    bindUI();
-  } catch (e) {
-    console.error(e);
-    toastErr("เริ่มต้นระบบ LIFF ไม่สำเร็จ");
-  }
-}
-
-// ---------- UI bindings ----------
-function bindUI() {
-  // manual redeem
-  if (el.submitBtn) {
-    el.submitBtn.addEventListener("click", async () => {
-      const code = (el.secretInput?.value || "").trim();
-      if (!code) return toastErr("กรอกรหัสลับก่อน");
-      await redeemCode(code, "MANUAL");
-    });
-  }
-
-  // open/close modal -> start/stop html5-qrcode
-  if (el.scoreModal) {
-    el.scoreModal.addEventListener("shown.bs.modal", startScanner);
-    el.scoreModal.addEventListener("hidden.bs.modal", stopScanner);
-  }
-
-  // refresh button (ไอคอนรีเฟรชบนการ์ด)
-  if (el.refreshBtn) {
-    el.refreshBtn.addEventListener("click", refreshUserScore);
-  }
-}
-
-// ---------- Score / History ----------
+/* ============ Score / Progress ============ */
 async function refreshUserScore() {
   if (!UID) return;
   try {
-    const url = `${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`;
-    const r = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store" });
-    const data = await safeJson(r);
-    if (data.status === "success" && data.data) {
-      setPoints(data.data.score || 0);
-      // คุณมี field name/tel ใน GAS -> จะใช้เมื่อพร้อม
-      // el.username.textContent = data.data.name || el.username.textContent;
-      // el.phone.textContent    = data.data.tel ? `📞 ${data.data.tel}` : "";
+    const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
+    const j = await safeJson(r);
+
+    if (j.status === "success" && j.data) {
+      const score = Number(j.data.score || 0);
+      setPoints(score);
+      localStorage.setItem("lastScore", String(score));
     } else {
-      setPoints(0);
+      // fallback from cache (ถ้ามี)
+      const cached = Number(localStorage.getItem("lastScore") || "0");
+      setPoints(cached);
     }
   } catch (e) {
     console.error(e);
-    setPoints(0);
+    const cached = Number(localStorage.getItem("lastScore") || "0");
+    setPoints(cached);
+  }
+}
+
+function setPoints(n) {
+  if (els.points) els.points.textContent = Number(n || 0);
+  // วาด progress (สมมติ Max 1000 – ปรับตามระบบจริงได้)
+  if (els.progress) {
+    const total = 126, max = 1000;
+    const pct = Math.max(0, Math.min(1, Number(n || 0) / max));
+    els.progress.setAttribute("stroke-dashoffset", String(total * (1 - pct)));
+  }
+  // ข้อความไป tier ถัดไป (ตัวอย่าง)
+  if (els.nextTier) {
+    const need = Math.max(0, 100 - (Number(n || 0) % 100));
+    els.nextTier.textContent = need === 0 ? "ถึงเป้าหมายรอบนี้แล้ว!" : `สะสมอีก ${need} พ้อยท์ เพื่อเลื่อนไปขั้นถัดไป`;
   }
 }
 
@@ -128,7 +150,7 @@ async function safeJson(resp) {
   try { return JSON.parse(t); } catch { return { status: resp.ok ? "success" : "error", message: t }; }
 }
 
-// ---------- Redeem ----------
+/* ============ Redeem / Scanner ============ */
 async function redeemCode(code, type) {
   try {
     const r = await fetch(API_REDEEM, {
@@ -138,13 +160,15 @@ async function redeemCode(code, type) {
     });
     const j = await safeJson(r);
     if (j.status === "success") {
+      navigator.vibrate?.(12);
       toastOk(`รับคะแนนแล้ว +${j.point || 0}`);
       await refreshUserScore();
-      // ปิด modal และล้างค่า
+      // close modal + reset
       stopScanner();
-      if (el.secretInput) el.secretInput.value = "";
-      if (window.bootstrap?.Modal.getInstance(el.scoreModal)) {
-        window.bootstrap.Modal.getInstance(el.scoreModal).hide();
+      if (els.secretInput) els.secretInput.value = "";
+      if (els.modal) {
+        const m = window.bootstrap?.Modal.getInstance(els.modal);
+        m && m.hide();
       }
     } else {
       toastErr(j.message || "คูปองไม่ถูกต้องหรือถูกใช้ไปแล้ว");
@@ -155,51 +179,71 @@ async function redeemCode(code, type) {
   }
 }
 
-// ---------- Scanner (html5-qrcode) ----------
 async function startScanner() {
-  if (!el.qrReader) return;
-
+  if (!els.qrReader) return;
   try {
-    // หาอุปกรณ์กล้อง
+    // ใช้ html5-qrcode ในเบราว์เซอร์ทั่วไป / LINE in-app browser
     const devices = await Html5Qrcode.getCameras();
-    const camId = lastVideoDeviceId || (devices[0] && devices[0].id);
-    if (!camId) {
-      console.warn("no camera");
-      return;
-    }
+    const camId = lastCamera || (devices[0] && devices[0].id);
+    if (!camId) return;
 
-    html5qrcode = new Html5Qrcode(el.qrReader.id);
+    html5qrcode = new Html5Qrcode(els.qrReader.id);
     await html5qrcode.start(
       camId,
       { fps: 10, qrbox: { width: 260, height: 260 } },
       async (decoded) => {
-        // เมื่อสแกนเจอ
-        try {
-          await redeemCode(String(decoded || "").trim(), "SCAN");
-        } finally {
-          // ป้องกันยิงซ้ำ
-          stopScanner();
-        }
+        try { await redeemCode(String(decoded || "").trim(), "SCAN"); }
+        finally { stopScanner(); }
       },
-      (e) => { /* onScanFailure: เงียบไว้ */ }
+      () => {}
     );
-    lastVideoDeviceId = camId;
+    lastCamera = camId;
   } catch (e) {
-    console.error("startScanner error:", e);
+    console.warn("Scanner start failed:", e);
   }
 }
 
 async function stopScanner() {
   try {
     if (html5qrcode) {
-      await html5qrcode.stop();
-      await html5qrcode.clear();
-      html5qrcode = null;
+      await html5qrcode.stop(); await html5qrcode.clear(); html5qrcode = null;
     }
-    // เคลียร์ container เผื่อ library ค้าง DOM ไว้
-    if (el.qrReader) el.qrReader.innerHTML = "";
+    if (els.qrReader) els.qrReader.innerHTML = "";
   } catch {}
 }
 
-// ---------- start ----------
-document.addEventListener("DOMContentLoaded", initApp);
+/* ============ History ============ */
+async function openHistory() {
+  if (!UID) return;
+  try {
+    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`);
+    const j = await safeJson(r);
+    if (j.status !== "success") return toastErr("โหลดประวัติไม่สำเร็จ");
+    if (els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
+    if (!els.historyList) return;
+
+    const list = j.data || [];
+    if (!list.length) {
+      els.historyList.innerHTML = `<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`;
+    } else {
+      els.historyList.innerHTML = list.map(i => {
+        const ts = formatDateTime(i.ts);
+        const p  = Number(i.point || 0);
+        const sign = p >= 0 ? "+" : "";
+        const color = p >= 0 ? "#22c55e" : "#ef4444";
+        return `<div class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
+                  <div><div class="fw-bold">${escapeHtml(i.type || "—")}</div><div class="small text-muted">${escapeHtml(i.code || "")}</div></div>
+                  <div class="text-end"><div style="color:${color};font-weight:800">${sign}${p}</div><div class="small text-muted">${ts}</div></div>
+                </div>`;
+      }).join("");
+    }
+    if (els.historyModal) new bootstrap.Modal(els.historyModal).show();
+  } catch (e) {
+    console.error(e); toastErr("ไม่สามารถโหลดประวัติได้");
+  }
+}
+
+/* ============ Utils ============ */
+function escapeHtml(s){ return String(s||"").replace(/[&<>"'`=\/]/g, a => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a])); }
+function pad(n){ return n<10? "0"+n : String(n); }
+function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
