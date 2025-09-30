@@ -83,15 +83,18 @@ function bindUI(){
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
   if (els.modal){
-    els.modal.addEventListener("shown.bs.modal", startScanner);
-    els.modal.addEventListener("hidden.bs.modal", stopScanner);
+    // เรียกผ่าน wrapper เสมอ กัน undefined ตอนบูต
+    els.modal.addEventListener("shown.bs.modal", () => startScanner && startScanner());
+    els.modal.addEventListener("hidden.bs.modal", () => stopScanner && stopScanner());
   }
+
   els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
     await redeemCode(code, "MANUAL");
   });
 }
+
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
@@ -241,46 +244,49 @@ async function startScanner(){
   try{
     html5qrcode = new Html5Qrcode(els.qrReader.id);
 
-    // 1) พยายามเปิดด้วย facingMode: 'environment' ก่อน (กล้องหลัง)
+    // พยายามเปิด "กล้องหลัง" ก่อนเสมอ
     try {
       await html5qrcode.start(
-        { facingMode: { exact: "environment" } },   // บางเครื่องต้อง exact
+        { facingMode: { exact: "environment" } },
         { fps: 10, qrbox: { width: 260, height: 260 } },
         onScan
       );
       return;
-    } catch (e1) {
-      // ลองแบบไม่ exact บางอุปกรณ์ (เช่น Android บางรุ่น)
-      try {
-        await html5qrcode.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 260, height: 260 } },
-          onScan
-        );
-        return;
-      } catch (e2) {
-        console.warn("facingMode fallback to device list", e2);
-      }
-    }
+    } catch {}
+    try {
+      await html5qrcode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 260, height: 260 } },
+        onScan
+      );
+      return;
+    } catch {}
 
-    // 2) ถ้าไม่สำเร็จ ใช้วิธี list กล้องแล้วเลือกตัวที่น่าจะเป็น 'หลัง'
     const devices = await Html5Qrcode.getCameras();
-    if (!devices || !devices.length) throw new Error("No camera devices");
-
-    // หา label ที่บ่งบอก back/rear/environment/wide/main
+    if(!devices?.length) throw new Error("No camera devices");
     const re = /(back|rear|environment|wide|main)/i;
-    const preferred = devices.find(d => re.test(d.label)) || devices[devices.length - 1];
-    const camId = preferred.id;
+    const preferred = devices.find(d=>re.test(d.label)) || devices[devices.length-1];
 
     await html5qrcode.start(
-      camId,
+      preferred.id,
       { fps: 10, qrbox: { width: 260, height: 260 } },
       onScan
     );
   }catch(e){
     console.warn("Scanner start failed:", e);
-    toastErr("ไม่สามารถเปิดกล้องหลังได้");
+    toastErr("ไม่สามารถเปิดกล้องได้");
   }
+}
+
+async function stopScanner(){
+  try{
+    if (html5qrcode){
+      await html5qrcode.stop();
+      await html5qrcode.clear();
+      html5qrcode = null;
+    }
+    if (els.qrReader) els.qrReader.innerHTML = "";
+  }catch(e){ console.warn("stopScanner error", e); }
 }
 
 /* ================= History (FIX: pad hoist) ================= */
