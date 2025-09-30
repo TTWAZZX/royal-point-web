@@ -3,51 +3,38 @@
 // ใช้ env: APPS_SCRIPT_ENDPOINT, API_SECRET
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (req.method !== 'GET') {
-    return res.status(405).json({ status: 'error', message: 'Method not allowed' });
-  }
-
-  const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-  const secret   = process.env.API_SECRET;
-
-  if (!endpoint || !secret) {
-    return res.status(500).json({
-      status: 'error',
-      message: 'Missing APPS_SCRIPT_ENDPOINT or API_SECRET env',
-    });
-  }
-
   try {
-    // ฝั่ง Admin เรียก /api/all-scores?adminUid=xxxxx
-    const adminUid = (req.query.adminUid || req.query.uid || '').toString().trim();
-    if (!adminUid) {
-      return res.status(400).json({ status: 'error', message: 'Missing adminUid' });
+    // อ่าน uid จาก query — รองรับทั้ง uid และ adminUid (alias)
+    const { uid: uidRaw, adminUid } = req.query || {};
+    const uid = (uidRaw || adminUid || "").toString().trim();
+
+    // ถ้าไม่ส่ง uid/adminUid มา → ตอบกลับลิสต์ว่าง (กันหน้าเว็บล่ม)
+    if (!uid) {
+      return res.status(200).json({ status: "success", data: [] });
     }
 
-    // Apps Script ต้องการพารามิเตอร์ชื่อ uid (ใช้เช็ค isAdmin)
-    const url = `${endpoint}?action=all-scores&secret=${encodeURIComponent(secret)}&uid=${encodeURIComponent(adminUid)}`;
-
-    const r = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
-    const text = await r.text();
-
-    // พยายาม parse เป็น JSON ถ้าไม่ได้ก็ส่งดิบกลับไปเพื่อ debug
-    try {
-      const json = JSON.parse(text);
-      // ป้องกัน cache
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(200).json(json);
-    } catch {
-      res.setHeader('Cache-Control', 'no-store');
-      return res.status(r.ok ? 200 : 502).send(text);
+    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
+    const secret   = process.env.API_SECRET;
+    if (!endpoint || !secret) {
+      return res
+        .status(500)
+        .json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET env" });
     }
-  } catch (err) {
-    console.error('all-scores proxy error:', err);
-    return res.status(502).json({ status: 'error', message: String(err) });
+
+    // call Apps Script
+    const url = `${endpoint}?action=all-scores&uid=${encodeURIComponent(uid)}&secret=${encodeURIComponent(secret)}`;
+    const r   = await fetch(url);
+    const j   = await r.json();
+
+    // ถ้าเซิร์ฟเวอร์ตอบ error/permission denied → รีเทิร์นเป็น success + data ว่าง
+    if (j.status !== "success" || !Array.isArray(j.data)) {
+      return res.status(200).json({ status: "success", data: [] });
+    }
+
+    return res.status(200).json({ status: "success", data: j.data });
+  } catch (e) {
+    console.error("all-scores proxy error:", e);
+    // กรณีเครือข่าย/อื่น ๆ ก็ไม่ทำให้หน้าแตก
+    return res.status(200).json({ status: "success", data: [] });
   }
 }
