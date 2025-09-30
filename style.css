@@ -294,3 +294,26 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
   content:"คะแนนไม่พอ"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
   background:rgba(255,255,255,.6); backdrop-filter:blur(2px); font-weight:800; color:#64748b
 }
+
+/* ปรับ card ให้ไม่ตัดบรรทัด/ไม่ล้น */
+.rp-profile-card{ grid-template-columns: auto 1fr; align-items: center; }
+.rp-profile-card p{ margin-bottom: .25rem; }
+
+/* ชื่อ/คะแนน balance มากขึ้น และไม่ล้น */
+.rp-username{
+  font-size: clamp(1.1rem, 4.8vw, 1.45rem);
+  line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rp-point-value{ font-size: clamp(1.7rem, 6.2vw, 2.2rem); line-height: 1; }
+
+/* แถวข้อความระดับ/ความคืบหน้า ให้เป็นบรรทัดเดียวได้ */
+.rp-level-row, #currentLevelText, .rp-level-badge{
+  white-space: nowrap;
+}
+
+/* จอเล็กมาก → บีบตัวอักษรลงอีกนิดเพื่อไม่ห่อบรรทัด */
+@media (max-width: 360px){
+  .rp-username{ font-size: clamp(1rem, 4.6vw, 1.3rem); }
+  .rp-point-value{ font-size: clamp(1.5rem, 5.6vw, 2rem); }
+}

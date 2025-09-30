@@ -33,14 +33,15 @@ function renderRewards(currentScore){
   }).join("");
 
   // delegate click
-  rail.addEventListener("click", async (ev)=>{
-    const btn = ev.target.closest(".rp-redeem-btn");
-    if(!btn) return;
-    const card = btn.closest(".rp-reward-card");
-    const id   = card.dataset.id;
-    const cost = parseInt(card.dataset.cost,10);
-    await redeemReward({ id, cost });
-  }, { once:true }); // bind ใหม่เมื่อ render ใหม่
+  // เดิมอาจมี { once:true } → ทำให้คลิกได้ครั้งเดียว
+rail.addEventListener("click", async (ev)=>{
+  const btn = ev.target.closest(".rp-redeem-btn");
+  if(!btn) return;
+  const card = btn.closest(".rp-reward-card");
+  const id   = card.dataset.id;
+  const cost = parseInt(card.dataset.cost,10);
+  await redeemReward({ id, cost });
+});
 }
 
 async function redeemReward(reward){
@@ -162,22 +163,22 @@ function bindUI(){
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
   if (els.modal){
-    // เรียกผ่าน wrapper เสมอ กัน undefined ตอนบูต
     els.modal.addEventListener("shown.bs.modal", () => startScanner && startScanner());
+    // ไม่ปิดกล้องอัตโนมัติเมื่อปิดโมดัลก็ไม่มีผลข้างเคียง แต่เก็บไว้ก็ได้
     els.modal.addEventListener("hidden.bs.modal", () => stopScanner && stopScanner());
   }
+
+  // NEW: ปุ่มควบคุมกล้อง
+  const startBtn = document.getElementById("startScanBtn");
+  const stopBtn  = document.getElementById("stopScanBtn");
+  startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
+  stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
 
   els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
     await redeemCode(code, "MANUAL");
   });
-  const stopBtn = document.getElementById("stopScanBtn");
-stopBtn && stopBtn.addEventListener("click", () => {
-  stopScanner();
-  const m = bootstrap.Modal.getInstance(els.modal);
-  m && m.hide();
-});
 }
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
@@ -381,37 +382,47 @@ async function stopScanner(){
 
 /* ================= History (FIX: pad hoist) ================= */
 async function openHistory(){
-  if(!UID) return;
-  try{
-    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`);
-    const j = await safeJson(r);
-    if(j.status!=="success") return toastErr("ไม่สามารถโหลดประวัติได้");
-    if(els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
-    if(!els.historyList) return;
+  if (!UID) return;
 
-    const list = j.data || [];
-    if(!list.length){
-      els.historyList.innerHTML = `<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`;
-    }else{
-      els.historyList.innerHTML = list.map(i=>{
-        const ts = fmtDT(i.ts);
-        const p = Number(i.point||0);
-        const sign = p>=0?"+":"";
-        const color = p>=0?"#16a34a":"#dc2626";
-        return `<div class="list-group-item d-flex justify-content-between align-items-center">
-                  <div>
-                    <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
-                    <div class="small text-muted">${escapeHtml(i.code||"")}</div>
-                  </div>
-                  <div class="text-end">
-                    <div style="color:${color};font-weight:800">${sign}${p}</div>
-                    <div class="small text-muted">${ts}</div>
-                  </div>
-                </div>`;
-      }).join("");
+  // เปิดโมดัลก่อน ให้ผู้ใช้รู้สึกว่าปุ่มทำงาน
+  if (els.historyList) {
+    els.historyList.innerHTML = `
+      <div class="list-group-item text-center text-muted">กำลังโหลด…</div>`;
+  }
+  if (els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
+  new bootstrap.Modal(els.historyModal).show();
+
+  // แล้วค่อยโหลดข้อมูล
+  try{
+    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
+    const j = await safeJson(r);
+    if (j.status !== "success") {
+      els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
+      return;
     }
-    new bootstrap.Modal(els.historyModal).show();
-  }catch(e){ console.error(e); toastErr("ไม่สามารถโหลดประวัติได้"); }
+    const list = j.data || [];
+    els.historyList.innerHTML = list.length
+      ? list.map(i=>{
+          const ts = fmtDT(i.ts);
+          const p  = Number(i.point||0);
+          const sign = p>=0?"+":"";
+          const color = p>=0?"#16a34a":"#dc2626";
+          return `<div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
+                      <div class="small text-muted">${escapeHtml(i.code||"")}</div>
+                    </div>
+                    <div class="text-end">
+                      <div style="color:${color};font-weight:800">${sign}${p}</div>
+                      <div class="small text-muted">${ts}</div>
+                    </div>
+                  </div>`;
+        }).join("")
+      : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
+  }catch(e){
+    console.error(e);
+    els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
+  }
 }
 
 /* ================= Utils ================= */
