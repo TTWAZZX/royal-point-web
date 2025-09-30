@@ -190,78 +190,82 @@ function getTier(score){
   return TIERS[TIERS.length-1];
 }
 
+// 1) ดึงคะแนนจาก API แล้วส่งเข้า setPoints() เท่านั้น
 async function refreshUserScore(){
   if(!UID) return;
   try{
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
     const j = await safeJson(r);
-    if(j.status === "success" && j.data){
+
+    if (j.status === "success" && j.data){
       const sc = Number(j.data.score || 0);
-      setPoints(sc);
+      setPoints(sc);                           // <-- ทำทุกอย่างใน setPoints()
       localStorage.setItem("lastScore", String(sc));
-    }else{
+    } else {
       const cached = Number(localStorage.getItem("lastScore") || "0");
-      setPoints(cached);
+      setPoints(cached);                       // <-- ทำทุกอย่างใน setPoints()
     }
   }catch(e){
     console.error(e);
     const cached = Number(localStorage.getItem("lastScore") || "0");
-    setPoints(cached);
+    setPoints(cached);                         // <-- ทำทุกอย่างใน setPoints()
   }
-  renderRewards(score);
 }
 
-function setPoints(sc){
-  const score = Number(sc||0);
+// 2) อัปเดต UI ทั้งหมด (progress, track, ข้อความ, รีวอร์ด ฯลฯ) ให้รวมไว้ที่นี่จุดเดียว
+function setPoints(score){
+  score = Number(score || 0);
 
   const tier = getTier(score);
-  const idx = TIERS.findIndex(t=>t.key===tier.key);
-  const nextTierObj = TIERS[idx+1] || null;
+  const idx  = TIERS.findIndex(t => t.key === tier.key);
+  const nextTierObj = TIERS[idx + 1] || null;
 
-  // 1) คะแนนเด้งขึ้น
-  if(els.points){
+  // คะแนนเด้งขึ้น
+  if (els.points){
     const from = prevScore || Number(els.points.textContent || 0);
     animateCount(els.points, from, score, 600);
   }
 
-  // 2) Badge / Current level
-  if(els.levelBadge){
+  // Badge / Current level
+  if (els.levelBadge){
     els.levelBadge.textContent = tier.name;
     els.levelBadge.classList.remove("rp-level-silver","rp-level-gold","rp-level-platinum","sparkle");
     els.levelBadge.classList.add(tier.class);
   }
-  if(els.currentLevelText) els.currentLevelText.textContent = tier.name;
+  if (els.currentLevelText) els.currentLevelText.textContent = tier.name;
 
-  // 3) Progress line (ถ้าใช้)
-  if(els.progressBar){
+  // Progress line (ถ้าใช้)
+  if (els.progressBar){
     els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
     els.progressBar.classList.add(tier.progClass);
   }
-  if(els.progressFill){
+  if (els.progressFill){
     const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
-    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct*100))}%`;
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
   }
 
-  // 4) Level Track ใหม่ – ชัดเจน
+  // Level Track ใหม่ (บาร์ยาวมีหมุด)
   updateLevelTrack(score);
 
-  // 5) ข้อความเลเวลถัดไป
-  if(els.nextTier){
-    if(!nextTierObj){
+  // ข้อความเลเวลถัดไป
+  if (els.nextTier){
+    if (!nextTierObj){
       els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
-    }else{
+    } else {
       const need = Math.max(0, nextTierObj.min - score);
-      els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนเป็น ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name]||""}`;
+      els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนเป็น ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name] || ""}`;
     }
   }
 
-  // 6) เอฟเฟกต์เลเวลอัป
-  if(prevLevel && prevLevel !== tier.key){
+  // Render ของรางวัลให้ล็อก/ปลดล็อกตามคะแนนปัจจุบัน
+  renderRewards(score);
+
+  // Sparkle + confetti เมื่อเลเวลเปลี่ยน
+  if (prevLevel && prevLevel !== tier.key){
     els.levelBadge?.classList.add("sparkle");
     setTimeout(()=> els.levelBadge?.classList.remove("sparkle"), 1300);
     launchConfetti();
   }
-
   prevLevel = tier.key;
   prevScore = score;
 }
