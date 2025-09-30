@@ -60,27 +60,41 @@ const TIERS = [
 const TIER_EMOJI = { Silver:"🥈", Gold:"🥇", Platinum:"💎" };
 
 /* ================= Boot ================= */
-document.addEventListener("DOMContentLoaded", initApp);
+document.addEventListener('DOMContentLoaded', () => {
+  // เปิด modal สแกน (ไม่ auto-start กล้อง)
+  const scanBtn = document.getElementById('btnScan');
+  if (scanBtn) {
+    scanBtn.addEventListener('click', () => {
+      const m = document.getElementById('redeemModal'); // id modal ที่มี qr-reader
+      if (m) new bootstrap.Modal(m).show();
+      // อย่าเรียก startScanner() ที่นี่ ให้กดปุ่ม "เปิดกล้อง" ภายใน modal แทน
+    });
+  }
 
-async function initApp(){
-  try{
-    await liff.init({ liffId: LIFF_ID });
-    if(!liff.isLoggedIn()){ liff.login(); return; }
+  // เปิดประวัติ (แยกจากสแกนโดยสิ้นเชิง)
+  const histBtn = document.getElementById('btnHistory');
+  if (histBtn) {
+    histBtn.addEventListener('click', openHistoryModal);
+  }
 
-    const prof = await liff.getProfile();
-    UID = prof.userId;
+  // ปุ่ม start/stop กล้อง ภายใน modal สแกน
+  document.getElementById('startScanBtn')?.addEventListener('click', startScanner);
+  document.getElementById('stopScanBtn')?.addEventListener('click', stopScanner);
+});
 
-    if (els.username)   els.username.textContent = prof.displayName || "—";
-    if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
-
-    showAdminEntry(ADMIN_UIDS.includes(UID));
-    bindUI();
-    await refreshUserScore();
-    await renderRewards(window.prevScore || 0);
-    renderRewards(prevScore || 0);
-
-  }catch(e){ console.error(e); toastErr("เริ่มต้นระบบไม่สำเร็จ"); }
+async function openHistoryModal() {
+  try {
+    const res = await fetch(`/api/score-history?uid=${encodeURIComponent(UID)}`);
+    const j = await res.json();
+    if (j.status !== 'success') throw new Error(j.message || 'โหลดประวัติไม่สำเร็จ');
+    renderHistoryList(j.data || []); // เขียน render เองตามโครง modal ของคุณ
+    new bootstrap.Modal(document.getElementById('historyModal')).show();
+  } catch (e) {
+    console.error(e);
+    Swal.fire('ผิดพลาด', 'ไม่สามารถโหลดประวัติได้', 'error');
+  }
 }
+
 
 /* ================= UI Helpers ================= */
 function bindUI(){
@@ -249,61 +263,52 @@ async function redeemCode(code, type){
   }catch(e){ console.error(e); toastErr("ไม่สามารถยืนยันรับคะแนนได้"); }
 }
 
-async function startScanner(){
-  if(!els.qrReader) return;
+let _qr = null;
 
-  const onScan = async (decoded) => {
-    try { await redeemCode(String(decoded||"").trim(), "SCAN"); }
-    finally { stopScanner(); }
-  };
+async function startScanner() {
+  try {
+    // ถ้ามีตัวเก่าอยู่ ให้ปิดก่อน
+    if (_qr) { await stopScanner(); }
 
-  try{
-    html5qrcode = new Html5Qrcode(els.qrReader.id);
-
-    // พยายามเปิด "กล้องหลัง" ก่อนเสมอ
-    try {
-      await html5qrcode.start(
-        { facingMode: { exact: "environment" } },
-        { fps: 10, qrbox: { width: 260, height: 260 } },
-        onScan
-      );
+    // เช็คว่ามีกล้องไหม
+    const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    const cams = devices.filter(d => d.kind === 'videoinput');
+    if (!cams.length) {
+      Swal.fire('ผิดพลาด', 'ไม่พบอุปกรณ์กล้องบนเครื่องนี้', 'error');
       return;
-    } catch {}
-    try {
-      await html5qrcode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 260 } },
-        onScan
-      );
+    }
+
+    // เลือกกล้องหลังก่อน (ถ้ามี)
+    const back = cams.find(d => /back|rear|environment|facing back/i.test(d.label || ''));
+    const deviceId = back?.deviceId || cams[cams.length - 1].deviceId;
+
+    const el = document.getElementById('qr-reader');
+    if (!el) {
+      Swal.fire('ผิดพลาด', 'ไม่พบจุดแสดงกล้อง (qr-reader)', 'error');
       return;
-    } catch {}
+    }
 
-    const devices = await Html5Qrcode.getCameras();
-    if(!devices?.length) throw new Error("No camera devices");
-    const re = /(back|rear|environment|wide|main)/i;
-    const preferred = devices.find(d=>re.test(d.label)) || devices[devices.length-1];
-
-    await html5qrcode.start(
-      preferred.id,
-      { fps: 10, qrbox: { width: 260, height: 260 } },
-      onScan
+    _qr = new Html5Qrcode('qr-reader');
+    await _qr.start(
+      { deviceId },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      onScanSuccess,
+      (err) => { /* ignore scan errors */ }
     );
-  }catch(e){
-    console.warn("Scanner start failed:", e);
-    toastErr("ไม่สามารถเปิดกล้องได้");
+  } catch (err) {
+    console.warn('Scanner start failed:', err);
+    Swal.fire('ผิดพลาด', 'ไม่สามารถเปิดกล้องได้', 'error');
+    await stopScanner(); // ให้แน่ใจว่าปิดตัวเดิมถ้ามี
   }
 }
 
-async function stopScanner(){
-  try{
-    if (html5qrcode){
-      await html5qrcode.stop();
-      await html5qrcode.clear();
-      html5qrcode = null;
-    }
-    if (els.qrReader) els.qrReader.innerHTML = "";
-  }catch(e){ console.warn("stopScanner error", e); }
+async function stopScanner() {
+  try {
+    if (_qr) { await _qr.stop(); await _qr.clear(); }
+  } catch (_) { /* ignore */ }
+  _qr = null;
 }
+
 
 /* ================= History (FIX: pad hoist) ================= */
 async function openHistory(){
