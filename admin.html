@@ -52,14 +52,26 @@
   <div class="card border-0" style="background:var(--c-card)">
     <div class="table-responsive">
       <table class="table table-dark table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th style="width:55%">ชื่อ</th>
-            <th style="width:15%" class="text-end">คะแนน</th>
-            <th style="width:30%" class="text-end">จัดการ</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
+  <thead>
+    <tr>
+      <th class="sort" data-key="name">ชื่อ</th>
+      <th class="sort text-end" data-key="score">คะแนน</th>
+      <th class="text-center">จัดการ</th>
+    </tr>
+  </thead>
+  <tbody id="adminTableBody"></tbody>
+</table>
+<div class="d-flex justify-content-between align-items-center small text-secondary mt-2">
+  <div id="adminInfo"></div>
+  <div>
+    <span id="adminRange"></span>
+    <span class="ms-2" id="adminPagerInfo"></span>
+  </div>
+</div>
+<nav>
+  <ul class="pagination pagination-sm my-2" id="adminPager"></ul>
+</nav>
+
           <!-- rows will be injected -->
         </tbody>
       </table>
@@ -99,7 +111,45 @@
   </div>
 </div>
 
+<!-- History Modal -->
+<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-0">
+        <h5 class="modal-title">
+          <i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-0">
+        <div class="table-responsive">
+          <table class="table table-dark table-hover align-middle mb-0">
+            <thead class="small text-secondary">
+              <tr>
+                <th style="width: 38%;">เวลา</th>
+                <th style="width: 12%;">แต้ม</th>
+                <th style="width: 20%;">ประเภท</th>
+                <th style="width: 30%;">รายละเอียด/โค้ด</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr><td colspan="4" class="text-center text-muted py-4">กำลังโหลด…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+      </div>
+    </div>
+  </div>
+</div>
 <script defer src="/admin.page.js?v=2"></script>
+<!-- ต้องมี LIFF + SweetAlert2 + jQuery + LoadingOverlay (ถ้าจะใช้ overlay) -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
