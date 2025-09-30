@@ -19,38 +19,55 @@
 
 <main class="rp-container container py-3">
 
-  <!-- ===== Horizontal Profile Bar ===== -->
-  <section class="rp-profile rp-glass p-3 p-sm-4 mb-3">
-    <!-- left: avatar + name -->
-    <div class="rp-profile-left">
-      <img id="profilePic" class="rp-avatar" src="https://placehold.co/120x120" alt="profile"/>
-      <div class="rp-name-wrap">
-        <h1 id="username" class="rp-username mb-0">—</h1>
-        <button id="refreshBtn" class="btn btn-outline-secondary btn-icon ms-1" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+  <!-- ===== Profile Card (Horizontal Profile Bar) ===== -->
+  <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
+    <!-- Left: avatar + level badge -->
+    <div class="rp-left">
+      <div class="rp-avatar-wrap">
+        <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
+        <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
+      </div>
+    </div>
+
+    <!-- Right: lines + progress -->
+    <div class="rp-right">
+      <!-- line 1: username + small icon + refresh -->
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h1 id="username" class="rp-username mb-0">SATTAYA_42</h1>
+        <i class="fa-solid fa-leaf text-success-emphasis small"></i>
+        <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
           <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
-    </div>
 
-    <!-- center: big points + progress + helper text -->
-    <div class="rp-profile-center">
-      <div class="rp-points">
-        <div class="rp-point-label">คะแนนสะสม</div>
-        <div id="points" class="rp-point-value">0</div>
-      </div>
-      <div class="rp-progress-line">
-        <div id="progressFill" class="rp-progress-fill" style="width:0%"></div>
-      </div>
-      <div id="next-tier" class="rp-next small text-secondary">กำลังคำนวณขั้นถัดไป…</div>
-    </div>
+      <!-- line 2: current level text -->
+      <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
 
-    <!-- right: level badge -->
-    <div class="rp-profile-right">
-      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
-    </div>
+      <!-- line 3: next-level helper -->
+      <div id="next-tier" class="small text-secondary mt-1">สะสมอีก xx คะแนน → เลื่อนเป็น Gold</div>
+
+      <!-- line 4: big points -->
+      <div class="rp-point-value mt-1"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
+
+      <!-- LEVEL TRACK (แทนบาร์เดิม) -->
+<div id="levelTrack" class="rp-level-track mt-2">
+  <div class="rp-track-rail">
+    <div id="trackFill" class="rp-track-fill"></div>
+
+    <!-- หมุดระดับ (ตำแหน่งจะถูก JS จัดให้) -->
+    <div class="rp-track-milestone" data-label="Silver 0"></div>
+    <div class="rp-track-milestone" data-label="Gold 500"></div>
+    <div class="rp-track-milestone" data-label="Platinum 1200"></div>
+  </div>
+
+  <div class="d-flex justify-content-between small text-secondary mt-1">
+    <span>0</span><span>500</span><span>1200+</span>
+  </div>
+</div>
+
   </section>
 
-  <!-- ===== Action Buttons (2-grid) ===== -->
+  <!-- ===== Action Zone (2-grid) ===== -->
   <section class="row g-2 mb-3">
     <div class="col-6 d-grid">
       <button class="btn btn-primary rp-primary h-100" data-bs-toggle="modal" data-bs-target="#scoreModal">
@@ -65,7 +82,7 @@
   </section>
 
   <!-- ===== Ads Carousel ===== -->
-  <section class="rp-glass p-0 mb-3">
+  <section class="rp-glass rp-card p-0 mb-3 hover-lift">
     <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="3500">
       <div class="carousel-indicators">
         <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="0" class="active" aria-current="true"></button>
@@ -80,12 +97,12 @@
         </div>
         <div class="carousel-item">
           <a href="https://example.com/ad2" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/34d399/0b3?text=Your+Ad+2" alt="ad2">
+            <img class="d-block w-100" src="https://placehold.co/1200x450/facc15/0b3?text=Your+Ad+2" alt="ad2">
           </a>
         </div>
         <div class="carousel-item">
           <a href="https://example.com/ad3" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/bbf7d0/0b3?text=Your+Ad+3" alt="ad3">
+            <img class="d-block w-100" src="https://placehold.co/1200x450/60a5fa/0b3?text=Your+Ad+3" alt="ad3">
           </a>
         </div>
       </div>
@@ -99,7 +116,7 @@
   </section>
 
   <!-- ===== Popular Rewards ===== -->
-  <section class="rp-glass p-3 p-sm-4">
+  <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
     <h5 class="mb-3">ของรางวัลยอดนิยม</h5>
     <div class="row g-3">
       <div class="col-6 col-md-4">
@@ -127,7 +144,7 @@
 
 </main>
 
-<!-- Admin FAB (โชว์เฉพาะแอดมินโดย app.js) -->
+<!-- Admin FAB (show only for admin via app.js) -->
 <a id="btnAdmin" href="/admin.html" class="btn admin-entry d-none" aria-label="Admin">
   <i class="fa-solid fa-shield-halved"></i>
 </a>
@@ -174,6 +191,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
 <!-- App -->
 <script src="/app.js"></script>

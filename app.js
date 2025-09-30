@@ -1,45 +1,54 @@
-/* ============ Royal Point — User App (Horizontal Profile Bar) ============ */
+/* ============ Royal Point — User App (Horizontal Profile Card) ============ */
 
 /** LIFF / API */
 const LIFF_ID = "2007053300-QoEvbXyn";
-const API_GET_SCORE = "/api/get-score";       // GET  ?uid=...
-const API_REDEEM    = "/api/redeem";          // POST { uid, code, type }
-const API_HISTORY   = "/api/score-history";   // GET  ?uid=...
+const API_GET_SCORE = "/api/get-score";
+const API_REDEEM    = "/api/redeem";
+const API_HISTORY   = "/api/score-history";
 
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
 
 /** Elements */
-const $id = (x)=>document.getElementById(x);
+const $ = (x)=>document.getElementById(x);
 const els = {
-  username: $id("username"),
-  profilePic: $id("profilePic"),
-  points: $id("points"),
-  progressFill: $id("progressFill"), // NEW
-  nextTier: $id("next-tier"),
-  levelBadge: $id("levelBadge"),
+  username: $("username"),
+  profilePic: $("profilePic"),
+  points: $("points"),
+  pointUnit: null, // ใช้ span ใน HTML แล้ว ไม่ต้องจับ
+  progressFill: $("progressFill"),
+  progressBar: $("progressBar"),
+  nextTier: $("next-tier"),
+  levelBadge: $("levelBadge"),
+  currentLevelText: $("currentLevelText"),
 
-  btnRefresh: $id("refreshBtn"),
-  btnAdmin: $id("btnAdmin"),
-  btnHistory: $id("historyBtn"),
+  btnRefresh: $("refreshBtn"),
+  btnAdmin: $("btnAdmin"),
+  btnHistory: $("historyBtn"),
 
-  modal: $id("scoreModal"),
-  qrReader: $id("qr-reader"),
-  secretInput: $id("secretCode"),
-  submitBtn: $id("submitCodeBtn"),
+  modal: $("scoreModal"),
+  qrReader: $("qr-reader"),
+  secretInput: $("secretCode"),
+  submitBtn: $("submitCodeBtn"),
 
-  historyModal: $id("historyModal"),
-  historyList: $id("historyList"),
-  historyUser: $id("historyUser"),
+  historyModal: $("historyModal"),
+  historyList: $("historyList"),
+  historyUser: $("historyUser"),
 };
 
 /** State */
 let UID = "";
 let html5qrcode = null;
-let lastCamera = null;
-
 let prevScore = 0;
 let prevLevel = "";
+
+/** Level mapping (ตามที่ขอ: Gold=500, Platinum=1200) */
+const TIERS = [
+  { key:"silver",   name:"Silver",   min:0,   next:500,      class:"rp-level-silver",   progClass:"prog-silver"   },
+  { key:"gold",     name:"Gold",     min:500, next:1200,     class:"rp-level-gold",     progClass:"prog-gold"     },
+  { key:"platinum", name:"Platinum", min:1200,next:Infinity, class:"rp-level-platinum", progClass:"prog-platinum" },
+];
+const TIER_EMOJI = { Silver:"🥈", Gold:"🥇", Platinum:"💎" };
 
 /* ============ Boot ============ */
 document.addEventListener("DOMContentLoaded", initApp);
@@ -66,33 +75,25 @@ function bindUI(){
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // Modal start/stop camera
   if (els.modal){
     els.modal.addEventListener("shown.bs.modal", startScanner);
     els.modal.addEventListener("hidden.bs.modal", stopScanner);
   }
-  // Manual redeem
   els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
     await redeemCode(code, "MANUAL");
   });
 }
-function showAdminEntry(isAdmin){ const b=$id("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
+function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
+async function safeJson(resp){ const t=await resp.text(); try{ return JSON.parse(t); }catch{ return {status: resp.ok?"success":"error", message:t}; } }
 
 /* ============ Score / Level / Progress ============ */
-/** กำหนดช่วงระดับ (ปรับได้ตามจริง) */
-const TIERS = [
-  { key: "silver",   name: "Silver",   min: 0,    next: 500,     class: "rp-level-silver"   },
-  { key: "gold",     name: "Gold",     min: 500,  next: 1200,    class: "rp-level-gold"     },
-  { key: "platinum", name: "Platinum", min: 1200, next: Infinity, class: "rp-level-platinum" },
-];
-
 function getTier(score){
   for(const t of TIERS){ if(score >= t.min && score < t.next) return t; }
-  return TIERS[TIERS.length-1]; // platinum
+  return TIERS[TIERS.length-1];
 }
 
 async function refreshUserScore(){
@@ -118,53 +119,58 @@ async function refreshUserScore(){
 function setPoints(score){
   score = Number(score||0);
 
-  // 1) Count-up animation
+  const tier = getTier(score);
+  const idx = TIERS.findIndex(t=>t.key===tier.key);
+  const nextTierObj = TIERS[idx+1] || null;
+
+  // 1) Username score count-up
   if(els.points){
     const from = prevScore || Number(els.points.textContent || 0);
     animateCount(els.points, from, score, 600);
   }
 
-  // 2) Level + badge (with sparkle on change)
-  const tier = getTier(score);
-  const nextNeed = tier.next === Infinity ? 0 : Math.max(0, tier.next - score);
-  const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
-
+  // 2) Level badge + current level text
   if(els.levelBadge){
     els.levelBadge.textContent = tier.name;
     els.levelBadge.classList.remove("rp-level-silver","rp-level-gold","rp-level-platinum","sparkle");
     els.levelBadge.classList.add(tier.class);
-    if(prevLevel && prevLevel !== tier.key){
-      // sparkle!
-      setTimeout(()=> els.levelBadge.classList.add("sparkle"), 30);
-      setTimeout(()=> els.levelBadge.classList.remove("sparkle"), 1300);
+  }
+  if(els.currentLevelText){
+    els.currentLevelText.textContent = tier.name;
+  }
+
+  // 3) Progress theme (bar color by level) + width
+  if(els.progressBar){
+    els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
+    els.progressBar.classList.add(tier.progClass);
+  }
+  if(els.progressFill){
+    const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct*100))}%`;
+  }
+
+  // 4) Helper text (next level)
+  if(els.nextTier){
+    if(!nextTierObj){
+      els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
+    }else{
+      const need = Math.max(0, nextTierObj.min - score);
+      els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนเป็น ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name]||""}`;
     }
   }
 
-  // 3) Progress bar (horizontal)
-if (els.progressFill) {
-  const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
-  els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
-}
-
-// 4) Helper text (ระบุเลเวลถัดไปอัตโนมัติ)
-const TIER_EMOJI = { Silver: "🥈", Gold: "🥇", Platinum: "💎" };
-if (els.nextTier) {
-  const idx = TIERS.findIndex(t => t.key === tier.key);
-  const nextTierObj = TIERS[idx + 1] || null;
-  if (!nextTierObj) {
-    els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
-  } else {
-    const need = Math.max(0, nextTierObj.min - score);
-    els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนไประดับ ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name] || ""}`;
+  // 5) Sparkle + Confetti on level-up
+  if(prevLevel && prevLevel !== tier.key){
+    els.levelBadge?.classList.add("sparkle");
+    setTimeout(()=> els.levelBadge?.classList.remove("sparkle"), 1300);
+    launchConfetti();
   }
-}
-
 
   prevLevel = tier.key;
   prevScore = score;
 }
 
-/* Count-up utility */
+/* Count-up */
 function animateCount(el, from, to, duration=600){
   if(from === to){ el.textContent = String(to); return; }
   const start = performance.now();
@@ -178,7 +184,17 @@ function animateCount(el, from, to, duration=600){
   requestAnimationFrame(frame);
 }
 
-async function safeJson(resp){ const t=await resp.text(); try{ return JSON.parse(t); }catch{ return {status: resp.ok?"success":"error", message:t}; } }
+/* Confetti */
+function launchConfetti(){
+  try{
+    const duration = 1200, end = Date.now()+duration;
+    (function frame(){
+      confetti({ particleCount:40, angle:60, spread:50, origin:{x:0} });
+      confetti({ particleCount:40, angle:120, spread:50, origin:{x:1} });
+      if(Date.now()<end) requestAnimationFrame(frame);
+    })();
+  }catch{}
+}
 
 /* ============ Redeem / Scanner ============ */
 async function redeemCode(code, type){
@@ -191,7 +207,7 @@ async function redeemCode(code, type){
       toastOk(`รับคะแนนแล้ว +${j.point || 0}`);
       await refreshUserScore();
       stopScanner();
-      if(els.secretInput) els.secretInput.value = "";
+      if($("secretCode")) $("secretCode").value = "";
       if(els.modal){ const m = bootstrap.Modal.getInstance(els.modal); m && m.hide(); }
     }else{
       toastErr(j.message || "คูปองไม่ถูกต้องหรือถูกใช้ไปแล้ว");
@@ -251,6 +267,32 @@ async function openHistory(){
     new bootstrap.Modal(els.historyModal).show();
   }catch(e){ console.error(e); toastErr("ไม่สามารถโหลดประวัติได้"); }
 }
+
+function updateLevelTrack(score){
+  const track = document.getElementById("levelTrack");
+  const fill  = document.getElementById("trackFill");
+  if(!track || !fill) return;
+
+  // max = จุดเริ่ม Platinum (1200) จาก TIERS
+  const max = TIERS[TIERS.length-1].min;  // 1200
+  const pct = Math.max(0, Math.min(100, (score / max) * 100));
+  fill.style.width = pct + "%";
+
+  // set milestone positions: 0, 500, 1200
+  const milestones = track.querySelectorAll(".rp-track-milestone");
+  const stops = [0, 500, max];
+  milestones.forEach((m,i)=>{
+    const left = (stops[i] / max) * 100;
+    m.style.left = (i === stops.length-1 ? 100 : left) + "%";
+  });
+
+  // เปลี่ยนคลาสสีตามเลเวล
+  track.classList.remove("track-silver","track-gold","track-platinum");
+  const tier = getTier(score);
+  const map  = { silver:"track-silver", gold:"track-gold", platinum:"track-platinum" };
+  track.classList.add(map[tier.key] || "track-silver");
+}
+updateLevelTrack(score);
 
 /* Utils */
 function escapeHtml(s){return String(s||"").replace(/[&<>"'`=\/]/g,a=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#47;','`':'&#x60;','=':'&#x3D;'}[a]))}

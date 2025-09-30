@@ -1,11 +1,12 @@
-/* ===== Green × White — Luxury Glass Theme ===== */
+/* ===== Green × White — Glass + Mobile First ===== */
 :root{
-  --bg1:#ecfdf5; --bg2:#ffffff;      /* page gradient */
-  --glass:#ffffffcc;                 /* glass card */
-  --border:#d9efe6;
+  --bg1:#ecfdf5; --bg2:#ffffff;
+  --glass:#ffffffcc; --border:#d9efe6;
   --text:#0f1b17; --mute:#5b7168;
-  --p:#22c55e; --p600:#16a34a;       /* primary green */
+  --p:#22c55e; --p600:#16a34a;
   --chip:#f0fdfa;
+  /* level colors */
+  --silver:#9ca3af; --gold:#facc15; --platinum:#60a5fa;
 }
 
 *{box-sizing:border-box}
@@ -16,99 +17,195 @@ body{
   background:linear-gradient(180deg,var(--bg1),var(--bg2));
 }
 
-/* container */
 .rp-container{max-width:980px}
 
 /* glass card */
 .rp-glass{
   background:var(--glass);
   border:1px solid var(--border);
-  border-radius:18px;
+  border-radius:22px;
   backdrop-filter:saturate(160%) blur(12px);
   box-shadow:0 10px 28px rgba(22,163,74,.08);
 }
 
-/* ===== Horizontal Profile Bar ===== */
-.rp-profile{
-  display:grid;
-  grid-template-columns: auto 1fr auto;
-  align-items:center;
-  gap:14px;
+/* ===== Profile Card ===== */
+.rp-profile-card{
+  display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;
 }
-.rp-profile-left{display:flex;align-items:center;gap:12px;min-width:0}
-.rp-avatar{width:56px;height:56px;border-radius:14px;object-fit:cover;border:2px solid var(--border)}
-.rp-name-wrap{display:flex;align-items:center;gap:6px;min-width:0}
-.rp-username{
-  font-size:clamp(1.1rem,4vw,1.4rem);
-  font-weight:800; letter-spacing:.2px; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
-.btn-icon{width:38px;height:38px;border-radius:12px;padding:0;display:inline-flex;align-items:center;justify-content:center}
-
-.rp-profile-center{min-width:0}
-.rp-points{display:flex;align-items:flex-end;gap:10px}
-.rp-point-label{color:var(--mute);font-weight:600}
-.rp-point-value{font-size:clamp(1.6rem,6vw,2.3rem);font-weight:900;line-height:1}
-
-.rp-progress-line{margin-top:6px;height:10px;border-radius:999px;background:#e7f6ef;overflow:hidden;border:1px solid var(--border)}
-.rp-progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#34d399,#22c55e,#16a34a);transition:width .45s cubic-bezier(.22,1,.36,1)}
-
-.rp-next{margin-top:6px}
-
-.rp-profile-right{display:flex;justify-content:end}
+.rp-avatar-wrap{ position:relative; width:72px; height:72px }
+.rp-avatar-circle{ width:72px; height:72px; border-radius:50%; object-fit:cover; border:2px solid var(--border) }
 .rp-level-badge{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:.45rem .75rem;border-radius:999px;border:1px solid var(--border);
-  background:#ffffff; font-weight:800;
+  position:absolute; right:-6px; bottom:-6px;
+  padding:.3rem .6rem; border-radius:999px; background:#fff; border:1px solid var(--border);
+  font-weight:800; font-size:.8rem;
 }
-.rp-level-silver{color:#64748b;background:#f8fafc}
-.rp-level-gold{color:#854d0e;background:#fffbeb;border-color:#fde68a}
-.rp-level-platinum{color:#0ea5e9;background:#f0f9ff;border-color:#bae6fd}
+.rp-level-silver{ color:var(--silver); }
+.rp-level-gold{ color:#b45309; background:#fffbeb; border-color:#fde68a }
+.rp-level-platinum{ color:#0ea5e9; background:#f0f9ff; border-color:#bae6fd }
 
-/* sparkle when level up */
-@keyframes sparkle{
-  0%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
-  50%{box-shadow:0 0 0 10px rgba(34,197,94,.15)}
-  100%{box-shadow:0 0 0 0 rgba(34,197,94,.0)}
+.rp-right{ min-width:0 }
+.rp-username{
+  font-size:clamp(1.1rem,4vw,1.4rem); font-weight:800;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0;
 }
-.rp-level-badge.sparkle{animation:sparkle 1.2s ease}
+.btn-icon{ width:36px; height:36px; border-radius:12px; padding:0; display:inline-flex; align-items:center; justify-content:center }
 
-/* buttons */
+/* big points */
+.rp-point-value{ font-size:clamp(1.8rem,6vw,2.4rem); font-weight:900; line-height:1 }
+.rp-point-unit{ font-size:1rem; color:var(--mute); font-weight:700 }
+
+/* progress */
+.rp-progress-line{ height:10px; border-radius:999px; background:#e7f6ef; overflow:hidden; border:1px solid var(--border) }
+.rp-progress-fill{ height:100%; width:0%; transition:width .45s cubic-bezier(.22,1,.36,1) }
+.prog-silver .rp-progress-fill{ background:linear-gradient(90deg,#d1d5db,#9ca3af) }
+.prog-gold .rp-progress-fill{ background:linear-gradient(90deg,#fde047,#facc15) }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#93c5fd,#60a5fa) }
+
+/* hover/active micro interaction */
+.hover-lift{ transition:transform .06s ease, box-shadow .2s ease }
+.hover-lift:hover{ transform:translateY(-1px); box-shadow:0 14px 32px rgba(22,163,74,.12) }
+.hover-lift:active{ transform:translateY(0) }
+
+/* action buttons */
 .rp-primary{
-  background:var(--p);border-color:var(--p);font-weight:800;
+  background:linear-gradient(135deg,#34d399,#22c55e);
+  border-color:#22c55e; font-weight:800;
   box-shadow:0 12px 24px rgba(34,197,94,.22);
 }
-.rp-primary:hover{background:var(--p600);border-color:var(--p600)}
-.btn-outline-secondary{border-color:var(--border);background:#fff;color:var(--text)}
-.btn-outline-secondary:hover{background:#f4fbf7}
+.rp-primary:hover{ background:linear-gradient(135deg,#22c55e,#16a34a); border-color:#16a34a }
+.btn-outline-secondary{ border-color:var(--border); background:#fff; color:var(--text) }
+.btn-outline-secondary:hover{ background:#f4fbf7 }
 
-/* carousel */
-.carousel .carousel-indicators [data-bs-target]{background:#16a34a;width:8px;height:8px;border-radius:50%}
+/* ads carousel */
+.carousel .carousel-indicators [data-bs-target]{ background:#16a34a; width:8px; height:8px; border-radius:50% }
 
 /* gifts */
-.rp-gift{position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 8px 22px rgba(2,120,87,.07)}
-.rp-gift-img{aspect-ratio:4/3;background:#f4fbf7}
-.rp-gift-img img{width:100%;height:100%;object-fit:cover;display:block}
-.rp-gift-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:.7rem .8rem}
-.rp-chip{background:#f0fdfa;border:1px solid var(--border);padding:.2rem .55rem;border-radius:999px;font-weight:800;color:#047857}
-.rp-tag{position:absolute;left:10px;top:10px;padding:.25rem .5rem;border-radius:999px;font-weight:800;font-size:.85rem;color:#0f1b17;background:#ffffffcc;border:1px solid var(--border);backdrop-filter:blur(6px)}
-.rp-hit{border-color:#fecaca;background:#fff1f2}
-.rp-new{border-color:#c7d2fe;background:#eef2ff}
+.rp-gift{ position:relative; border:1px solid var(--border); border-radius:18px; overflow:hidden; background:#fff; box-shadow:0 8px 22px rgba(2,120,87,.07) }
+.rp-gift-img{ aspect-ratio:4/3; background:#f4fbf7 }
+.rp-gift-img img{ width:100%; height:100%; object-fit:cover; display:block }
+.rp-gift-foot{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:.7rem .8rem }
+.rp-chip{ background:#f0fdfa; border:1px solid var(--border); padding:.2rem .55rem; border-radius:999px; font-weight:800; color:#047857 }
+.rp-tag{ position:absolute; left:10px; top:10px; padding:.25rem .5rem; border-radius:999px; font-weight:800; font-size:.85rem; color:#0f1b17; background:#ffffffcc; border:1px solid var(--border); backdrop-filter:blur(6px) }
+.rp-hit{ border-color:#fecaca; background:#fff1f2 }
+.rp-new{ border-color:#c7d2fe; background:#eef2ff }
 
-/* Admin FAB */
+/* admin FAB */
 .admin-entry{
-  position:fixed;right:16px;bottom:calc(92px + env(safe-area-inset-bottom));
-  width:56px;height:56px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,#34d399,#22c55e);
-  color:#fff;box-shadow:0 16px 32px rgba(34,197,94,.28);z-index:1040;border:0
+  position:fixed; right:16px; bottom:calc(92px + env(safe-area-inset-bottom));
+  width:56px; height:56px; border-radius:18px; display:inline-flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#34d399,#22c55e); color:#fff; box-shadow:0 16px 32px rgba(34,197,94,.28); z-index:1040; border:0
 }
-.admin-entry i{font-size:22px}
+.admin-entry i{ font-size:22px }
 
-/* modal/light form */
-.modal-content{background:#fff;color:var(--text);border:1px solid var(--border)}
-.form-control{background:#fff;border:1px solid var(--border);color:var(--text)}
-.form-control:focus{border-color:var(--p);box-shadow:0 0 0 .25rem rgba(34,197,94,.15)}
+/* modal / forms */
+.modal-content{ background:#fff; color:var(--text); border:1px solid var(--border) }
+.form-control{ background:#fff; border:1px solid var(--border); color:var(--text) }
+.form-control:focus{ border-color:var(--p); box-shadow:0 0 0 .25rem rgba(34,197,94,.15) }
 
 @media (max-width:576px){
-  .rp-avatar{width:52px;height:52px;border-radius:12px}
-  .admin-entry{bottom:calc(84px + env(safe-area-inset-bottom));width:52px;height:52px}
+  .rp-avatar-wrap{ width:64px; height:64px }
+  .rp-avatar-circle{ width:64px; height:64px }
+  .admin-entry{ bottom:calc(84px + env(safe-area-inset-bottom)); width:52px; height:52px }
 }
+/* ========== Mobile Balance Tweaks ========== */
+
+/* พื้นที่ container ไม่ชิดขอบเกินไปบนจอเล็ก */
+:root{ --container-padding: clamp(12px, 4vw, 20px) }
+.container{ padding-left: var(--container-padding); padding-right: var(--container-padding); }
+
+/* ปรับระยะการ์ดให้แน่นขึ้นเล็กน้อย */
+.rp-card{ border-radius: 20px }
+.rp-glass{ box-shadow: 0 8px 22px rgba(22,163,74,.08) }
+
+/* -------- จอเล็กทั่วไป (<= 390px) -------- */
+@media (max-width: 390px){
+
+  /* โปรไฟล์: ย่อ avatar / badge / ปุ่ม refresh */
+  .rp-avatar-wrap{ width:56px;height:56px }
+  .rp-avatar-circle{ width:56px;height:56px }
+  .rp-level-badge{ right:-4px; bottom:-6px; transform: scale(.92) }
+  .btn-icon{ width:32px;height:32px;border-radius:10px }
+
+  /* ตัวอักษร balance ขนาดให้พอดีสายตา */
+  .rp-username{ font-size: clamp(1rem, 5vw, 1.25rem) }
+  .rp-point-value{ font-size: clamp(1.45rem, 7vw, 2rem) }
+  .rp-point-unit{ font-size: .95rem }
+
+  /* Progress ชัดแต่ไม่หนาเกิน */
+  .rp-progress-line{ height: 8px }
+  
+  /* ปุ่มกดสูงกำลังดี */
+  .rp-primary{ padding-block: .8rem }
+  .btn-outline-secondary{ padding-block: .8rem }
+
+  /* Carousel ไม่ให้สูงไป */
+  #adsCarousel .carousel-inner{ border-radius: inherit }
+  #adsCarousel .carousel-item img{
+    width:100%; height:auto; max-height: 26vh; object-fit: cover; border-radius: inherit;
+  }
+
+  /* การ์ดของรางวัล: เท่ากันและไม่ลอย */
+  .rp-gift{ display:flex; flex-direction: column }
+  .rp-gift-img{ aspect-ratio: 4 / 3; flex: 1 0 auto }
+  .rp-gift-foot{ min-height: 44px }
+}
+
+/* -------- จอเล็กมาก (<= 340px) : จัด layout ใหม่ให้สมดุล -------- */
+@media (max-width: 340px){
+  /* Profile card ยกซ้าย-ขวาให้เป็น 2 แถว (Stack) */
+  .rp-profile-card{ grid-template-columns: 1fr; grid-auto-rows: auto; gap: 12px }
+  .rp-left{ order: 1 }
+  .rp-right{ order: 2 }
+  .rp-avatar-wrap{ margin-bottom: .25rem }
+
+  /* ใต้โปรไฟล์: เลย์เอาต์กะทัดรัด */
+  .rp-point-value{ margin-top: .2rem }
+  .rp-progress-line{ margin-top: .25rem }
+
+  /* ปุ่มแอ็กชันวางแนวตั้ง 1 คอลัมน์ */
+  .row.g-2 > [class*='col-6']{ flex: 0 0 100%; max-width: 100% }
+}
+
+/* ข้อความบรรทัดช่วย (ให้ตัดคำสวย ๆ ถ้ารองรับ) */
+#next-tier{ text-wrap: balance; }
+
+@media (prefers-reduced-motion: reduce){
+  .rp-progress-fill{ transition: none }
+  .hover-lift{ transition: none }
+}
+
+.admin-entry{ bottom: calc(88px + env(safe-area-inset-bottom)) }
+body{ padding-bottom: env(safe-area-inset-bottom) }
+
+/* ===== Level Track (Milestone Rail) ===== */
+.rp-level-track .rp-track-rail{
+  position:relative; height:clamp(10px, 1.8vw, 14px);
+  border-radius:999px; background:#e7f6ef; overflow:hidden;
+  border:1px solid var(--border);
+}
+.rp-level-track .rp-track-fill{
+  position:absolute; inset:0 auto 0 0; width:0%;
+  /* ไล่สีผ่าน Silver -> Gold -> Platinum */
+  background:linear-gradient(90deg, #d1d5db, #facc15, #60a5fa);
+  border-radius:inherit; transition:width .5s cubic-bezier(.22,1,.36,1);
+}
+.rp-track-milestone{
+  position:absolute; top:50%; transform:translate(-50%,-50%);
+  width:clamp(12px,2vw,14px); height:clamp(12px,2vw,14px);
+  border-radius:50%; background:#fff; border:2px solid var(--border);
+  box-shadow:0 0 0 3px #fff inset;
+}
+.rp-track-milestone::after{
+  content:attr(data-label);
+  position:absolute; top:-22px; left:50%; transform:translateX(-50%);
+  white-space:nowrap; font-size:.72rem; color:var(--mute);
+}
+
+/* เปลี่ยนธีมสีตามเลเวลปัจจุบัน (เพิ่ม/ลบคลาสจาก JS) */
+.track-silver .rp-track-fill{ background:linear-gradient(90deg,#d1d5db,#9ca3af) }
+.track-gold .rp-track-fill{   background:linear-gradient(90deg,#fde047,#facc15) }
+.track-platinum .rp-track-fill{background:linear-gradient(90deg,#93c5fd,#60a5fa) }
+
+.rp-sticky-summary{ position:sticky; top:0; z-index:1010; backdrop-filter:blur(6px); background:#ffffffc9 }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.2)} 100%{box-shadow:0 0 0 14px rgba(34,197,94,0)} }
+.rp-track-rail.pulse{ animation:pulse .6s ease }
