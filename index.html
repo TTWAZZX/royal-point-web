@@ -22,81 +22,73 @@
 
 <main class="rp-container container py-3">
 
-  <!-- ===== Profile Card (clean & balanced) ===== -->
-<section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-  <div class="rp-left">
+<!-- ===== Profile Card (2-Row Layout) ===== -->
+<section class="rp-card rp-glass rp-profile2 hover-lift mb-3">
+  <!-- Row 1: Avatar + Name + Level badge + Refresh -->
+  <div class="rp-pf-row d-flex align-items-center gap-3">
     <div class="rp-avatar-wrap">
       <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
-      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
     </div>
+
+    <div class="flex-grow-1">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h1 id="username" class="rp-username mb-0">—</h1>
+        <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
+      </div>
+      <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
+    </div>
+
+    <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+      <i class="fa-solid fa-rotate"></i>
+    </button>
   </div>
 
-  <div class="rp-right">
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <h1 id="username" class="rp-username mb-0">—</h1>
-      <i class="fa-solid fa-leaf text-success-emphasis small"></i>
-      <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-        <i class="fa-solid fa-rotate"></i>
-      </button>
-    </div>
+  <!-- Row 2: Big point + progress + helper text -->
+  <div class="rp-pf-row mt-3">
+    <div class="rp-point-value"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
 
-    <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
-    <div id="next-tier" class="small text-secondary mt-1">—</div>
-
-    <div class="rp-point-value mt-1">
-      <span id="points">0</span> <span class="rp-point-unit">pt</span>
-    </div>
-
-    <!-- ใช้ progress เดิมแค่อันเดียว -->
     <div id="progressBar" class="rp-progress-line mt-2 prog-silver">
       <div id="progressFill" class="rp-progress-fill" style="width:0%"></div>
     </div>
+
+    <div id="next-tier" class="small text-secondary mt-2">—</div>
   </div>
 </section>
 
-  <!-- Actions (icons only, compact & centered) -->
-  <section class="rp-actions-wide d-grid gap-2 mb-3">
-    <button class="btn rp-primary act-btn" data-bs-toggle="modal" data-bs-target="#scoreModal">
-      <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
-    </button>
-    <button id="historyBtn" class="btn btn-outline-secondary act-btn">
-      <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
-    </button>
-  </section>
+  <!-- Actions: 2 cards -->
+<section class="rp-actions-grid mb-3">
+  <button class="act-card act-primary" data-bs-toggle="modal" data-bs-target="#scoreModal">
+    <div class="act-icon"><i class="fa-solid fa-qrcode"></i></div>
+    <div class="act-text">สแกนรับคะแนน</div>
+  </button>
 
-  <!-- ===== Ads Carousel ===== -->
-  <section class="rp-glass rp-card p-0 mb-3 hover-lift">
-    <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="3500">
-      <div class="carousel-indicators">
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="0" class="active" aria-current="true"></button>
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="1"></button>
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="2"></button>
+  <button id="historyBtn" class="act-card act-outline">
+    <div class="act-icon"><i class="fa-regular fa-clock"></i></div>
+    <div class="act-text">ประวัติการรับคะแนน</div>
+  </button>
+</section>
+
+  <!-- ===== Ads (soft card carousel) ===== -->
+<section class="rp-card rp-glass p-0 mb-3 hover-lift">
+  <div id="adsCarousel" class="carousel slide rp-ads" data-bs-ride="carousel" data-bs-interval="3500">
+    <div class="carousel-inner">
+      <div class="carousel-item active">
+        <img class="d-block w-100 rp-ads-img" src="https://placehold.co/1200x450/ECFDF5/064E3B?text=Your+Ad+1" alt="ad1">
       </div>
-      <div class="carousel-inner">
-        <div class="carousel-item active">
-          <a href="https://example.com/ad1" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/22c55e/ffffff?text=Your+Ad+1" alt="ad1">
-          </a>
-        </div>
-        <div class="carousel-item">
-          <a href="https://example.com/ad2" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/facc15/0b3?text=Your+Ad+2" alt="ad2">
-          </a>
-        </div>
-        <div class="carousel-item">
-          <a href="https://example.com/ad3" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/60a5fa/0b3?text=Your+Ad+3" alt="ad3">
-          </a>
-        </div>
+      <div class="carousel-item">
+        <img class="d-block w-100 rp-ads-img" src="https://placehold.co/1200x450/E0F2FE/0C4A6E?text=Your+Ad+2" alt="ad2">
       </div>
-      <button class="carousel-control-prev" type="button" data-bs-target="#adsCarousel" data-bs-slide="prev">
-        <span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span>
-      </button>
-      <button class="carousel-control-next" type="button" data-bs-target="#adsCarousel" data-bs-slide="next">
-        <span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span>
-      </button>
+      <div class="carousel-item">
+        <img class="d-block w-100 rp-ads-img" src="https://placehold.co/1200x450/F1F5F9/0F172A?text=Your+Ad+3" alt="ad3">
+      </div>
     </div>
-  </section>
+    <div class="carousel-indicators rp-ads-indicators">
+      <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="0" class="active" aria-current="true"></button>
+      <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="1"></button>
+      <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="2"></button>
+    </div>
+  </div>
+</section>
 
   <!-- Skeleton while loading -->
   <section id="appSkeleton" class="rp-card p-4 mb-3" style="display:none">
@@ -111,13 +103,14 @@
   </section>
 
   <!-- ===== Popular Rewards ===== -->
-  <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
-    <h5 class="mb-2">ของรางวัล</h5>
-    <!-- Horizontal reward rail -->
-    <div id="rewardRail" class="rp-reward-rail">
-      <!-- JS จะ render การ์ดให้ -->
-    </div>
-  </section>
+  <section class="rp-card rp-glass p-3 p-sm-4 hover-lift">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h5 class="mb-0">ของรางวัล</h5>
+    <small class="text-secondary">แต้มของคุณ: <b id="points" class="not-select">0</b> pt</small>
+  </div>
+  <div id="rewardRail" class="rp-reward-rail"></div>
+</section>
+
 </main>
 
 <!-- Admin FAB (show only for admin via app.js) -->

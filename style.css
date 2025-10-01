@@ -994,3 +994,79 @@ body.ready #topbar{width:100%;opacity:0}
 }
 #rp-ovl .rp-ovl-text{ font-weight:600 }
 @keyframes rp-spin{to{ transform:rotate(360deg) }}
+
+/* ===== Base glass card & hover ===== */
+.rp-card{ border:1px solid rgba(15,23,42,.06); border-radius:16px; background:#fff; }
+.rp-glass{ background:rgba(255,255,255,.85); backdrop-filter:saturate(150%) blur(6px); box-shadow:0 10px 30px rgba(2,6,23,.06); }
+.hover-lift{ transition:transform .18s ease, box-shadow .18s ease; }
+.hover-lift:hover{ transform:translateY(-2px); box-shadow:0 20px 40px rgba(2,6,23,.10); }
+
+/* ===== Profile 2-row ===== */
+.rp-profile2 .rp-pf-row + .rp-pf-row{ border-top:1px dashed rgba(15,23,42,.08); padding-top:12px; }
+.rp-avatar-circle{ width:72px;height:72px;border-radius:50%;object-fit:cover;border:3px solid #fff; box-shadow:0 6px 16px rgba(2,6,23,.12) }
+.rp-username{ font-family:Inter, "Noto Sans Thai", system-ui; font-weight:800; font-size:1.35rem; }
+.rp-level-badge{ display:inline-block; padding:.2rem .55rem; border-radius:999px; font-size:.85rem; font-weight:700; }
+.rp-level-silver{ background:#F1F5F9; color:#334155; }
+.rp-level-gold{ background:#FEF3C7; color:#92400E; }
+.rp-level-platinum{ background:#EDE9FE; color:#4C1D95; }
+
+.rp-point-value{ font-size:2.1rem; font-weight:800; line-height:1; }
+.rp-point-unit{ font-size:1rem; font-weight:700; color:#64748B }
+
+/* progress */
+.rp-progress-line{ position:relative; height:8px; background:#E5E7EB; border-radius:999px; overflow:hidden }
+.rp-progress-fill{ position:absolute; inset:0 auto 0 0; width:0%; height:100%; background:linear-gradient(90deg,#34D399,#10B981); }
+.prog-gold .rp-progress-fill{ background:linear-gradient(90deg,#F59E0B,#FBBF24); }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#818CF8,#22D3EE); }
+
+/* ===== Action cards ===== */
+.rp-actions-grid{ display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
+.act-card{ border-radius:14px; padding:16px; border:1px solid rgba(15,23,42,.08); background:#fff;
+  display:flex; flex-direction:column; align-items:center; gap:.4rem; font-weight:700; transition:transform .15s ease, box-shadow .15s ease; }
+.act-card:active{ transform:translateY(1px) }
+.act-icon{ width:42px; height:42px; border-radius:12px; display:grid; place-items:center; font-size:18px; }
+.act-primary{ background:linear-gradient(135deg,#10B981,#22D3EE); color:#0b3; color:#072; color:#fff; }
+.act-primary .act-icon{ background:rgba(255,255,255,.15); }
+.act-outline{ background:#fff; }
+.act-outline .act-icon{ background:#ECFDF5; color:#065F46; }
+.act-text{ font-weight:700 }
+
+/* ===== Ads (soft) ===== */
+.rp-ads .carousel-inner{ border-radius:16px; overflow:hidden; }
+.rp-ads-img{ display:block; width:100%; height:auto; aspect-ratio: 20 / 7; object-fit:cover; }
+.rp-ads-indicators{ position:absolute; left:0; right:0; bottom:10px; display:flex; gap:6px; justify-content:center; }
+.rp-ads-indicators [data-bs-target]{ width:8px;height:8px;border-radius:999px;border:0;background:#fff;opacity:.6 }
+.rp-ads-indicators .active{ opacity:1 }
+
+/* ===== Rewards rail ===== */
+.rp-reward-rail{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+@media (min-width:576px){ .rp-reward-rail{ grid-template-columns:repeat(3,1fr); } }
+.rp-reward-card{ position:relative; border:1px solid rgba(15,23,42,.08); border-radius:16px; overflow:hidden; background:#fff; }
+.rp-reward-img{ aspect-ratio:4/3; background:#F1F5F9; display:grid; place-items:center }
+.rp-reward-img img{ width:100%; height:100%; object-fit:cover }
+.rp-reward-body{ padding:.6rem .75rem }
+.rp-reward-cost{ font-weight:800; font-size:.95rem; padding:.15rem .45rem; background:#ECFDF5; color:#065F46; border-radius:999px; border:1px solid #A7F3D0 }
+.rp-redeem-btn{ position:absolute; right:.6rem; bottom:.6rem; border:0; padding:.5rem .7rem; border-radius:12px;
+  background:#10B981; color:#fff; font-weight:800; box-shadow:0 8px 18px rgba(16,185,129,.25); }
+.rp-reward-card.locked .rp-redeem-btn{ filter:grayscale(1); opacity:.5; cursor:not-allowed }
+.rp-reward-card.locked::after{
+  content:"คะแนนไม่พอ"; position:absolute; inset:auto 0 0 0; background:linear-gradient(180deg,transparent,rgba(2,6,23,.55));
+  color:#fff; text-align:center; padding:.35rem .5rem; font-weight:700; font-size:.85rem;
+}
+
+/* micro interaction */
+.rp-redeem-btn:active{ transform:translateY(1px) }
+
+.rp-tag{
+  position:absolute; left:.6rem; top:.6rem; padding:.15rem .45rem; font-size:.75rem; font-weight:800;
+  background:#FDE68A; color:#92400E; border-radius:999px; border:1px solid #F59E0B;
+}
+
+.rp-reward-card { position: relative; }
+.rp-reward-card .rp-tag{
+  position:absolute; top:8px; left:8px;
+  background:linear-gradient(135deg,#f97316,#fb7185);
+  color:#fff; font-weight:700; font-size:.75rem;
+  padding:.25rem .5rem; border-radius:8px;
+  box-shadow:0 4px 10px rgba(0,0,0,.15);
+}

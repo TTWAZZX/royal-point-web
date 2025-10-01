@@ -309,22 +309,30 @@ async function loadRewards(){
 
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
-  if(!rail) return;
+  if (!rail) return;
 
-  rail.innerHTML = (REWARDS_CACHE||[]).map(r=>{
-    const locked = Number(currentScore) < Number(r.cost);
+  rail.innerHTML = (REWARDS_CACHE || []).map(r => {
+    const locked  = Number(currentScore) < Number(r.cost);
+    const id      = escapeHtml(r.id || "");
+    const name    = escapeHtml(r.name || r.id || "");
+    const img     = r.img || "https://placehold.co/640x480?text=Reward";
+    const cost    = Number(r.cost || 0);
+    const tagHtml = r.tag ? `<span class="rp-tag">${escapeHtml(r.tag)}</span>` : "";
+
     return `
-      <div class="rp-reward-card ${locked?'locked':''}" data-id="${r.id}" data-cost="${r.cost}">
+      <div class="rp-reward-card ${locked ? 'locked' : ''}"
+           data-id="${id}" data-cost="${cost}">
+        ${tagHtml}
         <div class="rp-reward-img">
-          <img src="${r.img || 'https://placehold.co/640x480?text=Reward'}" alt="${(r.name||r.id)}">
+          <img src="${img}" alt="${name}">
         </div>
         <div class="rp-reward-body p-2">
           <div class="d-flex justify-content-between align-items-center">
-            <div class="fw-bold text-truncate">${escapeHtml(r.name||r.id)}</div>
-            <span class="rp-reward-cost">${Number(r.cost||0)} pt</span>
+            <div class="fw-bold text-truncate">${name}</div>
+            <span class="rp-reward-cost">${cost} pt</span>
           </div>
         </div>
-        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked?"disabled":""}>
+        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked ? "disabled" : ""}>
           <i class="fa-solid fa-gift"></i>
         </button>
       </div>
@@ -332,17 +340,24 @@ function renderRewards(currentScore){
   }).join("");
 
   // ผูกครั้งเดียวพอ กันซ้อน
-  if (!rewardRailBound){
-    rail.addEventListener("click", async (ev)=>{
-      const btn  = ev.target.closest(".rp-redeem-btn"); if(!btn) return;
+  if (!rewardRailBound) {
+    rail.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest(".rp-redeem-btn");
+      if (!btn || btn.disabled) return;
+
       const card = btn.closest(".rp-reward-card");
+      if (!card) return;
+
       const id   = card.dataset.id;
       const cost = Number(card.dataset.cost);
+      if (!id || Number.isNaN(cost)) return;
+
       await redeemReward({ id, cost }, btn);
     });
-    rewardRailBound = true;
+    rewardRailBound = true; // ✅ สำคัญ: ตั้งธงหลังผูกแล้ว
   }
 }
+
 
 // กันกดซ้ำ
 let REDEEMING = false;
