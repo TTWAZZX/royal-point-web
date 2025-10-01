@@ -5,6 +5,104 @@ const LIFF_ID = "2007053300-QoEvbXyn";
 const API_GET_SCORE = "/api/get-score";
 const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
+// --- Client calls ---
+const API_SPEND = "/api/spend"; // (ไฟล์ serverless ด้านล่าง)
+// ตัวอย่างข้อมูลรางวัล (แก้ไขตามจริงได้)
+const REWARDS = [
+  { id:"A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
+  { id:"B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
+  { id:"C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
+  { id:"D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
+];
+
+function renderRewards(currentScore){
+  const rail = document.getElementById("rewardRail");
+  if(!rail) return;
+  rail.innerHTML = REWARDS.map(r=>{
+    const locked = currentScore < r.cost ? " locked" : "";
+    return `
+      <div class="rp-reward-card${locked}" data-id="${r.id}" data-cost="${r.cost}">
+        <div class="rp-reward-img"><img src="${r.img}" alt="reward ${r.id}"></div>
+        <span class="rp-reward-cost">${r.cost} pt</span>
+        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${currentScore<r.cost?"disabled":""}>
+          <i class="fa-solid fa-gift"></i>
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  // เดิมอาจมี { once:true } → ทำให้คลิกได้ครั้งเดียว
+rail.addEventListener("click", async (ev) => {
+  const btn  = ev.target.closest(".rp-redeem-btn");
+  if (!btn) return;
+  const card = btn.closest(".rp-reward-card");
+  const id   = card.dataset.id;
+  const cost = Number(card.dataset.cost);
+  await redeemReward({ id, cost }, btn);
+});
+}
+
+// ป้องกันกดซ้ำรัว ๆ
+let REDEEMING = false;
+
+async function redeemReward(reward, btn) {
+  if (REDEEMING) return;
+  if (!UID) return toastErr("ยังไม่พร้อมใช้งาน");
+  const id   = reward?.id;
+  const cost = Math.max(0, Number(reward?.cost) || 0);
+  if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
+
+  // พอแต้มก่อน
+  const scoreNow = Number(prevScore || 0);
+  if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+
+  // ยืนยัน
+  const confirmed = window.Swal
+    ? (await Swal.fire({
+        title: "ยืนยันการแลก?",
+        html: `จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${id}</b>`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "แลกเลย"
+      })).isConfirmed
+    : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
+  if (!confirmed) return;
+
+  // ล็อกปุ่มกันกดซ้ำ
+  REDEEMING = true;
+  const oldDisabled = btn?.disabled;
+  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+
+  try {
+    const res = await fetch(API_SPEND, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ uid: UID, cost, rewardId: id })
+    });
+    const payload = await safeJson(res);
+    if (payload?.status !== "success") {
+      throw new Error(payload?.message || "spend failed");
+    }
+
+    await refreshUserScore(); // คะแนนจะถูกหักแล้วอัปเดต UI
+
+    if (window.Swal) {
+      await Swal.fire({
+        title: "แลกสำเร็จ ✅",
+        html: `ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
+        icon: "success"
+      });
+    } else {
+      alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
+    }
+  } catch (err) {
+    console.error(err);
+    toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
+  } finally {
+    REDEEMING = false;
+    if (btn) { btn.disabled = oldDisabled ?? false; btn.classList.remove("is-loading"); }
+  }
+}
 
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
@@ -83,10 +181,16 @@ function bindUI(){
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
   if (els.modal){
-    // เรียกผ่าน wrapper เสมอ กัน undefined ตอนบูต
     els.modal.addEventListener("shown.bs.modal", () => startScanner && startScanner());
+    // ไม่ปิดกล้องอัตโนมัติเมื่อปิดโมดัลก็ไม่มีผลข้างเคียง แต่เก็บไว้ก็ได้
     els.modal.addEventListener("hidden.bs.modal", () => stopScanner && stopScanner());
   }
+
+  // NEW: ปุ่มควบคุมกล้อง
+  const startBtn = document.getElementById("startScanBtn");
+  const stopBtn  = document.getElementById("stopScanBtn");
+  startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
+  stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
 
   els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
     const code = (els.secretInput?.value || "").trim();
@@ -105,24 +209,84 @@ function getTier(score){
   return TIERS[TIERS.length-1];
 }
 
+// 1) ดึงคะแนนจาก API แล้วส่งเข้า setPoints() เท่านั้น
 async function refreshUserScore(){
   if(!UID) return;
   try{
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
     const j = await safeJson(r);
-    if(j.status === "success" && j.data){
+
+    if (j.status === "success" && j.data){
       const sc = Number(j.data.score || 0);
-      setPoints(sc);
+      setPoints(sc);                           // <-- ทำทุกอย่างใน setPoints()
       localStorage.setItem("lastScore", String(sc));
-    }else{
+    } else {
       const cached = Number(localStorage.getItem("lastScore") || "0");
-      setPoints(cached);
+      setPoints(cached);                       // <-- ทำทุกอย่างใน setPoints()
     }
   }catch(e){
     console.error(e);
     const cached = Number(localStorage.getItem("lastScore") || "0");
-    setPoints(cached);
+    setPoints(cached);                         // <-- ทำทุกอย่างใน setPoints()
   }
+}
+
+// 2) อัปเดต UI ทั้งหมด (progress, track, ข้อความ, รีวอร์ด ฯลฯ) ให้รวมไว้ที่นี่จุดเดียว
+function setPoints(score){
+  score = Number(score || 0);
+
+  const tier = getTier(score);
+  const idx  = TIERS.findIndex(t => t.key === tier.key);
+  const nextTierObj = TIERS[idx + 1] || null;
+
+  // คะแนนเด้งขึ้น
+  if (els.points){
+    const from = prevScore || Number(els.points.textContent || 0);
+    animateCount(els.points, from, score, 600);
+  }
+
+  // Badge / Current level
+  if (els.levelBadge){
+    els.levelBadge.textContent = tier.name;
+    els.levelBadge.classList.remove("rp-level-silver","rp-level-gold","rp-level-platinum","sparkle");
+    els.levelBadge.classList.add(tier.class);
+  }
+  if (els.currentLevelText) els.currentLevelText.textContent = tier.name;
+
+  // Progress line (ถ้าใช้)
+  if (els.progressBar){
+    els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
+    els.progressBar.classList.add(tier.progClass);
+  }
+  if (els.progressFill){
+    const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
+  }
+
+  // Level Track ใหม่ (บาร์ยาวมีหมุด)
+  updateLevelTrack(score);
+
+  // ข้อความเลเวลถัดไป
+  if (els.nextTier){
+    if (!nextTierObj){
+      els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
+    } else {
+      const need = Math.max(0, nextTierObj.min - score);
+      els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนเป็น ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name] || ""}`;
+    }
+  }
+
+  // Render ของรางวัลให้ล็อก/ปลดล็อกตามคะแนนปัจจุบัน
+  renderRewards(score);
+
+  // Sparkle + confetti เมื่อเลเวลเปลี่ยน
+  if (prevLevel && prevLevel !== tier.key){
+    els.levelBadge?.classList.add("sparkle");
+    setTimeout(()=> els.levelBadge?.classList.remove("sparkle"), 1300);
+    launchConfetti();
+  }
+  prevLevel = tier.key;
+  prevScore = score;
 }
 
 function setPoints(sc){
@@ -178,40 +342,7 @@ function setPoints(sc){
 
   prevLevel = tier.key;
   prevScore = score;
-}
-
-/* ====== Level Track updater (กันพลาด element ไม่มี) ====== */
-function updateLevelTrack(score){
-  const track = els.levelTrack;
-  const fill  = els.trackFill;
-  if(!track || !fill) return;
-
-  const max = TIERS[TIERS.length-1].min;       // 1200
-  const pct = Math.max(0, Math.min(100, (score / max) * 100));
-  fill.style.width = pct + "%";
-
-  // milestone positions (0, 500, 1200)
-  const stops = [0, 500, max];
-  const marks = track.querySelectorAll(".rp-track-milestone");
-  marks.forEach((m,i)=>{
-    const left = (stops[i] / max) * 100;
-    m.style.left = (i === stops.length-1 ? 100 : left) + "%";
-  });
-
-  // theme by level
-  track.classList.remove("track-silver","track-gold","track-platinum");
-  const map  = { silver:"track-silver", gold:"track-gold", platinum:"track-platinum" };
-  const tier = getTier(score);
-  track.classList.add(map[tier.key] || "track-silver");
-
-  // pulse feedback เล็ก ๆ
-  const rail = track.querySelector(".rp-track-rail");
-  if(rail){
-    rail.classList.remove("pulse"); // reset
-    void rail.offsetWidth;           // reflow
-    rail.classList.add("pulse");
-    setTimeout(()=>rail.classList.remove("pulse"), 600);
-  }
+  renderRewards(score);
 }
 
 /* ================= Redeem / Scanner ================= */
@@ -291,37 +422,47 @@ async function stopScanner(){
 
 /* ================= History (FIX: pad hoist) ================= */
 async function openHistory(){
-  if(!UID) return;
-  try{
-    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`);
-    const j = await safeJson(r);
-    if(j.status!=="success") return toastErr("ไม่สามารถโหลดประวัติได้");
-    if(els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
-    if(!els.historyList) return;
+  if (!UID) return;
 
-    const list = j.data || [];
-    if(!list.length){
-      els.historyList.innerHTML = `<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`;
-    }else{
-      els.historyList.innerHTML = list.map(i=>{
-        const ts = fmtDT(i.ts);
-        const p = Number(i.point||0);
-        const sign = p>=0?"+":"";
-        const color = p>=0?"#16a34a":"#dc2626";
-        return `<div class="list-group-item d-flex justify-content-between align-items-center">
-                  <div>
-                    <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
-                    <div class="small text-muted">${escapeHtml(i.code||"")}</div>
-                  </div>
-                  <div class="text-end">
-                    <div style="color:${color};font-weight:800">${sign}${p}</div>
-                    <div class="small text-muted">${ts}</div>
-                  </div>
-                </div>`;
-      }).join("");
+  // เปิดโมดัลก่อน ให้ผู้ใช้รู้สึกว่าปุ่มทำงาน
+  if (els.historyList) {
+    els.historyList.innerHTML = `
+      <div class="list-group-item text-center text-muted">กำลังโหลด…</div>`;
+  }
+  if (els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
+  new bootstrap.Modal(els.historyModal).show();
+
+  // แล้วค่อยโหลดข้อมูล
+  try{
+    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
+    const j = await safeJson(r);
+    if (j.status !== "success") {
+      els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
+      return;
     }
-    new bootstrap.Modal(els.historyModal).show();
-  }catch(e){ console.error(e); toastErr("ไม่สามารถโหลดประวัติได้"); }
+    const list = j.data || [];
+    els.historyList.innerHTML = list.length
+      ? list.map(i=>{
+          const ts = fmtDT(i.ts);
+          const p  = Number(i.point||0);
+          const sign = p>=0?"+":"";
+          const color = p>=0?"#16a34a":"#dc2626";
+          return `<div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                      <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
+                      <div class="small text-muted">${escapeHtml(i.code||"")}</div>
+                    </div>
+                    <div class="text-end">
+                      <div style="color:${color};font-weight:800">${sign}${p}</div>
+                      <div class="small text-muted">${ts}</div>
+                    </div>
+                  </div>`;
+        }).join("")
+      : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
+  }catch(e){
+    console.error(e);
+    els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
+  }
 }
 
 /* ================= Utils ================= */
