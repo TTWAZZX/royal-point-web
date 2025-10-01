@@ -911,3 +911,21 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
   background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.55));
   color:#475569; font-weight:800; letter-spacing:.3px;
 }
+
+/* Top progress bar */
+#topbar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#0ea5e9,#22c55e);width:0;transition:width .3s,opacity .4s;z-index:9999}
+body.loading #topbar{width:80%}
+body.ready #topbar{width:100%;opacity:0}
+
+/* Skeleton */
+.skel{position:relative;overflow:hidden;background:#e5e7eb;border-radius:12px}
+.skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:sh 1.2s infinite}
+@keyframes sh{100%{transform:translateX(100%)}}
+.skel-line{height:14px;border-radius:10px;margin:6px 0}
+
+.lm-wrap{position:relative}
+.lm-track{position:relative;height:10px;border-radius:999px;background:#e5e7eb;overflow:visible}
+.lm-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:999px;background:linear-gradient(90deg,#22c55e,#0ea5e9)}
+.lm-tick{position:absolute;top:50%;width:2px;height:16px;background:#94a3b8;transform:translate(-1px,-50%)}
+.lm-tick::after{content:attr(data-label);position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;color:#64748b;white-space:nowrap}
+.lm-label{font-weight:600}

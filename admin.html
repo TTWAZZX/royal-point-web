@@ -51,6 +51,7 @@
 </head>
 <body>
 <div class="container py-3">
+  <div id="topbar"></div>
 
   <!-- App Bar (sticky) -->
   <div class="appbar d-flex align-items-center gap-3 mb-3 sticky-top-safe">
@@ -105,6 +106,12 @@
           <button class="btn btn-soft" data-delta="+10">+10</button>
         </div>
       </div>
+      <div class="mb-3">
+  <button class="btn btn-outline-primary w-100" id="actCustom">
+    <i class="fa-regular fa-pen-to-square me-1"></i> ปรับแต้มแบบกำหนดเอง
+  </button>
+</div>
+
       <!-- Actions -->
       <div class="row g-2">
         <div class="col-6">
@@ -130,6 +137,38 @@
       </div>
     </div>
   </div>
+  <div class="modal fade" id="adjustModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">ปรับแต้ม — <span id="ajTitle">—</span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">UID</label>
+          <div id="ajUid" class="form-control-plaintext small">—</div>
+        </div>
+        <div class="mb-3">
+          <label for="ajDelta" class="form-label">จำนวนแต้ม</label>
+          <input id="ajDelta" type="number" min="1" step="1" class="form-control" placeholder="เช่น 50">
+        </div>
+        <div class="mb-3">
+          <label for="ajNote" class="form-label">หมายเหตุ</label>
+          <input id="ajNote" type="text" class="form-control" placeholder="เช่น ปรับจากกิจกรรมพิเศษ">
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+        <button id="btnAdjDeduct" class="btn btn-warning"><i class="fa-solid fa-minus me-1"></i> หักคะแนน</button>
+        <div class="d-flex gap-2">
+          <button id="btnAdjReset" class="btn btn-danger"><i class="fa-solid fa-rotate-left me-1"></i> ล้างคะแนน</button>
+          <button id="btnAdjAdd"   class="btn btn-success"><i class="fa-solid fa-plus me-1"></i> เพิ่มคะแนน</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 
   <!-- History Modal -->
   <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
@@ -148,15 +187,12 @@
       </div>
     </div>
   </div>
-
+  <div id="adminSkeleton" class="vstack gap-2 mb-3" style="display:none">
+  <div class="card p-2"><div class="skel skel-line" style="width:60%"></div></div>
+  <div class="card p-2"><div class="skel skel-line" style="width:50%"></div></div>
+  <div class="card p-2"><div class="skel skel-line" style="width:70%"></div></div>
+</div>
 </div><!-- /.container -->
-
-<!-- ===== Dependencies ===== -->
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
 <!-- ===== Admin Script (bright + minimal list) ===== -->
 <script>
@@ -367,5 +403,17 @@ function attr(s){ return String(s||"").replace(/"/g,"&quot;"); }
 function pad(n){ return n<10? "0"+n : String(n); }
 function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 </script>
+
+<!-- ไลบรารีที่ต้องใช้ (ลำดับนี้โอเค) -->
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+
+<!-- โค้ดแอดมินของเรา (ไฟล์เดียวพอ) -->
+<script src="/admin.js" defer></script>
+</body>
+</html>
+
 </body>
 </html>

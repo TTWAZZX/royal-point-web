@@ -71,6 +71,16 @@ const TIER_EMOJI = { Silver:"🥈", Gold:"🥇", Platinum:"💎" };
 /* ================= Boot ================= */
 document.addEventListener("DOMContentLoaded", initApp);
 
+/* ================= UI Helpers ================= */
+/* ================= Boot ================= */
+function setAppLoading(on){
+  document.body.classList.toggle('loading', !!on);
+  const sk = document.getElementById('appSkeleton');
+  if (sk) sk.style.display = on ? 'block' : 'none';
+}
+document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
+document.addEventListener("DOMContentLoaded", initApp);
+
 async function initApp(){
   try{
     await liff.init({ liffId: LIFF_ID });
@@ -85,13 +95,21 @@ async function initApp(){
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
 
-    await refreshUserScore();    // ดึงคะแนน → setPoints()
-    await loadRewards();         // ดึง Reward list → REWARDS_CACHE
-    renderRewards(prevScore||0); // เรนเดอร์ตามแต้มล่าสุด
-  }catch(e){ console.error(e); toastErr("เริ่มต้นระบบไม่สำเร็จ"); }
+    await refreshUserScore();
+    await loadRewards();
+    renderRewards(prevScore || 0);
+  }catch(e){
+    console.error(e);
+    toastErr("เริ่มต้นระบบไม่สำเร็จ");
+  }finally{
+    setAppLoading(false);
+    // วิ่งแถบ topbar ให้จบสวย ๆ
+    document.body.classList.remove('loading'); 
+    document.body.classList.add('ready');
+    setTimeout(()=>document.body.classList.remove('ready'), 1000);
+  }
 }
 
-/* ================= UI Helpers ================= */
 function bindUI(){
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
@@ -202,6 +220,24 @@ function setPoints(score){
     launchConfetti();
   }
 
+  // Level Meter
+const lmFill  = document.getElementById("lm-fill");
+const lmLabel = document.getElementById("lm-label");
+if (lmFill && lmLabel){
+  // ช่วง: [0,500), [500,1200), >=1200
+  const t = getTier(score);
+  const total = 1200; // ใช้ 1200 เป็น max bar
+  let widthPct = Math.max(0, Math.min(100, (score/total)*100));
+  lmFill.style.width = widthPct + "%";
+
+  if (t.next === Infinity){
+    lmLabel.textContent = `ระดับ ${t.name} สูงสุดแล้ว ✨ คะแนนรวม ${score.toLocaleString()}`;
+  } else {
+    const need = t.next - score;
+    lmLabel.textContent = `อยู่ระดับ ${t.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`;
+  }
+}
+
   prevLevel = tier.key;
   prevScore = score;
 }
@@ -213,16 +249,16 @@ async function loadRewards(){
   try{
     const r = await fetch(API_REWARDS, { cache:"no-store" });
     const j = await safeJson(r);
-    if(j.status === "success" && Array.isArray(j.data)){
+    if (j.status === "success" && Array.isArray(j.data)) {
       REWARDS_CACHE = j.data.filter(x => x.active !== "0" && x.active !== 0 && x.active !== false);
-    }else{
+    } else {
       REWARDS_CACHE = [];
     }
   }catch(e){
     console.error(e);
     REWARDS_CACHE = [];
   }
-  // ถ้าไม่ได้รายการจาก API ให้ fallback เป็นรายการตัวอย่าง (ป้องกันหน้าโล่ง/โค้ดพัง)
+  // ถ้า API ไม่มี/ว่าง → ใช้ตัวอย่างกันหน้าโล่ง
   if (!REWARDS_CACHE.length) REWARDS_CACHE = [...REWARDS_FALLBACK];
 }
 
