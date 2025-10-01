@@ -57,6 +57,35 @@ let LAST_DECODE = "";          // ค่าที่สแกนได้ล่�
 let LAST_DECODE_AT = 0;        // เวลา (ms) ที่สแกนได้ล่าสุด
 const DUP_COOLDOWN = 2500;     // กันยิงค่าซ้ำภายใน X ms
 
+/* ===== UI Overlay & Button Loading (User) ===== */
+const UiOverlay = {
+  show(text='กำลังดำเนินการ...'){
+    const old = document.getElementById('rp-ovl');
+    if (old) { old.querySelector('#rp-ovl-text').textContent = text; return; }
+    const el = document.createElement('div');
+    el.id = 'rp-ovl';
+    el.innerHTML = `
+      <div class="rp-ovl-card">
+        <div class="rp-ovl-spinner"></div>
+        <div id="rp-ovl-text" class="rp-ovl-text">${text}</div>
+      </div>`;
+    document.body.appendChild(el);
+  },
+  hide(){ document.getElementById('rp-ovl')?.remove(); }
+};
+
+function setBtnLoading(btn, on, labelWhenLoading){
+  if (!btn) return;
+  if (on){
+    if (!btn.dataset._html) btn.dataset._html = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML =
+      `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${labelWhenLoading || 'กำลังทำงาน...'}`;
+  }else{
+    btn.disabled = false;
+    if (btn.dataset._html){ btn.innerHTML = btn.dataset._html; delete btn.dataset._html; }
+  }
+}
 
 /** Level mapping */
 const TIERS = [
@@ -123,13 +152,16 @@ function bindUI(){
 els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
   const code = (els.secretInput?.value || "").trim();
   if(!code) return toastErr("กรอกรหัสลับก่อน");
-  if (REDEEM_IN_FLIGHT) return;            // กันยิงซ้ำ
+  if (REDEEM_IN_FLIGHT) return;
+
   REDEEM_IN_FLIGHT = true;
-  els.submitBtn.disabled = true;
+  setBtnLoading(els.submitBtn, true, 'กำลังยืนยัน…');
+  UiOverlay.show('กำลังยืนยันรหัส…');
 
   try { await redeemCode(code, "MANUAL"); }
   finally {
-    els.submitBtn.disabled = false;
+    setBtnLoading(els.submitBtn, false);
+    UiOverlay.hide();
     setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
   }
 });
@@ -148,10 +180,11 @@ function getTier(score){
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI
 async function refreshUserScore(){
   if(!UID) return;
+  // แสดง overlay ถ้าช้าเกิน 300ms เพื่อลดการกะพริบ
+  const timer = setTimeout(()=>UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
   try{
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
     const j = await safeJson(r);
-
     if (j.status === "success" && j.data){
       const sc = Number(j.data.score || 0);
       setPoints(sc);
@@ -164,6 +197,9 @@ async function refreshUserScore(){
     console.error(e);
     const cached = Number(localStorage.getItem("lastScore") || "0");
     setPoints(cached);
+  }finally{
+    clearTimeout(timer);
+    UiOverlay.hide();
   }
 }
 
@@ -318,19 +354,17 @@ async function redeemReward(reward, btn){
   const cost = Math.max(0, Number(reward?.cost) || 0);
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // ตรวจแต้มพอก่อน
   const scoreNow = Number(prevScore || 0);
   if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
-  // ยืนยัน
   const confirmed = window.Swal
     ? (await Swal.fire({ title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${escapeHtml(id)}</b>`, icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย" })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
   if (!confirmed) return;
 
   REDEEMING = true;
-  const oldDisabled = btn?.disabled;
-  if (btn) { btn.disabled = true; btn.classList.add("is-loading"); }
+  setBtnLoading(btn, true, 'กำลังแลก…');
+  UiOverlay.show('กำลังบันทึกการแลกของรางวัล…');
 
   try{
     const res = await fetch(API_SPEND, {
@@ -338,12 +372,11 @@ async function redeemReward(reward, btn){
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uid: UID, cost, rewardId: id })
     });
-    if (!res.ok) throw new Error("เชื่อมต่อระบบแลกของรางวัลไม่ได้");
     const payload = await safeJson(res);
     if (payload?.status !== "success") throw new Error(payload?.message || "spend failed");
 
     await refreshUserScore(); // คะแนนจะถูกหักแล้วอัปเดต UI
-
+    UiOverlay.hide();
     if (window.Swal){
       await Swal.fire({ title:"แลกสำเร็จ ✅", html:`ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`, icon:"success" });
     }else{
@@ -351,15 +384,17 @@ async function redeemReward(reward, btn){
     }
   }catch(err){
     console.error(err);
+    UiOverlay.hide();
     toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
   }finally{
     REDEEMING = false;
-    if (btn) { btn.disabled = oldDisabled ?? false; btn.classList.remove("is-loading"); }
+    setBtnLoading(btn, false);
   }
 }
 
 /* ================= Redeem code / Scanner ================= */
 async function redeemCode(code, type){
+  UiOverlay.show('กำลังตรวจสอบคูปอง…');
   try{
     const r = await fetch(API_REDEEM, {
       method:"POST",
@@ -369,15 +404,23 @@ async function redeemCode(code, type){
     const j = await safeJson(r);
     if(j.status === "success"){
       navigator.vibrate?.(12);
-      toastOk(`รับคะแนนแล้ว +${j.point || 0}`);
+      UiOverlay.hide();               // ซ่อนก่อนขึ้นข้อความสำเร็จ
       await refreshUserScore();
       stopScanner();
       if(els.secretInput) els.secretInput.value = "";
-      if(els.modal){ const m = bootstrap.Modal.getInstance(els.modal); m && m.hide(); }
+      if(els.modal){
+        const m = bootstrap.Modal.getInstance(els.modal); m && m.hide();
+      }
+      toastOk(`รับคะแนนแล้ว +${j.point || 0}`);
     }else{
+      UiOverlay.hide();
       toastErr(j.message || "คูปองไม่ถูกต้องหรือถูกใช้ไปแล้ว");
     }
-  }catch(e){ console.error(e); toastErr("ไม่สามารถยืนยันรับคะแนนได้"); }
+  }catch(e){
+    UiOverlay.hide();
+    console.error(e);
+    toastErr("ไม่สามารถยืนยันรับคะแนนได้");
+  }
 }
 
 async function startScanner(){
@@ -468,17 +511,17 @@ async function stopScanner(){
 async function openHistory(){
   if (!UID) return;
 
-  // เปิดโมดัลทันที + ใส่ placeholder
   if (els.historyList) {
     els.historyList.innerHTML = `<div class="list-group-item text-center text-muted">กำลังโหลด…</div>`;
   }
   if (els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
   new bootstrap.Modal(els.historyModal).show();
 
-  // แล้วค่อยโหลดข้อมูล
+  UiOverlay.show('กำลังโหลดประวัติ…');
   try{
     const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
     const j = await safeJson(r);
+    UiOverlay.hide();
     if (j.status !== "success") {
       els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
       return;
@@ -504,6 +547,7 @@ async function openHistory(){
       : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
   }catch(e){
     console.error(e);
+    UiOverlay.hide();
     els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
   }
 }

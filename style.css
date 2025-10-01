@@ -975,3 +975,22 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-redeem-btn{ position:absolute; right:10px; bottom:10px; border:none; background:#10b981; color:#fff; width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(16,185,129,.3); }
 .rp-reward-card.locked .rp-redeem-btn{ background:#94a3b8; box-shadow:none; }
 
+/* ===== Inline overlay สำหรับหน้า User ===== */
+#rp-ovl{
+  position:fixed; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(15,23,42,.35); backdrop-filter:saturate(150%) blur(2px);
+  z-index:5000;
+}
+#rp-ovl .rp-ovl-card{
+  background:#fff; color:#0f172a;
+  border:1px solid #e2e8f0; border-radius:14px;
+  padding:12px 16px; box-shadow:0 10px 30px rgba(2,6,23,.15);
+  display:flex; align-items:center; gap:.75rem;
+}
+#rp-ovl .rp-ovl-spinner{
+  width:18px;height:18px;border:3px solid #e2e8f0;border-top-color:#16a34a;border-radius:50%;
+  animation:rp-spin .9s linear infinite;
+}
+#rp-ovl .rp-ovl-text{ font-weight:600 }
+@keyframes rp-spin{to{ transform:rotate(360deg) }}
