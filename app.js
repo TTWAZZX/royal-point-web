@@ -5,15 +5,6 @@ const API_GET_SCORE = "/api/get-score";
 const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
-const API_REWARDS   = "/api/rewards";    // ถ้าไม่มี endpoint นี้ โค้ดจะ fallback ด้านล่าง
-
-/** Rewards fallback (กันหน้าโล่งเวลา API ไม่มี/ว่าง) */
-const REWARDS_FALLBACK = [
-  { id:"A", name:"Gift A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
-  { id:"B", name:"Gift B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
-  { id:"C", name:"Gift C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
-  { id:"D", name:"Gift D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
-];
 
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
@@ -242,24 +233,30 @@ if (lmFill && lmLabel){
   prevScore = score;
 }
 
-/* ================= Rewards ================= */
-let REWARDS_CACHE = [];  // จะพยายามดึงจาก /api/rewards ก่อน
+// ===== Rewards (dynamic) =====
+const API_REWARDS = "/api/rewards";          // มีไฟล์แล้วจากแพตช์ 1
+const REWARDS_FALLBACK = [                   // เอาไว้กันหน้าโล่ง
+  { id:"A", name:"Gift A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
+  { id:"B", name:"Gift B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
+  { id:"C", name:"Gift C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
+  { id:"D", name:"Gift D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
+];
+let REWARDS_CACHE = [];
 
 async function loadRewards(){
   try{
     const r = await fetch(API_REWARDS, { cache:"no-store" });
+    if (!r.ok) throw new Error("rewards api not ok");
     const j = await safeJson(r);
     if (j.status === "success" && Array.isArray(j.data)) {
       REWARDS_CACHE = j.data.filter(x => x.active !== "0" && x.active !== 0 && x.active !== false);
     } else {
-      REWARDS_CACHE = [];
+      throw new Error("bad rewards payload");
     }
   }catch(e){
-    console.error(e);
-    REWARDS_CACHE = [];
+    console.warn("rewards fallback:", e);
+    REWARDS_CACHE = [...REWARDS_FALLBACK];
   }
-  // ถ้า API ไม่มี/ว่าง → ใช้ตัวอย่างกันหน้าโล่ง
-  if (!REWARDS_CACHE.length) REWARDS_CACHE = [...REWARDS_FALLBACK];
 }
 
 function renderRewards(currentScore){

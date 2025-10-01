@@ -929,3 +929,8 @@ body.ready #topbar{width:100%;opacity:0}
 .lm-tick{position:absolute;top:50%;width:2px;height:16px;background:#94a3b8;transform:translate(-1px,-50%)}
 .lm-tick::after{content:attr(data-label);position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;color:#64748b;white-space:nowrap}
 .lm-label{font-weight:600}
+
+/* ลดความรู้สึกซ้ำซ้อนของหัวข้อระดับ/ข้อความช่วย */
+.rp-card .small.text-secondary { line-height: 1.25 }
+.rp-next { margin-top: 4px }              /* แถว “สะสมอีก …” */
+.rp-progress-line { margin-top: 8px }     /* แถบ progress ใต้แต้มใหญ่ */

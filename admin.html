@@ -193,9 +193,8 @@
   <div class="card p-2"><div class="skel skel-line" style="width:70%"></div></div>
 </div>
 </div><!-- /.container -->
-
-<!-- ===== Admin Script (bright + minimal list) ===== -->
 <script>
+
 /* ============ CONFIG ============ */
 const LIFF_ID = "2007053300-QoEvbXyn";
 const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid=
@@ -404,16 +403,18 @@ function pad(n){ return n<10? "0"+n : String(n); }
 function formatDateTime(ts){ const d=new Date(ts); if(isNaN(d)) return String(ts||""); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 </script>
 
-<!-- ไลบรารีที่ต้องใช้ (ลำดับนี้โอเค) -->
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<!-- ไลบรารี -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
-<!-- โค้ดแอดมินของเรา (ไฟล์เดียวพอ) -->
+<!-- โค้ดแอดมินของเรา: ตัวเดียวพอ -->
 <script src="/admin.js" defer></script>
 </body>
 </html>
+
 
 </body>
 </html>
