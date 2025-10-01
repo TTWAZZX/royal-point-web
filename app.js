@@ -60,10 +60,6 @@ const TIERS = [
 const TIER_EMOJI = { Silver:"🥈", Gold:"🥇", Platinum:"💎" };
 
 /* ================= Boot ================= */
-document.addEventListener("DOMContentLoaded", initApp);
-
-/* ================= UI Helpers ================= */
-/* ================= Boot ================= */
 function setAppLoading(on){
   document.body.classList.toggle('loading', !!on);
   const sk = document.getElementById('appSkeleton');

@@ -59,6 +59,7 @@ function setAdminLoading(on){
   if (list && on) list.innerHTML = ""; // เคลียร์ก่อน
 }
 
+// --- keep only ONE definition of reloadAllUsers ---
 async function reloadAllUsers(){
   if (!ADMIN_UID) { ALL_USERS=[]; FILTERED=[]; renderList(FILTERED); return; }
   setAdminLoading(true);
@@ -86,13 +87,11 @@ async function reloadAllUsers(){
   }
 }
 
-// ============ EVENTS ============
+// --- ensure bindEvents includes custom adjust ---
 function bindEvents(){
-  // รีโหลด / กลับหน้าผู้ใช้
   $id("btnReload")?.addEventListener("click", reloadAllUsers);
   $id("btnBackUser")?.addEventListener("click", ()=>location.href=USER_PAGE);
 
-  // ค้นหาเรียลไทม์
   $id("txtSearch")?.addEventListener("input", function(){
     const q = (this.value||"").trim().toLowerCase();
     FILTERED = !q ? [...ALL_USERS] : ALL_USERS.filter(u =>
@@ -101,7 +100,7 @@ function bindEvents(){
     renderList(FILTERED);
   });
 
-  // ปุ่มใน bottom sheet (offcanvas)
+  // ปุ่ม quick delta ใน offcanvas
   document.getElementById("sheetManage")?.addEventListener("click", async (ev)=>{
     const el = ev.target.closest("button[data-delta]");
     if (el) {
@@ -115,6 +114,17 @@ function bindEvents(){
   $id("actMinus")?.addEventListener("click",()=>doAdjust(CURRENT.uid, CURRENT.name, -1));
   $id("actReset")?.addEventListener("click",()=>confirmReset(CURRENT.uid, CURRENT.name));
   $id("actHistory")?.addEventListener("click",()=>openHistory(CURRENT.uid, CURRENT.name));
+
+  // ✅ ปรับแต้มแบบกำหนดเอง
+  $id("actCustom")?.addEventListener("click", ()=>{
+    if (!CURRENT?.uid) return Swal.fire("เลือกผู้ใช้ก่อน","แตะปุ่มจัดการในรายการผู้ใช้","info");
+    openAdjustModal(CURRENT.uid, CURRENT.name);
+  });
+
+  // ปุ่มในโมดัล
+  document.getElementById("btnAdjAdd")?.addEventListener("click", ()=>submitAdjust(+1));
+  document.getElementById("btnAdjDeduct")?.addEventListener("click", ()=>submitAdjust(-1));
+  document.getElementById("btnAdjReset")?.addEventListener("click", ()=>submitReset());
 }
 
 // ============ LOAD & RENDER ============

@@ -934,3 +934,10 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-card .small.text-secondary { line-height: 1.25 }
 .rp-next { margin-top: 4px }              /* แถว “สะสมอีก …” */
 .rp-progress-line { margin-top: 8px }     /* แถบ progress ใต้แต้มใหญ่ */
+
+.lm-wrap{position:relative}
+.lm-track{position:relative;height:10px;border-radius:999px;background:#e5e7eb;overflow:visible}
+.lm-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:999px;background:linear-gradient(90deg,#22c55e,#0ea5e9);transition:width .35s}
+.lm-tick{position:absolute;top:50%;width:2px;height:16px;background:#94a3b8;transform:translate(-1px,-50%)}
+.lm-tick::after{content:attr(data-label);position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;color:#64748b;white-space:nowrap}
+.lm-label{font-weight:600}

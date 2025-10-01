@@ -5,190 +5,148 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Royal Point</title>
 
-  <!-- Fonts & Icons -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
+  <!-- Bootstrap + Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
-  <!-- Bootstrap -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
-
-  <!-- Styles -->
-  <link rel="stylesheet" href="/style.css"/>
+  <!-- main style -->
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-
-<main class="rp-container container py-3">
+  <!-- top progress bar -->
   <div id="topbar"></div>
 
-  <!-- ===== Profile Card (Horizontal Profile Bar) ===== -->
-  <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-    <!-- Left: avatar + level badge -->
-    <div class="rp-left">
-      <div class="rp-avatar-wrap">
-        <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
-        <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
-      </div>
-    </div>
-    <div id="levelMeter" class="lm-wrap mt-2">
-  <div class="lm-track">
-    <div id="lm-fill" class="lm-fill"></div>
-    <div class="lm-tick" style="left:0%"    data-label="Silver 0"></div>
-    <div class="lm-tick" style="left:41.67%" data-label="Gold 500"></div>
-    <div class="lm-tick" style="left:100%"   data-label="Platinum 1200"></div>
-  </div>
-  <div id="lm-label" class="lm-label small text-secondary mt-1">—</div>
-</div>
-    <!-- Right: lines + progress -->
-    <div class="rp-right">
-      <!-- line 1: username + small icon + refresh -->
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <h1 id="username" class="rp-username mb-0">SATTAYA_42</h1>
-        <i class="fa-solid fa-leaf text-success-emphasis small"></i>
-        <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-          <i class="fa-solid fa-rotate"></i>
-        </button>
-      </div>
-
-      <!-- line 2: current level text -->
-      <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
-
-      <!-- line 3: next-level helper -->
-      <div id="next-tier" class="small text-secondary mt-1">สะสมอีก xx คะแนน → เลื่อนเป็น Gold</div>
-
-      <!-- line 4: big points -->
-      <div class="rp-point-value mt-1"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
-
-      <!-- progress bar (level-colored) -->
-      <div id="progressBar" class="rp-progress-line mt-2 prog-silver">
-        <div id="progressFill" class="rp-progress-fill" style="width:0%"></div>
-      </div>
-    </div>
-  </section>
-
-<!-- Actions (icons only, compact & centered) -->
-<section class="rp-actions-wide d-grid gap-2 mb-3">
-  <button class="btn rp-primary act-btn" data-bs-toggle="modal" data-bs-target="#scoreModal">
-    <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
-  </button>
-  <button id="historyBtn" class="btn btn-outline-secondary act-btn">
-    <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
-  </button>
-</section>
-
-  <!-- ===== Ads Carousel ===== -->
-  <section class="rp-glass rp-card p-0 mb-3 hover-lift">
-    <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="3500">
-      <div class="carousel-indicators">
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="0" class="active" aria-current="true"></button>
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="1"></button>
-        <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="2"></button>
-      </div>
-      <div class="carousel-inner">
-        <div class="carousel-item active">
-          <a href="https://example.com/ad1" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/22c55e/ffffff?text=Your+Ad+1" alt="ad1">
-          </a>
-        </div>
-        <div class="carousel-item">
-          <a href="https://example.com/ad2" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/facc15/0b3?text=Your+Ad+2" alt="ad2">
-          </a>
-        </div>
-        <div class="carousel-item">
-          <a href="https://example.com/ad3" target="_blank" rel="noopener">
-            <img class="d-block w-100" src="https://placehold.co/1200x450/60a5fa/0b3?text=Your+Ad+3" alt="ad3">
-          </a>
+  <div class="container py-3">
+    <!-- Skeleton (shown while loading) -->
+    <section id="appSkeleton" class="rp-card p-4 mb-3" style="display:none">
+      <div class="d-flex align-items-center gap-3">
+        <div class="skel" style="width:80px;height:80px;border-radius:50%"></div>
+        <div class="flex-grow-1">
+          <div class="skel skel-line" style="width:40%"></div>
+          <div class="skel skel-line" style="width:30%"></div>
+          <div class="skel skel-line" style="width:60%"></div>
         </div>
       </div>
-      <button class="carousel-control-prev" type="button" data-bs-target="#adsCarousel" data-bs-slide="prev">
-        <span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Previous</span>
+    </section>
+
+    <!-- Header Card -->
+    <section class="rp-card p-3 mb-3">
+      <div class="d-flex gap-3">
+        <!-- Left: avatar + tier badge -->
+        <div class="rp-left text-center">
+          <div class="position-relative d-inline-block">
+            <img id="profilePic" src="https://placehold.co/120x120" class="rounded-circle" width="84" height="84" alt="avatar">
+            <span id="levelBadge" class="badge bg-secondary position-absolute top-0 start-0 translate-middle rp-level-silver">Silver</span>
+          </div>
+        </div>
+
+        <!-- Right: name + status + meters -->
+        <div class="rp-right flex-grow-1">
+          <div class="d-flex align-items-center gap-2">
+            <h4 id="username" class="mb-0">—</h4>
+            <button id="refreshBtn" class="btn btn-sm btn-outline-secondary" title="รีเฟรชคะแนน">
+              <i class="fa-solid fa-rotate"></i>
+            </button>
+            <a id="btnAdmin" href="/admin.html" class="btn btn-sm btn-outline-success d-none" title="ไปหน้าแอดมิน">
+              <i class="fa-solid fa-shield-halved"></i>
+            </a>
+          </div>
+
+          <!-- Level text -->
+          <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
+
+          <!-- Next tier hint -->
+          <div id="next-tier" class="small text-secondary rp-next">—</div>
+
+          <!-- Level Meter (ย้ายมาไว้ใน rp-right) -->
+          <div id="levelMeter" class="lm-wrap mt-2">
+            <div class="lm-track">
+              <div id="lm-fill" class="lm-fill"></div>
+              <div class="lm-tick" style="left:0%"    data-label="Silver 0"></div>
+              <div class="lm-tick" style="left:41.67%" data-label="Gold 500"></div>
+              <div class="lm-tick" style="left:100%"   data-label="Platinum 1200"></div>
+            </div>
+            <div id="lm-label" class="lm-label small text-secondary mt-1">—</div>
+          </div>
+
+          <!-- Big points -->
+          <div class="display-5 fw-bold mt-2"><span id="points">0</span> <span class="fs-6">pt</span></div>
+
+          <!-- Progress line (เก่า) -->
+          <div id="progressBar" class="rp-progress-line mt-2 prog-silver">
+            <div id="progressFill" class="rp-progress-fill"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="d-grid gap-2 mb-3">
+      <button class="btn btn-success btn-lg" data-bs-toggle="modal" data-bs-target="#scoreModal">
+        <i class="fa-solid fa-qrcode me-1"></i> สแกนเพื่อรับคะแนน
       </button>
-      <button class="carousel-control-next" type="button" data-bs-target="#adsCarousel" data-bs-slide="next">
-        <span class="carousel-control-next-icon" aria-hidden="true"></span><span class="visually-hidden">Next</span>
+
+      <button id="historyBtn" class="btn btn-outline-secondary">
+        <i class="fa-regular fa-clock me-1"></i> ประวัติการรับคะแนน
       </button>
     </div>
-  </section>
-  <section id="appSkeleton" class="rp-card p-4 mb-3" style="display:none">
-  <div class="d-flex align-items-center gap-3">
-    <div class="skel" style="width:80px;height:80px;border-radius:50%"></div>
-    <div class="flex-grow-1">
-      <div class="skel skel-line" style="width:40%"></div>
-      <div class="skel skel-line" style="width:30%"></div>
-      <div class="skel skel-line" style="width:60%"></div>
-    </div>
+
+    <!-- Rewards -->
+    <section class="mb-4">
+      <h5 class="mb-2">ของรางวัล</h5>
+      <div id="rewardRail" class="rp-reward-rail d-grid gap-2"></div>
+    </section>
   </div>
-</section>
 
-  <!-- ===== Popular Rewards ===== -->
-  <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
-  <h5 class="mb-2">ของรางวัล</h5>
-
-  <!-- Horizontal reward rail -->
-  <div id="rewardRail" class="rp-reward-rail">
-    <!-- JS จะ render การ์ดให้ -->
-  </div>
-</section>
-</main>
-
-<!-- Admin FAB (show only for admin via app.js) -->
-<a id="btnAdmin" href="/admin.html" class="btn admin-entry d-none" aria-label="Admin">
-  <i class="fa-solid fa-shield-halved"></i>
-</a>
-
-<!-- ===== Modals ===== -->
-<div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-fullscreen">
-    <div class="modal-content">
-      <div class="modal-header border-0">
-        <h5 class="modal-title">เพิ่มคะแนนสะสม</h5>
-        <button class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
-      </div>
-      <div class="modal-body text-center">
-  <div class="d-flex justify-content-center gap-2 mb-2">
-    <button id="startScanBtn" class="btn btn-success btn-sm" title="เปิดกล้อง">
-      <i class="fa-solid fa-camera"></i> เปิดกล้อง
-    </button>
-    <button id="stopScanBtn" class="btn btn-outline-danger btn-sm" title="หยุดกล้อง">
-      <i class="fa-solid fa-stop"></i> หยุดกล้อง
-    </button>
-  </div>
-  <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-        <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-        <hr class="my-4" />
-        <div class="form-group" style="max-width:420px;margin:auto;">
-          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+  <!-- Modal: Scanner / Enter code -->
+  <div class="modal fade" id="scoreModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">รับคะแนน</h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="qr-reader" class="border rounded p-2 mb-2" style="min-height:260px"></div>
+          <div class="d-flex gap-2 mb-2">
+            <button id="startScanBtn" class="btn btn-outline-primary flex-fill"><i class="fa-solid fa-camera me-1"></i> เริ่มกล้อง</button>
+            <button id="stopScanBtn" class="btn btn-outline-secondary flex-fill"><i class="fa-solid fa-stop me-1"></i> ปิดกล้อง</button>
+          </div>
+          <div class="input-group">
+            <input id="secretCode" type="text" class="form-control" placeholder="หรือกรอกรหัสลับ">
+            <button id="submitCodeBtn" class="btn btn-primary">ยืนยันรับคะแนน</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-scrollable modal-lg">
-    <div class="modal-content">
-      <div class="modal-header border-0">
-        <h5 class="modal-title"><i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-primary" id="historyUser">—</span></h5>
-        <button class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body pt-0">
-        <div id="historyList" class="list-group list-group-flush"></div>
-      </div>
-      <div class="modal-footer border-0">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+  <!-- Modal: History -->
+  <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">ประวัติของ <span id="historyUser">—</span></h5>
+          <button class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="historyList" class="list-group"></div>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- Scripts -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="https://unpkg.com/html5-qrcode"></script>
-<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- (ไม่จำเป็น แต่ถ้ามี LoadingOverlay ใน app.js จะใช้ได้) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
 
-<!-- App -->
-<script src="/app.js"></script>
+  <!-- App logic -->
+  <script src="/app.js" defer></script>
 </body>
 </html>
