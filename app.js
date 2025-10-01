@@ -84,7 +84,7 @@ async function initApp(){
 
     await refreshUserScore();
     await loadRewards();
-    renderRewards(prevScore || 0);
+    renderRewards(prevScore || 0); // OK: มีการเรียกซ้ำใน setPoints() แต่เราเปลี่ยนเป็น rail.onclick แล้ว จะไม่เกิด handler ซ้อน
   }catch(e){
     console.error(e);
     toastErr("เริ่มต้นระบบไม่สำเร็จ");
@@ -208,22 +208,22 @@ function setPoints(score){
   }
 
   // Level Meter
-const lmFill  = document.getElementById("lm-fill");
-const lmLabel = document.getElementById("lm-label");
-if (lmFill && lmLabel){
-  // ช่วง: [0,500), [500,1200), >=1200
-  const t = getTier(score);
-  const total = 1200; // ใช้ 1200 เป็น max bar
-  let widthPct = Math.max(0, Math.min(100, (score/total)*100));
-  lmFill.style.width = widthPct + "%";
+  const lmFill  = document.getElementById("lm-fill");
+  const lmLabel = document.getElementById("lm-label");
+  if (lmFill && lmLabel){
+    // ช่วง: [0,500), [500,1200), >=1200
+    const t = getTier(score);
+    const total = 1200; // ใช้ 1200 เป็น max bar
+    const widthPct = Math.max(0, Math.min(100, (score/total)*100));
+    lmFill.style.width = widthPct + "%";
 
-  if (t.next === Infinity){
-    lmLabel.textContent = `ระดับ ${t.name} สูงสุดแล้ว ✨ คะแนนรวม ${score.toLocaleString()}`;
-  } else {
-    const need = t.next - score;
-    lmLabel.textContent = `อยู่ระดับ ${t.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`;
+    if (t.next === Infinity){
+      lmLabel.textContent = `ระดับ ${t.name} สูงสุดแล้ว ✨ คะแนนรวม ${score.toLocaleString()}`;
+    } else {
+      const need = t.next - score;
+      lmLabel.textContent = `อยู่ระดับ ${t.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`;
+    }
   }
-}
 
   prevLevel = tier.key;
   prevScore = score;
@@ -279,14 +279,15 @@ function renderRewards(currentScore){
     `;
   }).join("");
 
-  // delegate click ในรางของรางวัล
-  rail.addEventListener("click", async (ev)=>{
-    const btn  = ev.target.closest(".rp-redeem-btn"); if(!btn) return;
+  // ✅ ใช้ onclick เพื่อกันการผูก handler ซ้ำเมื่อ render ใหม่
+  rail.onclick = async (ev)=>{
+    const btn  = ev.target.closest(".rp-redeem-btn"); 
+    if(!btn) return;
     const card = btn.closest(".rp-reward-card");
     const id   = card.dataset.id;
     const cost = Number(card.dataset.cost);
     await redeemReward({ id, cost }, btn);
-  });
+  };
 }
 
 // กันกดซ้ำ
@@ -319,6 +320,7 @@ async function redeemReward(reward, btn){
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ uid: UID, cost, rewardId: id })
     });
+    if (!res.ok) throw new Error("เชื่อมต่อระบบแลกของรางวัลไม่ได้");
     const payload = await safeJson(res);
     if (payload?.status !== "success") throw new Error(payload?.message || "spend failed");
 
@@ -362,6 +364,8 @@ async function redeemCode(code, type){
 
 async function startScanner(){
   if(!els.qrReader) return;
+  // ✅ กันเปิดซ้ำ (เช่น เปิดโมดัล + กดปุ่ม "เปิดกล้อง")
+  if (html5qrcode) return;
 
   const onScan = async (decoded) => {
     try { await redeemCode(String(decoded||"").trim(), "SCAN"); }

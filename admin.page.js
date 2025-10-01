@@ -1,96 +1,110 @@
 /***********************
- * Admin Frontend (client-only)
+ * Admin Frontend (Table View)
  * - โหลดตารางคะแนน
  * - ค้นหา/กรอง/เรียง/แบ่งหน้า
- * - ปรับคะแนน +/–, ล้างคะแนน (quick actions)
+ * - ปรับคะแนน +/–, ล้างคะแนน (ผ่านโมดัล)
+ * - ดูประวัติ (โมดัล)
  * - Export CSV
+ * * สคริปต์นี้จะรันเฉพาะเมื่อมี #adminTableBody อยู่บนหน้าเท่านั้น
  ***********************/
-/* ---------- วาง helper นี้ไว้ตอนต้นไฟล์ admin.page.js ---------- */
+
+/* ---------- Overlay (jQuery LoadingOverlay ถ้ามี, ไม่มีก็ fallback) ---------- */
 const overlay = {
-  show(msg) {
-    if (window.jQuery && window.jQuery.LoadingOverlay) {
-      window.jQuery.LoadingOverlay("show", {
-        image: "",
-        fontawesome: "fa fa-spinner fa-spin",
-        text: msg || "กำลังทำงาน..."
-      });
+  show(text = "กำลังทำงาน...") {
+    if (window.jQuery?.LoadingOverlay) {
+      window.jQuery.LoadingOverlay("show", { image:"", fontawesome:"fa fa-spinner fa-spin", text });
+    } else {
+      if (document.getElementById("apg-ovl")) return;
+      const el = document.createElement("div");
+      el.id = "apg-ovl";
+      el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff";
+      el.innerHTML = `<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>${text}</div>`;
+      document.body.appendChild(el);
     }
   },
   hide() {
-    if (window.jQuery && window.jQuery.LoadingOverlay) {
-      window.jQuery.LoadingOverlay("hide");
-    }
-  }
+    if (window.jQuery?.LoadingOverlay) window.jQuery.LoadingOverlay("hide");
+    else document.getElementById("apg-ovl")?.remove();
+  },
 };
 
-const ADMIN_UID = "Ucadb3c0f63ada96c0432a0aede267ff9";
-const LIFF_ID   = "2007053300-QoEvbXyn";
-
-// API endpoints (Vercel)
-const API_LIST    = "/api/all-scores";     // ← ใช้อันนี้
+/* ---------- CONFIG ---------- */
+const ADMIN_UID   = "Ucadb3c0f63ada96c0432a0aede267ff9";
+const LIFF_ID     = "2007053300-QoEvbXyn";
+const API_LIST    = "/api/all-scores";     // GET  ?adminUid=
 const API_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+const API_HISTORY = "/api/score-history";  // GET  ?uid=
 
-// State
-let MY_UID = null;
-let rows = [];           // raw data [{uid,name,score}]
-let view = [];           // after filter + sort
-let sortKey = "score";   // 'score' | 'name' | 'uid' | 'rank'
-let sortDir = "desc";    // 'asc' | 'desc'
-let page = 1;
+/* ---------- STATE ---------- */
+let MY_UID   = null;
+let rows     = [];  // raw [{uid,name,score}]
+let view     = [];  // filtered/sorted
+let sortKey  = "score";   // 'score' | 'name' | 'uid' | 'rank'
+let sortDir  = "desc";    // 'asc' | 'desc'
+let page     = 1;
 let pageSize = 20;
 
-// Utils
-const $ = (s, r=document) => r.querySelector(s);
-const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+/* ---------- Utils (อย่าทับ jQuery: ใช้ qs/qsa แทน $/$$) ---------- */
+const qs  = (sel, root=document) => root.querySelector(sel);
+const qsa = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 const fmt = (n) => Number(n||0).toLocaleString();
 
-// Debounce
-function debounce(fn, ms=300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms);}}
-
-// Render skeleton
-function renderSkeleton() {
-  $("#adminTableBody").innerHTML = `
-    <tr><td colspan="3">
-      <div class="skeleton skeleton-row"></div>
-      <div class="skeleton skeleton-row"></div>
-      <div class="skeleton skeleton-row"></div>
-    </td></tr>
-  `;
-  $("#adminInfo").textContent = "กำลังโหลด...";
-  $("#adminRange").textContent = "";
-  $("#adminPager").innerHTML = "";
-  $("#adminPagerInfo").textContent = "";
+function debounce(fn, ms=300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms);} }
+function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
+function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+function formatDateTime(ts) {
+  const d = new Date(ts);
+  if (isNaN(d)) return String(ts || "");
+  return d.toLocaleString('th-TH', { hour12: false });
 }
 
-// Fetch list
+/* ---------- Skeleton ---------- */
+function renderSkeleton() {
+  const body = qs("#adminTableBody");
+  if (body) {
+    body.innerHTML = `
+      <tr><td colspan="3">
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+        <div class="skeleton skeleton-row"></div>
+      </td></tr>
+    `;
+  }
+  qs("#adminInfo")?.replaceChildren(document.createTextNode("กำลังโหลด..."));
+  qs("#adminRange")?.replaceChildren(document.createTextNode(""));
+  const pager = qs("#adminPager"); if (pager) pager.innerHTML = "";
+  qs("#adminPagerInfo")?.replaceChildren(document.createTextNode(""));
+}
+
+/* ---------- Data ---------- */
 async function loadList() {
   renderSkeleton();
   try {
-    const url = `${API_LIST}?adminUid=${encodeURIComponent(MY_UID)}`; // ← เปลี่ยนเป็น adminUid
+    const url = `${API_LIST}?adminUid=${encodeURIComponent(MY_UID)}`;
     const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json();
+    const data = await res.json().catch(()=>({status:"error"}));
     if (data.status !== "success" || !Array.isArray(data.data)) {
       throw new Error(data.message || "โหลดข้อมูลไม่สำเร็จ");
     }
     rows = data.data.map((r,i)=>({ rank:i+1, uid:r.uid, name:r.name, score:Number(r.score||0) }));
-    $("#adminInfo").textContent = `ทั้งหมด ${fmt(rows.length)} รายการ`;
+    qs("#adminInfo")?.replaceChildren(document.createTextNode(`ทั้งหมด ${fmt(rows.length)} รายการ`));
     applyFilterSortPaginate(true);
   } catch (e) {
-    $("#adminTableBody").innerHTML = `<tr><td colspan="3" class="text-danger">โหลดข้อมูลไม่สำเร็จ: ${e.message||e}</td></tr>`;
-    $("#adminInfo").textContent = "เกิดข้อผิดพลาด";
+    const body = qs("#adminTableBody");
+    if (body) body.innerHTML = `<tr><td colspan="3" class="text-danger">โหลดข้อมูลไม่สำเร็จ: ${escapeHtml(e.message||String(e))}</td></tr>`;
+    qs("#adminInfo")?.replaceChildren(document.createTextNode("เกิดข้อผิดพลาด"));
   }
 }
 
-// Filter + sort + paginate
 function applyFilterSortPaginate(resetPage=false) {
-  const q = ($("#adminSearch").value || "").trim().toLowerCase();
-  const minScore = Number($("#adminMinScore").value || 0);
-  pageSize = Number($("#adminPageSize").value || 20);
+  const q = (qs("#adminSearch")?.value || "").trim().toLowerCase();
+  const minScore = Number(qs("#adminMinScore")?.value || 0);
+  pageSize = Number(qs("#adminPageSize")?.value || 20);
 
   // filter
   view = rows.filter(r => {
-    const hitQ = !q || r.name?.toLowerCase().includes(q) || r.uid?.toLowerCase().includes(q);
+    const hitQ = !q || (r.name||"").toLowerCase().includes(q) || String(r.uid||"").toLowerCase().includes(q);
     const hitMin = r.score >= minScore;
     return hitQ && hitMin;
   });
@@ -109,7 +123,6 @@ function applyFilterSortPaginate(resetPage=false) {
   renderTable();
 }
 
-// Render table & pager
 function renderTable() {
   const total = view.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -119,12 +132,11 @@ function renderTable() {
   const end   = Math.min(start + pageSize, total);
   const slice = view.slice(start, end);
 
-  $("#adminRange").textContent = total ? `แสดง ${fmt(start+1)}–${fmt(end)} จาก ${fmt(total)}` : "";
+  qs("#adminRange")?.replaceChildren(document.createTextNode(total ? `แสดง ${fmt(start+1)}–${fmt(end)} จาก ${fmt(total)}` : ""));
 
-  if (!slice.length) {
-    $("#adminTableBody").innerHTML = `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูล</td></tr>`;
-  } else {
-    $("#adminTableBody").innerHTML = slice.map(r => `
+  const body = qs("#adminTableBody");
+  if (body) {
+    body.innerHTML = slice.length ? slice.map(r => `
       <tr data-uid="${r.uid}">
         <td>${escapeHtml(r.name || r.uid)}</td>
         <td class="text-end fw-semibold">${fmt(r.score)}</td>
@@ -147,14 +159,14 @@ function renderTable() {
           </button>
         </td>
       </tr>
-    `).join("");
+    `).join("") : `<tr><td colspan="3" class="text-center text-muted">ไม่พบข้อมูล</td></tr>`;
   }
 
-  $("#adminPagerInfo").textContent = `หน้า ${page}/${totalPages}`;
-  $("#adminPager").innerHTML = makePager(totalPages);
+  qs("#adminPagerInfo")?.replaceChildren(document.createTextNode(`หน้า ${page}/${totalPages}`));
+  const pager = qs("#adminPager");
+  if (pager) pager.innerHTML = makePager(totalPages);
 }
 
-// Pager HTML
 function makePager(totalPages){
   const mk = (label, p, disabled=false, active=false)=>`
     <li class="page-item ${disabled?'disabled':''} ${active?'active':''}">
@@ -172,31 +184,31 @@ function makePager(totalPages){
   return html;
 }
 
-// Events
+/* ---------- Actions ---------- */
 function bindEvents() {
   // sort header
-  $$("#admin .sort, thead .sort").forEach(th=>{
+  qsa("#admin thead .sort").forEach(th=>{
     th.addEventListener("click", ()=>{
       const key = th.dataset.key;
+      if (!key) return;
       if (sortKey === key) sortDir = (sortDir === "asc" ? "desc" : "asc");
       else { sortKey = key; sortDir = key === "name" ? "asc" : "desc"; }
-      // update header state
-      $$("thead .sort").forEach(h=>h.classList.remove("asc","desc"));
+      qsa("#admin thead .sort").forEach(h=>h.classList.remove("asc","desc"));
       th.classList.add(sortDir);
       applyFilterSortPaginate(true);
     });
   });
 
   // filters
-  $("#adminSearch").addEventListener("input", debounce(()=>applyFilterSortPaginate(true), 200));
-  $("#adminMinScore").addEventListener("input", debounce(()=>applyFilterSortPaginate(true), 200));
-  $("#adminPageSize").addEventListener("change", ()=>applyFilterSortPaginate(true));
+  qs("#adminSearch")?.addEventListener("input", debounce(()=>applyFilterSortPaginate(true), 200));
+  qs("#adminMinScore")?.addEventListener("input", debounce(()=>applyFilterSortPaginate(true), 200));
+  qs("#adminPageSize")?.addEventListener("change", ()=>applyFilterSortPaginate(true));
 
   // refresh
-  $("#btnAdminRefresh").addEventListener("click", ()=>loadList());
+  qs("#btnAdminRefresh")?.addEventListener("click", ()=>loadList());
 
   // pager click
-  $("#adminPager").addEventListener("click", (e)=>{
+  qs("#adminPager")?.addEventListener("click", (e)=>{
     const a = e.target.closest("a[data-page]"); if (!a) return;
     e.preventDefault();
     page = Number(a.dataset.page);
@@ -204,77 +216,61 @@ function bindEvents() {
   });
 
   // row quick actions
-  $("#adminTableBody").addEventListener('click', async (e) => {
-  const btn = e.target.closest('[data-action]');
-  if (!btn) return;
+  qs("#adminTableBody")?.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
 
-  const action = btn.dataset.action;
-  const uid    = btn.dataset.uid;
-  const name   = btn.dataset.name || '';
+    const action = btn.dataset.action;
+    const uid    = btn.dataset.uid;
+    const name   = btn.dataset.name || '';
 
-  if (action === 'adj') {
-    // เปิดโมดัลปรับคะแนน
-    openAdjustModal(uid, name);
-    return;
-  }
-
-  if (action === 'reset') {
-    // ยืนยันล้างคะแนน
-    confirmReset(uid, name);
-    return;
-  }
-
-  if (action === 'history') {
-    // โหลดประวัติ + เปิดโมดัล
-    overlay.show('กำลังโหลดประวัติ...');
-    try {
-      const items = await fetchHistory(uid);
-      document.querySelector('#historyModal .modal-title').innerHTML =
-        `<i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info">${escapeHtml(name)}</span>`;
-      renderHistory(items);
-      historyModal.show();
-    } catch (err) {
-      console.error(err);
-      if (window.Toast?.show) Toast.show('โหลดประวัติไม่สำเร็จ');
-      else Swal.fire("ผิดพลาด","โหลดประวัติไม่สำเร็จ","error");
-    } finally {
-      overlay.hide();
+    if (action === 'adj') {
+      openAdjustModal(uid, name);             // เปิดโมดัลกำหนดแต้ม
+      return;
     }
-    return;
-  }
-});
+    if (action === 'reset') {
+      confirmReset(uid, name);                // โมดัลยืนยันล้าง
+      return;
+    }
+    if (action === 'history') {
+      await openHistory(uid, name);           // โหลด+แสดงประวัติ
+      return;
+    }
+  });
 
   // modal buttons
-  $("#btnAdjAdd").addEventListener("click", () => submitAdjust(+1));
-  $("#btnAdjDeduct").addEventListener("click", () => submitAdjust(-1));
-  $("#btnAdjReset").addEventListener("click", ()=>submitReset());
+  qs("#btnAdjAdd")?.addEventListener("click", () => submitAdjust(+1));
+  qs("#btnAdjDeduct")?.addEventListener("click", () => submitAdjust(-1));
+  qs("#btnAdjReset")?.addEventListener("click", ()=>submitReset());
 
   // Export CSV
-  $("#btnAdminExport").addEventListener("click", (e)=>{
+  qs("#btnAdminExport")?.addEventListener("click", (e)=>{
     e.preventDefault();
-    window.location.href = `${API_LIST}?uid=${encodeURIComponent(MY_UID)}&format=csv`;
+    // ใช้ adminUid ให้ตรงกับ API
+    window.location.href = `${API_LIST}?adminUid=${encodeURIComponent(MY_UID)}&format=csv`;
   });
 }
 
-// Adjust modal
+/* ---------- Adjust modal ---------- */
 function openAdjustModal(uid, name) {
-  $("#ajUid").textContent = uid;
-  $("#ajUid").setAttribute('href', `https://line.me/R/ti/p/~${encodeURIComponent(uid)}`); // หรือจะไม่ลิงก์ก็ได้
-  $("#ajDelta").value = 50;
-  $("#ajNote").value  = "";
-  const modal = new bootstrap.Modal($("#adjustModal"));
+  qs("#ajUid")?.replaceChildren(document.createTextNode(uid || ""));
+  const ajUidHref = qs("#ajUidLink");
+  if (ajUidHref) ajUidHref.href = `https://line.me/R/ti/p/~${encodeURIComponent(uid)}`; // ถ้าไม่ต้องการลิงก์ ให้ลบสองบรรทัดนี้
+  const deltaEl = qs("#ajDelta"); if (deltaEl) deltaEl.value = 50;
+  const noteEl  = qs("#ajNote");  if (noteEl) noteEl.value  = "";
+  const modal = bootstrap.Modal.getOrCreateInstance(qs("#adjustModal"));
   modal.show();
 }
 
 async function submitAdjust(sign) {
-  const uid  = $("#ajUid").textContent;
-  const note = $("#ajNote").value || "";
-  let amt = parseInt($("#ajDelta").value, 10);
+  const uid  = (qs("#ajUid")?.textContent || "").trim();
+  const note = qs("#ajNote")?.value || "";
+  let amt = parseInt(qs("#ajDelta")?.value || "0", 10);
   if (isNaN(amt) || amt <= 0) return Swal.fire("กรอกจำนวนแต้ม", "จำนวนต้องมากกว่า 0", "warning");
   const delta = sign === 1 ? amt : -amt;
 
   try {
-    overlay.show();
+    overlay.show("กำลังบันทึก...");
     const res  = await fetch(API_ADJUST, {
       method: "POST", headers: { "Content-Type":"application/json" },
       body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, delta, note })
@@ -287,24 +283,24 @@ async function submitAdjust(sign) {
     if (row) row.score = Number(row.score||0) + delta;
     applyFilterSortPaginate(false);
     Swal.fire("สำเร็จ", `อัปเดตคะแนน (${delta>0?'+':''}${delta})`, "success");
-    bootstrap.Modal.getInstance($("#adjustModal"))?.hide();
+    bootstrap.Modal.getInstance(qs("#adjustModal"))?.hide();
   } catch (e) {
     overlay.hide();
-    Swal.fire("ผิดพลาด", String(e), "error");
+    Swal.fire("ผิดพลาด", String(e.message||e), "error");
   }
 }
 
 function confirmReset(uid, name){
-  Swal.fire({ icon:"warning", title:`ล้างคะแนนของ ${name||uid}?`,
+  Swal.fire({ icon:"warning", title:`ล้างคะแนนของ ${escapeHtml(name||uid)}?`,
     showCancelButton:true, confirmButtonText:"ล้างคะแนน", cancelButtonText:"ยกเลิก"
   }).then(r=>{ if (r.isConfirmed) submitReset(uid); });
 }
 
 async function submitReset(forceUid) {
-  const uid  = forceUid || $("#ajUid").textContent;
-  const note = $("#ajNote").value || "admin reset";
+  const uid  = forceUid || (qs("#ajUid")?.textContent || "").trim();
+  const note = qs("#ajNote")?.value || "admin reset";
   try {
-    overlay.show();
+    overlay.show("กำลังล้างคะแนน...");
     const res  = await fetch(API_RESET, {
       method:"POST", headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, note })
@@ -317,82 +313,102 @@ async function submitReset(forceUid) {
     if (row) row.score = 0;
     applyFilterSortPaginate(false);
     Swal.fire("สำเร็จ", "ล้างคะแนนเรียบร้อย", "success");
-    bootstrap.Modal.getInstance($("#adjustModal"))?.hide();
+    bootstrap.Modal.getInstance(qs("#adjustModal"))?.hide();
   } catch (e) {
     overlay.hide();
-    Swal.fire("ผิดพลาด", String(e), "error");
+    Swal.fire("ผิดพลาด", String(e.message||e), "error");
   }
 }
 
-// ---- History: fetch + render ----
-async function fetchHistory(uid) {
-  const url = `/api/score-history?uid=${encodeURIComponent(uid)}`;
-  const res = await fetch(url);
-  const json = await res.json();
-  if (json.status !== 'success') throw new Error(json.message || 'Fetch history error');
-  return Array.isArray(json.data) ? json.data : [];
-}
+/* ---------- History ---------- */
+async function openHistory(uid, name){
+  overlay.show("กำลังโหลดประวัติ...");
+  try{
+    const res = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:"no-store" });
+    const json = await res.json();
+    if (json.status !== 'success') throw new Error(json.message || 'Fetch history error');
 
-function formatDateTime(ts) {
-  const d = new Date(ts);
-  if (isNaN(d)) return String(ts || '');
-  return d.toLocaleString('th-TH', { hour12: false });
-}
+    // รองรับทั้งแบบ list-group (#historyList) และแบบตาราง (#historyTableBody)
+    const listEl  = qs('#historyList');
+    const tableEl = qs('#historyTableBody');
 
-function renderHistory(items) {
-  const list = document.getElementById('historyList');
-  const counter = document.getElementById('historyCount');
+    const items = Array.isArray(json.data) ? json.data : [];
 
-  if (!items.length) {
-    list.innerHTML = `<div class="p-4 text-center text-muted">ไม่มีรายการ</div>`;
-    counter.textContent = '0 รายการ';
-    return;
+    // ตั้งหัวข้อ
+    const titleEl = qs('#historyModal .modal-title');
+    if (titleEl) {
+      titleEl.innerHTML = `<i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info">${escapeHtml(name||uid)}</span>`;
+    }
+
+    if (listEl) {
+      listEl.innerHTML = items.length
+        ? items.slice(0,100).map(it=>{
+            const dt = formatDateTime(it.ts);
+            const p  = Number(it.point)||0;
+            const sign = p>=0?"+":"−";
+            const cls  = p>=0?'bg-success':'bg-warning';
+            const abs  = Math.abs(p);
+            const type = escapeHtml(it.type||'');
+            const code = it.code ? ` • ${escapeHtml(it.code)}` : '';
+            return `
+              <div class="list-group-item d-flex justify-content-between align-items-center bg-transparent">
+                <div>
+                  <div class="small text-muted">${dt}</div>
+                  <div class="fw-semibold">${type}${code}</div>
+                </div>
+                <span class="badge ${cls} rounded-pill">${sign}${abs}</span>
+              </div>`;
+          }).join("")
+        : `<div class="p-4 text-center text-muted">ไม่มีรายการ</div>`;
+    } else if (tableEl) {
+      tableEl.innerHTML = items.length
+        ? items.slice(0,100).map(it=>{
+            const dt = formatDateTime(it.ts);
+            const p  = Number(it.point)||0;
+            const badgeClass = p>=0? 'bg-success' : 'bg-danger';
+            const signed = p>0? `+${p}` : `${p}`;
+            return `
+              <tr>
+                <td class="text-muted">${escapeHtml(dt)}</td>
+                <td><span class="badge ${badgeClass}">${signed}</span></td>
+                <td>${escapeHtml(it.type||'-')}</td>
+                <td class="text-nowrap">${escapeHtml(it.code||'-')}</td>
+              </tr>`;
+          }).join("")
+        : `<tr><td colspan="4" class="text-center text-muted py-4">ไม่มีประวัติ</td></tr>`;
+    }
+
+    bootstrap.Modal.getOrCreateInstance(qs('#historyModal')).show();
+  } catch (err) {
+    console.error(err);
+    Swal.fire("ผิดพลาด", err.message || "โหลดประวัติไม่สำเร็จ", "error");
+  } finally {
+    overlay.hide();
   }
-
-  // แสดงล่าสุดก่อน (Server.gs คืนล่าสุดมาก่อนอยู่แล้ว; เผื่อไว้)
-  const rows = items.slice(0, 100).map(it => {
-    const dt = formatDateTime(it.ts);
-    const p = Number(it.point) || 0;
-    const sign = p >= 0 ? '+' : '−';
-    const cls  = p >= 0 ? 'bg-success' : 'bg-warning';
-    const abs  = Math.abs(p);
-
-    const type = escapeHtml(it.type || '');
-    const code = it.code ? ` • ${escapeHtml(it.code)}` : '';
-
-    return `
-      <div class="list-group-item d-flex justify-content-between align-items-center bg-transparent text-light">
-        <div>
-          <div class="fw-semibold">${dt}</div>
-          <div class="small text-muted">${type}${code}</div>
-        </div>
-        <span class="badge ${cls} rounded-pill">${sign}${abs}</span>
-      </div>
-    `;
-  }).join('');
-
-  list.innerHTML = rows;
-  counter.textContent = `${items.length} รายการ`;
 }
 
-// Escape helpers
-function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m]));}
-function escapeAttr(s){ return escapeHtml(s).replace(/"/g,"&quot;"); }
+/* ---------- LIFF init & page guard ---------- */
+async function boot() {
+  // รันเฉพาะหน้า table (กันชนกับ admin.html)
+  if (!qs("#adminTableBody")) return;
 
-// LIFF guard (optional UI gate; สิทธิ์จริงตรวจฝั่ง API อยู่แล้ว)
-async function init() {
   try {
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) return liff.login();
     const profile = await liff.getProfile();
     MY_UID = profile.userId;
 
+    // Gate ฝั่ง UI (ฝั่ง API ยังตรวจสิทธิ์จริง)
     if (MY_UID !== ADMIN_UID) {
-      // ป้องกันคนหลงมา
       Swal.fire("เฉพาะผู้ดูแลระบบ", "บัญชีของคุณไม่มีสิทธิ์เข้าถึงหน้านี้", "error");
       setTimeout(()=>location.href="/", 1200);
       return;
     }
+
+    // โชว์ UID ที่หัว (ถ้ามี element)
+    const adminUidHost = qs('#adminUid');
+    if (adminUidHost) adminUidHost.textContent = MY_UID;
+
     bindEvents();
     loadList();
   } catch (e) {
@@ -401,345 +417,4 @@ async function init() {
   }
 }
 
-// ---------- History Modal: วิธี A (DOMContentLoaded) ----------
-document.addEventListener('DOMContentLoaded', () => {
-  // 1) สร้างอินสแตนซ์โมดัล (ทำครั้งเดียวเมื่อ DOM พร้อม)
-  const historyModalEl = document.getElementById('historyModal');
-  const historyModal   = new bootstrap.Modal(historyModalEl);
-  // ถ้าต้องการเรียกจากฟังก์ชันอื่น ๆ
-  window.historyModal = historyModal;
-
-  // 2) ตัวช่วยเล็กน้อย
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, m => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[m]));
-  }
-
-  // 3) ดึงประวัติจาก API (ปรับ endpoint ได้หากคุณตั้งค่าแตกต่าง)
-  async function fetchHistory(uid) {
-    const url = `/api/score-history?uid=${encodeURIComponent(uid)}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('network error');
-    const json = await res.json();
-    if (json.status !== 'success') throw new Error(json.message || 'fetch error');
-    return json.data || [];
-  }
-
-  // 4) วาดข้อมูลประวัติลงในตารางของโมดัล
-  function renderHistory(items) {
-    const body = document.getElementById('historyTableBody');
-    if (!body) return;
-
-    if (!items.length) {
-      body.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">ไม่มีประวัติ</td></tr>`;
-      return;
-    }
-
-    body.innerHTML = items.map(it => {
-      const ts   = it.ts ? new Date(it.ts) : null;
-      const time = ts ? ts.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
-      const p    = Number(it.point) || 0;
-      const badgeClass = p >= 0 ? 'bg-success' : 'bg-danger';
-      const signed = p > 0 ? `+${p}` : `${p}`;
-
-      return `
-        <tr>
-          <td class="text-muted">${escapeHtml(time)}</td>
-          <td><span class="badge ${badgeClass}">${signed}</span></td>
-          <td>${escapeHtml(it.type || '-')}</td>
-          <td class="text-nowrap">${escapeHtml(it.code || '-')}</td>
-        </tr>`;
-    }).join('');
-  }
-
-  // 5) ผูก event ให้ตารางหลัก (ปุ่ม data-action="history")
-  //    ถ้าคุณใช้ id อื่นแทน adminTableBody ให้แก้ตรงนี้
-  const tableBody = document.getElementById('adminTableBody');
-  if (tableBody) {
-    tableBody.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-action="history"]');
-      if (!btn) return;
-
-      const uid  = btn.dataset.uid || '';
-      const name = btn.dataset.name || '';
-
-      try {
-        // ถ้าคุณมี overlay ของตัวเองจะไม่ error (ถ้าไม่มีไม่เป็นไร)
-        if (window.overlay?.show) overlay.show('กำลังโหลดประวัติ…');
-
-        const items = await fetchHistory(uid);
-
-        // ตั้งหัวข้อให้โชว์ชื่อผู้ใช้
-        const title = historyModalEl.querySelector('.modal-title');
-        if (title) {
-          title.innerHTML =
-            `<i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-info">${escapeHtml(name)}</span>`;
-        }
-
-        renderHistory(items);
-        historyModal.show();
-      } catch (err) {
-        console.error(err);
-        if (window.Toast?.show) Toast.show('โหลดประวัติไม่สำเร็จ');
-        else alert('โหลดประวัติไม่สำเร็จ');
-      } finally {
-        if (window.overlay?.hide) overlay.hide();
-      }
-    });
-  }
-});
-
-function getAdminUid() {
-  const q = new URLSearchParams(location.search);
-  const uid = (q.get('uid') || localStorage.getItem('ADMIN_UID') || '').trim();
-  if (uid) localStorage.setItem('ADMIN_UID', uid);
-  return uid;
-}
-// แสดง UID ถ้ามี (ไม่บังคับ)
-document.getElementById('adminUid')?.innerText = getAdminUid() || '—';
-
-
-async function loadAllScores() {
-  if (!ADMIN_UID) {
-    renderUsersTable([]);
-    return;
-  }
-  const url = `/api/all-scores?adminUid=${encodeURIComponent(ADMIN_UID)}`;
-  const res = await fetch(url);
-  const data = await res.json().catch(() => ({}));
-
-  if (data.status === 'success' && Array.isArray(data.data)) {
-    renderUsersTable(data.data);
-  } else {
-    renderUsersTable([]);
-  }
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  const historyModalEl = document.getElementById('historyModal');
-  window.historyModal  = new bootstrap.Modal(historyModalEl);
-});
-
-/* -----------------------------
- * RP_ Admin Patch (safe add-on)
- * ----------------------------- */
-
-const RP_A$  = (sel, root=document) => root.querySelector(sel);
-const RP_A$$ = (sel, root=document) => [...root.querySelectorAll(sel)];
-
-const RP_A_overlay = {
-  show(msg='กำลังโหลด...') {
-    if (RP_A$('#rp-admin-ovl')) return;
-    const el = document.createElement('div');
-    el.id = 'rp-admin-ovl';
-    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff';
-    el.innerHTML = `<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>${msg}</div>`;
-    document.body.appendChild(el);
-  },
-  hide(){ RP_A$('#rp-admin-ovl')?.remove(); }
-};
-
-const RP_adminState = {
-  uid: '',
-  rows: [],
-  q: '',
-  page: 1,
-  pageSize: 20,
-};
-
-function RP_adminGetUid() {
-  // ใช้ uid จาก localStorage หรือ query ?uid=
-  const qUid = new URLSearchParams(location.search).get('uid');
-  return (qUid || localStorage.getItem('rp_uid') || '').trim();
-}
-
-function RP_adminRenderTable() {
-  const body = RP_A$('#tblBody');
-  if (!body) return;
-
-  const q = RP_adminState.q.toLowerCase();
-  const filtered = RP_adminState.rows.filter(r =>
-    (r.name || '').toLowerCase().includes(q) || String(r.uid).includes(q)
-  );
-
-  const start = (RP_adminState.page - 1) * RP_adminState.pageSize;
-  const pageRows = filtered.slice(start, start + RP_adminState.pageSize);
-
-  body.innerHTML = pageRows.map(r => `
-    <tr>
-      <td class="text-truncate" style="max-width:220px">${r.name || '-'}</td>
-      <td class="fw-bold">${r.score}</td>
-      <td class="text-nowrap">
-        <button class="btn btn-sm btn-warning me-1" data-rp-act="adj" data-uid="${r.uid}" data-delta="-10"><i class="fa-solid fa-minus"></i></button>
-        <button class="btn btn-sm btn-primary me-1" data-rp-act="adj" data-uid="${r.uid}" data-delta="10"><i class="fa-solid fa-plus"></i></button>
-        <button class="btn btn-sm btn-danger" data-rp-act="reset" data-uid="${r.uid}"><i class="fa-solid fa-rotate-left"></i></button>
-        <button class="btn btn-sm btn-secondary ms-1" data-rp-act="hist" data-uid="${r.uid}"><i class="fa-solid fa-clock-rotate-left"></i></button>
-      </td>
-    </tr>
-  `).join('');
-
-  RP_A$('#totalRows')?.replaceChildren(document.createTextNode(filtered.length));
-}
-
-async function RP_adminFetchAll() {
-  RP_A_overlay.show('กำลังโหลดข้อมูล...');
-  try {
-    const res = await fetch(`/api/all-scores?uid=${encodeURIComponent(RP_adminState.uid)}`);
-    const json = await res.json();
-    RP_A_overlay.hide();
-
-    if (json.status !== 'success') throw new Error(json.message || 'โหลดข้อมูลไม่สำเร็จ');
-    RP_adminState.rows = json.data || [];
-    RP_adminRenderTable();
-  } catch (e) {
-    RP_A_overlay.hide();
-    RP_A$('#errorText')?.replaceChildren(document.createTextNode('โหลดข้อมูลไม่สำเร็จ: Apps Script error'));
-    console.error(e);
-  }
-}
-
-async function RP_adminAdjust(targetUid, delta, note='') {
-  RP_A_overlay.show('กำลังบันทึก...');
-  try {
-    const res = await fetch('/api/admin-adjust', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ adminUid: RP_adminState.uid, targetUid, delta, note })
-    });
-    const json = await res.json();
-    RP_A_overlay.hide();
-
-    if (json.status !== 'success') throw new Error(json.message || 'บันทึกไม่สำเร็จ');
-    await RP_adminFetchAll();
-    Swal.fire('สำเร็จ', 'ปรับคะแนนแล้ว', 'success');
-  } catch (e) {
-    RP_A_overlay.hide();
-    Swal.fire('ผิดพลาด', e.message || 'บันทึกไม่สำเร็จ', 'error');
-  }
-}
-
-async function RP_adminReset(targetUid) {
-  const ok = await Swal.fire({ icon:'warning', title:'ยืนยันล้างคะแนน?', showCancelButton:true, confirmButtonText:'ยืนยัน', cancelButtonText:'ยกเลิก' });
-  if (!ok.isConfirmed) return;
-
-  RP_A_overlay.show('กำลังล้างคะแนน...');
-  try {
-    const res = await fetch('/api/admin-reset', {
-      method: 'POST',
-      headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ adminUid: RP_adminState.uid, targetUid, note: 'RESET_BY_ADMIN' })
-    });
-    const json = await res.json();
-    RP_A_overlay.hide();
-
-    if (json.status !== 'success') throw new Error(json.message || 'ล้างคะแนนไม่สำเร็จ');
-    await RP_adminFetchAll();
-    Swal.fire('สำเร็จ', 'ล้างคะแนนเรียบร้อย', 'success');
-  } catch (e) {
-    RP_A_overlay.hide();
-    Swal.fire('ผิดพลาด', e.message || 'ล้างคะแนนไม่สำเร็จ', 'error');
-  }
-}
-
-async function RP_adminHistory(uid) {
-  RP_A_overlay.show('กำลังโหลดประวัติ...');
-  try {
-    const res = await fetch(`/api/score-history?uid=${encodeURIComponent(uid)}`);
-    const json = await res.json();
-    RP_A_overlay.hide();
-
-    if (json.status !== 'success') throw new Error(json.message || 'โหลดประวัติไม่สำเร็จ');
-
-    const list = RP_A$('#adminHistoryList');
-    if (!list) return;
-    list.innerHTML = '';
-
-    if (!json.data.length) {
-      list.innerHTML = `<li class="list-group-item text-center text-secondary">ยังไม่มีรายการ</li>`;
-    } else {
-      json.data.forEach(h => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item d-flex justify-content-between';
-        li.innerHTML = `
-          <div>
-            <div class="small text-secondary">${new Date(h.ts).toLocaleString()}</div>
-            <div class="fw-semibold">${h.type}</div>
-            <div class="small">${h.code || '-'}</div>
-          </div>
-          <div class="${h.point>=0?'text-success':'text-danger'} fw-bold">${h.point>=0?'+':''}${h.point}</div>
-        `;
-        list.appendChild(li);
-      });
-    }
-
-    bootstrap.Modal.getOrCreateInstance(RP_A$('#adminHistoryModal')).show();
-  } catch (e) {
-    RP_A_overlay.hide();
-    Swal.fire('ผิดพลาด', e.message || 'โหลดประวัติไม่สำเร็จ', 'error');
-  }
-}
-
-function RP_adminBind() {
-  // ค้นหา
-  RP_A$('#searchBox')?.addEventListener('input', (e) => {
-    RP_adminState.q = e.target.value || '';
-    RP_adminState.page = 1;
-    RP_adminRenderTable();
-  });
-  // รีเฟรช
-  RP_A$('#btnRefresh')?.addEventListener('click', RP_adminFetchAll);
-
-  // ปุ่ม table
-  RP_A$('#tblBody')?.addEventListener('click', (ev) => {
-    const b = ev.target.closest('[data-rp-act]');
-    if (!b) return;
-    const uid = b.dataset.uid;
-
-    if (b.dataset.rpAct === 'adj') {
-      const delta = parseInt(b.dataset.delta, 10) || 0;
-      RP_adminOpenAdjust(uid, delta);
-    }
-    if (b.dataset.rpAct === 'reset') RP_adminReset(uid);
-    if (b.dataset.rpAct === 'hist')  RP_adminHistory(uid);
-  });
-
-  // ฟอร์มปรับคะแนนในโมดัล
-  RP_A$('#btnAdjAdd')?.addEventListener('click', () => {
-    const uid   = RP_A$('#adjUid')?.value?.trim();
-    const delta = Math.abs(parseInt(RP_A$('#adjDelta')?.value || '0', 10));
-    const note  = RP_A$('#adjNote')?.value || '';
-    if (!uid || !delta) return;
-    RP_adminAdjust(uid, delta, note);
-    bootstrap.Modal.getInstance(RP_A$('#adjustModal'))?.hide();
-  });
-  RP_A$('#btnAdjDeduct')?.addEventListener('click', () => {
-    const uid   = RP_A$('#adjUid')?.value?.trim();
-    const delta = Math.abs(parseInt(RP_A$('#adjDelta')?.value || '0', 10));
-    const note  = RP_A$('#adjNote')?.value || '';
-    if (!uid || !delta) return;
-    RP_adminAdjust(uid, -delta, note);
-    bootstrap.Modal.getInstance(RP_A$('#adjustModal'))?.hide();
-  });
-  RP_A$('#btnAdjReset')?.addEventListener('click', () => {
-    const uid = RP_A$('#adjUid')?.value?.trim();
-    if (!uid) return;
-    RP_adminReset(uid);
-    bootstrap.Modal.getInstance(RP_A$('#adjustModal'))?.hide();
-  });
-}
-
-function RP_adminOpenAdjust(uid, seed=0) {
-  if (RP_A$('#adjUid'))   RP_A$('#adjUid').value = uid || '';
-  if (RP_A$('#adjDelta')) RP_A$('#adjDelta').value = seed || 0;
-  if (RP_A$('#adjNote'))  RP_A$('#adjNote').value = '';
-  bootstrap.Modal.getOrCreateInstance(RP_A$('#adjustModal')).show();
-}
-
-function RP_adminSafeInit() {
-  RP_adminState.uid = RP_adminGetUid();
-  RP_adminBind();
-  RP_adminFetchAll();
-}
-
-document.addEventListener('DOMContentLoaded', RP_adminSafeInit);
+document.addEventListener("DOMContentLoaded", boot);
