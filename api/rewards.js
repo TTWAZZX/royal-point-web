@@ -1,28 +1,33 @@
+// api/rewards.js
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ status: "error", message: "Method not allowed" });
+  }
   try {
-    const { APPS_SCRIPT_ENDPOINT, API_SECRET } = process.env;
-    if (!APPS_SCRIPT_ENDPOINT || !API_SECRET) {
-      return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET" });
+    const GAS    = process.env.APPS_SCRIPT_ENDPOINT || process.env.GAS_WEBAPP_URL;
+    const SECRET = process.env.API_SECRET;
+    if (!GAS || !SECRET) {
+      return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT/API_SECRET env" });
     }
 
-    const url = new URL(APPS_SCRIPT_ENDPOINT);
-    url.searchParams.set("action", "rewards");
-    url.searchParams.set("secret", API_SECRET);
-    // ถ้าส่ง uid/adminUid มาด้วย จะช่วยให้ฝั่ง GAS เปิดดู inactive ได้สำหรับแอดมิน
-    if (req.query.uid)      url.searchParams.set("uid", req.query.uid);
-    if (req.query.adminUid) url.searchParams.set("adminUid", req.query.adminUid);
-    // ถ้าอยากดู inactive ด้วยใส่ include=1 (เฉพาะแอดมิน)
-    if (req.query.include)  url.searchParams.set("include", req.query.include);
+    const { uid, adminUid, include } = req.query || {};
+    const u = new URL(GAS);
+    u.searchParams.set("action", "rewards");
+    if (uid)      u.searchParams.set("uid", uid);
+    if (adminUid) u.searchParams.set("adminUid", adminUid);
+    if (include)  u.searchParams.set("include", String(include)); // "1" เพื่อขอดู inactive (เฉพาะแอดมิน)
+    u.searchParams.set("secret", SECRET);
 
-    const resp = await fetch(url.toString(), { method: "GET" });
-    const text = await resp.text();
-    try {
-      const json = JSON.parse(text);
-      return res.status(200).json(json);
-    } catch {
-      return res.status(200).json({ status: "error", message: "Bad payload from Apps Script", raw: text });
+    const r = await fetch(u, { method: "GET" });
+    const t = await r.text();
+    let j; try { j = JSON.parse(t); } catch { j = { status: r.ok ? "success" : "error", message: t }; }
+
+    if (j.status !== "success") {
+      return res.status(200).json({ status: "error", message: j.message || "GAS error" });
     }
-  } catch (err) {
-    return res.status(500).json({ status: "error", message: String(err) });
+    // โครงสร้างที่ app.js คาดไว้: { status:"success", data:[{id,name,img,cost,active}, ...] }
+    return res.status(200).json(j);
+  } catch (e) {
+    return res.status(500).json({ status: "error", message: String(e) });
   }
 }

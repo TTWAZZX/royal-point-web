@@ -975,3 +975,6 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-reward-cost{ font-weight:800; color:#111827 }
 .rp-redeem-btn{ position:absolute; right:10px; bottom:10px; border:none; background:#10b981; color:#fff; width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(16,185,129,.3); }
 .rp-reward-card.locked .rp-redeem-btn{ background:#94a3b8; box-shadow:none; }
+
+/* เพิ่มความห่างหัวข้อของรางวัลเล็กน้อย */
+.rp-card h5 { margin-bottom: .75rem; }
