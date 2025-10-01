@@ -50,6 +50,13 @@ let UID = "";
 let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
+// ---- Scan / redeem guards ----
+let SCANNING = false;          // กล้องกำลังทำงานอยู่หรือไม่
+let REDEEM_IN_FLIGHT = false;  // กำลังเรียก /api/redeem อยู่หรือไม่
+let LAST_DECODE = "";          // ค่าที่สแกนได้ล่าสุด
+let LAST_DECODE_AT = 0;        // เวลา (ms) ที่สแกนได้ล่าสุด
+const DUP_COOLDOWN = 2500;     // กันยิงค่าซ้ำภายใน X ms
+
 
 /** Level mapping */
 const TIERS = [
@@ -113,11 +120,19 @@ function bindUI(){
   stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
 
   // ยืนยันรหัสลับ (กรณีกรอกมือ)
-  els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
-    const code = (els.secretInput?.value || "").trim();
-    if(!code) return toastErr("กรอกรหัสลับก่อน");
-    await redeemCode(code, "MANUAL");
-  });
+els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
+  const code = (els.secretInput?.value || "").trim();
+  if(!code) return toastErr("กรอกรหัสลับก่อน");
+  if (REDEEM_IN_FLIGHT) return;            // กันยิงซ้ำ
+  REDEEM_IN_FLIGHT = true;
+  els.submitBtn.disabled = true;
+
+  try { await redeemCode(code, "MANUAL"); }
+  finally {
+    els.submitBtn.disabled = false;
+    setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
+  }
+});
 }
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
@@ -366,13 +381,30 @@ async function redeemCode(code, type){
 }
 
 async function startScanner(){
-  if(!els.qrReader) return;
-  // ✅ กันเปิดซ้ำ (เช่น เปิดโมดัล + กดปุ่ม "เปิดกล้อง")
-  if (html5qrcode) return;
+  if (!els.qrReader) return;
+  if (SCANNING) return;      // ป้องกันเปิดกล้องซ้อน
+  SCANNING = true;
 
-  const onScan = async (decoded) => {
-    try { await redeemCode(String(decoded||"").trim(), "SCAN"); }
-    finally { stopScanner(); }
+  const onScan = async (decodedText) => {
+    const code = String(decodedText || "").trim();
+    const now  = Date.now();
+
+    // กันการยิงซ้ำ ๆ จาก callback เดียวกัน
+    if (REDEEM_IN_FLIGHT) return;
+    if (code && code === LAST_DECODE && (now - LAST_DECODE_AT) < DUP_COOLDOWN) return;
+
+    LAST_DECODE = code;
+    LAST_DECODE_AT = now;
+
+    REDEEM_IN_FLIGHT = true;
+    try {
+      // หยุดกล้องทันทีที่เจอโค้ดครั้งแรก เพื่อไม่ให้ยิงซ้ำ
+      await stopScanner();
+      await redeemCode(code, "SCAN");   // เรียก API แค่ครั้งเดียว
+    } finally {
+      // หน่วงเล็กน้อยกัน callback ที่ยังค้างอยู่
+      setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
+    }
   };
 
   try{
@@ -388,6 +420,7 @@ async function startScanner(){
       return;
     } catch {}
 
+    // กล้องหลังแบบทั่วไป
     try {
       await html5qrcode.start(
         { facingMode: "environment" },
@@ -397,6 +430,7 @@ async function startScanner(){
       return;
     } catch {}
 
+    // เลือกจากรายการอุปกรณ์
     const devices = await Html5Qrcode.getCameras();
     if(!devices?.length) throw new Error("No camera devices");
     const re = /(back|rear|environment|wide|main)/i;
@@ -409,6 +443,7 @@ async function startScanner(){
     );
   }catch(e){
     console.warn("Scanner start failed:", e);
+    SCANNING = false; // reset flag เมื่อเปิดกล้องไม่สำเร็จ
     toastErr("ไม่สามารถเปิดกล้องได้");
   }
 }
@@ -420,9 +455,14 @@ async function stopScanner(){
       await html5qrcode.clear();
       html5qrcode = null;
     }
-    if (els.qrReader) els.qrReader.innerHTML = "";
   }catch(e){ console.warn("stopScanner error", e); }
+  finally {
+    els.qrReader && (els.qrReader.innerHTML = "");
+    SCANNING = false;   // กล้องหยุดแล้ว
+  }
 }
+
+
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
