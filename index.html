@@ -23,36 +23,34 @@
 <main class="rp-container container py-3">
 
   <!-- ===== Profile Card (clean & balanced) ===== -->
-<!-- ===== Profile Card (2-Row Layout) ===== -->
-<section class="rp-card rp-glass rp-profile2 hover-lift mb-3">
-  <!-- Row 1: Avatar + Name + Level badge + Refresh -->
-  <div class="rp-pf-row d-flex align-items-center gap-3">
+<section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
+  <div class="rp-left">
     <div class="rp-avatar-wrap">
       <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
+      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
     </div>
-
-    <div class="flex-grow-1">
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <h1 id="username" class="rp-username mb-0">—</h1>
-        <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
-      </div>
-      <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
-    </div>
-
-    <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-      <i class="fa-solid fa-rotate"></i>
-    </button>
   </div>
 
-  <!-- Row 2: Big point + progress + helper text -->
-  <div class="rp-pf-row mt-3">
-    <div class="rp-point-value"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
+  <div class="rp-right">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <h1 id="username" class="rp-username mb-0">—</h1>
+      <i class="fa-solid fa-leaf text-success-emphasis small"></i>
+      <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
+    </div>
 
+    <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
+    <div id="next-tier" class="small text-secondary mt-1">—</div>
+
+    <div class="rp-point-value mt-1">
+      <span id="points">0</span> <span class="rp-point-unit">pt</span>
+    </div>
+
+    <!-- ใช้ progress เดิมแค่อันเดียว -->
     <div id="progressBar" class="rp-progress-line mt-2 prog-silver">
       <div id="progressFill" class="rp-progress-fill" style="width:0%"></div>
     </div>
-
-    <div id="next-tier" class="small text-secondary mt-2">—</div>
   </div>
 </section>
 
