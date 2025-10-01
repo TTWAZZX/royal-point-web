@@ -941,3 +941,37 @@ body.ready #topbar{width:100%;opacity:0}
 .lm-tick{position:absolute;top:50%;width:2px;height:16px;background:#94a3b8;transform:translate(-1px,-50%)}
 .lm-tick::after{content:attr(data-label);position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:11px;color:#64748b;white-space:nowrap}
 .lm-label{font-weight:600}
+
+/* ==== Profile card layout (balanced) ==== */
+.rp-profile-grid{
+  display:grid;
+  grid-template-columns: 96px 1fr;
+  gap:16px;
+  align-items:center;
+}
+@media (min-width:576px){
+  .rp-profile-grid{ grid-template-columns: 120px 1fr; gap:20px; }
+}
+.rp-avatar-wrap{ position:relative; width:96px; height:96px; }
+.rp-avatar-circle{ width:100%; height:100%; border-radius:50%; object-fit:cover; box-shadow:0 6px 16px rgba(0,0,0,.08) }
+.rp-level-badge{ position:absolute; left:-6px; bottom:-6px; padding:4px 8px; border-radius:999px; font-weight:700; font-size:.8rem; background:#eef2ff; border:1px solid #dbe4f3 }
+.rp-username{ font-family:"Inter","Noto Sans Thai",system-ui; font-weight:800; font-size:clamp(18px,3.6vw,24px); }
+
+/* ==== Level Meter (single) ==== */
+.lm-wrap{}
+.lm-track{ position:relative; height:10px; border-radius:8px; background:#eef2f7; overflow:hidden; }
+.lm-fill{ position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(90deg,#22c55e,#3b82f6); }
+.lm-tick{ position:absolute; top:50%; width:2px; height:14px; background:#cbd5e1; transform:translateY(-50%); }
+.lm-tick::after{ content:attr(data-label); position:absolute; top:16px; left:50%; transform:translateX(-50%); font-size:.7rem; color:#64748b; white-space:nowrap; }
+.lm-label{ color:#64748b; }
+
+/* ==== Reward rail + card ==== */
+.rp-reward-rail{ display:grid; grid-auto-flow:column; grid-auto-columns: calc(70% - 16px); gap:12px; overflow-x:auto; padding:4px 2px 8px; scroll-snap-type:x mandatory; }
+@media (min-width:576px){ .rp-reward-rail{ grid-auto-columns: 280px; } }
+.rp-reward-card{ position:relative; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; background:#fff; scroll-snap-align:center; }
+.rp-reward-card.locked{ opacity:.7; }
+.rp-reward-img{ aspect-ratio: 4/3; background:#f1f5f9; }
+.rp-reward-img img{ width:100%; height:100%; object-fit:cover; display:block; }
+.rp-reward-cost{ font-weight:800; color:#111827 }
+.rp-redeem-btn{ position:absolute; right:10px; bottom:10px; border:none; background:#10b981; color:#fff; width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(16,185,129,.3); }
+.rp-reward-card.locked .rp-redeem-btn{ background:#94a3b8; box-shadow:none; }

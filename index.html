@@ -22,9 +22,10 @@
 
 <main class="rp-container container py-3">
 
-  <!-- ===== Profile Card (Horizontal Profile Bar) ===== -->
-  <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-    <!-- Left: avatar + level badge -->
+  <!-- ===== Profile Card (clean & balanced) ===== -->
+<section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
+  <div class="rp-profile-grid">
+    <!-- Left: avatar + badge -->
     <div class="rp-left">
       <div class="rp-avatar-wrap">
         <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
@@ -32,24 +33,19 @@
       </div>
     </div>
 
-    <!-- Right: lines + progress -->
+    <!-- Right: name + meter + numbers -->
     <div class="rp-right">
-      <!-- line 1: username + small icon + refresh -->
       <div class="d-flex align-items-center gap-2 flex-wrap">
-        <h1 id="username" class="rp-username mb-0">SATTAYA_42</h1>
+        <h1 id="username" class="rp-username mb-0">—</h1>
         <i class="fa-solid fa-leaf text-success-emphasis small"></i>
         <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
           <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
 
-      <!-- line 2: current level text -->
       <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
 
-      <!-- line 3: next-level helper -->
-      <div id="next-tier" class="small text-secondary mt-1">สะสมอีก xx คะแนน → เลื่อนเป็น Gold</div>
-
-      <!-- Level Meter (ย้ายมาไว้ใน rp-right ใต้ #next-tier) -->
+      <!-- Single Level Meter -->
       <div id="levelMeter" class="lm-wrap mt-2">
         <div class="lm-track">
           <div id="lm-fill" class="lm-fill"></div>
@@ -60,15 +56,11 @@
         <div id="lm-label" class="lm-label small text-secondary mt-1">—</div>
       </div>
 
-      <!-- line 4: big points -->
-      <div class="rp-point-value mt-1"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
-
-      <!-- progress bar (level-colored) -->
-      <div id="progressBar" class="rp-progress-line mt-2 prog-silver">
-        <div id="progressFill" class="rp-progress-fill" style="width:0%"></div>
-      </div>
+      <!-- big points -->
+      <div class="rp-point-value mt-2"><span id="points">0</span> <span class="rp-point-unit">pt</span></div>
     </div>
-  </section>
+  </div>
+</section>
 
   <!-- Actions (icons only, compact & centered) -->
   <section class="rp-actions-wide d-grid gap-2 mb-3">
@@ -150,25 +142,17 @@
         <button class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
       </div>
       <div class="modal-body text-center">
-
-        <div class="d-flex justify-content-center gap-2 mb-2">
-          <button id="startScanBtn" class="btn btn-success btn-sm" title="เปิดกล้อง">
-            <i class="fa-solid fa-camera"></i> เปิดกล้อง
-          </button>
-          <button id="stopScanBtn" class="btn btn-outline-danger btn-sm" title="หยุดกล้อง">
-            <i class="fa-solid fa-stop"></i> หยุดกล้อง
-          </button>
-        </div>
-
-        <!-- QR reader (เหลือแค่ตัวเดียว) -->
-        <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-
-        <hr class="my-4" />
-        <div class="form-group" style="max-width:420px;margin:auto;">
-          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
-        </div>
-      </div>
+  <div class="d-flex justify-content-center gap-2 mb-2">
+    <button id="startScanBtn" class="btn btn-success btn-sm"><i class="fa-solid fa-camera"></i> เปิดกล้อง</button>
+    <button id="stopScanBtn"  class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-stop"></i> หยุดกล้อง</button>
+  </div>
+  <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
+  <hr class="my-4" />
+  <div class="form-group" style="max-width:420px;margin:auto;">
+    <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
+    <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+  </div>
+</div>
     </div>
   </div>
 </div>

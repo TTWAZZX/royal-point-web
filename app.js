@@ -238,6 +238,7 @@ const REWARDS_FALLBACK = [                   // เอาไว้กันห�
   { id:"D", name:"Gift D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
 ];
 let REWARDS_CACHE = [];
+let rewardRailBound = false;
 
 async function loadRewards(){
   try{
@@ -279,15 +280,17 @@ function renderRewards(currentScore){
     `;
   }).join("");
 
-  // ✅ ใช้ onclick เพื่อกันการผูก handler ซ้ำเมื่อ render ใหม่
-  rail.onclick = async (ev)=>{
-    const btn  = ev.target.closest(".rp-redeem-btn"); 
-    if(!btn) return;
-    const card = btn.closest(".rp-reward-card");
-    const id   = card.dataset.id;
-    const cost = Number(card.dataset.cost);
-    await redeemReward({ id, cost }, btn);
-  };
+  // ผูกครั้งเดียวพอ กันซ้อน
+  if (!rewardRailBound){
+    rail.addEventListener("click", async (ev)=>{
+      const btn  = ev.target.closest(".rp-redeem-btn"); if(!btn) return;
+      const card = btn.closest(".rp-reward-card");
+      const id   = card.dataset.id;
+      const cost = Number(card.dataset.cost);
+      await redeemReward({ id, cost }, btn);
+    });
+    rewardRailBound = true;
+  }
 }
 
 // กันกดซ้ำ
