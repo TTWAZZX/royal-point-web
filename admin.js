@@ -1,227 +1,233 @@
 // ============ CONFIG ============
+// LIFF / API (ให้ชื่อสอดคล้องกับ admin.html)
 const LIFF_ID = "2007053300-QoEvbXyn";
-const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid=
+const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid= (หรือ ?adminUid=)
 const API_SCORE_HISTORY = "/api/score-history";  // GET  ?uid=
 const API_ADMIN_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
 const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
-
-// UI helpers
-const overlay = {
-  show: (text = "กำลังทำงาน...") => {
-    if (window.$?.LoadingOverlay) {
-      $.LoadingOverlay("show", { image: "", fontawesome: "fa fa-spinner fa-spin", text });
-    } else {
-      if (document.getElementById("admin-ovl")) return;
-      const el = document.createElement("div");
-      el.id = "admin-ovl";
-      el.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff";
-      el.innerHTML = `<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>${text}</div>`;
-      document.body.appendChild(el);
-    }
-  },
-  hide: () => {
-    if (window.$?.LoadingOverlay) $.LoadingOverlay("hide");
-    else document.getElementById("admin-ovl")?.remove();
-  }
-};
+const USER_PAGE = "/index.html";
 
 // ============ STATE ============
 let ADMIN_UID = "";
 let ALL_USERS = [];
 let FILTERED  = [];
+let CURRENT   = { uid: "", name: "", score: 0 };
 
-// ============ INIT ============
-$(async function () {
+// ============ UI refs ============
+const $id = (x)=>document.getElementById(x);
+
+// overlay แบบ fallback หากไม่มี LoadingOverlay
+const overlay = {
+  show:(text="กำลังทำงาน...")=>{
+    if (window.$?.LoadingOverlay) $.LoadingOverlay("show",{image:"",fontawesome:"fa fa-spinner fa-spin",text});
+    else { if(document.getElementById("admin-ovl"))return; const el=document.createElement("div"); el.id="admin-ovl"; el.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:4000;color:#fff"; el.innerHTML=`<div class="bg-dark rounded-3 px-3 py-2"><i class="fa fa-spinner fa-spin me-2"></i>${text}</div>`; document.body.appendChild(el); }
+  },
+  hide:()=>{ if (window.$?.LoadingOverlay) $.LoadingOverlay("hide"); else document.getElementById("admin-ovl")?.remove(); }
+};
+
+// ============ BOOT ============
+document.addEventListener("DOMContentLoaded", init);
+
+async function init(){
   overlay.show("กำลังเริ่มระบบแอดมิน...");
-  try {
+  try{
     await liff.init({ liffId: LIFF_ID });
     if (!liff.isLoggedIn()) { liff.login(); return; }
 
-      const prof = await liff.getProfile();
-      UID = prof.userId;
-      showAdminEntry(ADMIN_UIDS.includes(UID));
-
+    const prof = await liff.getProfile();
     ADMIN_UID = prof.userId || "";
 
-    $("#adminUid").text(ADMIN_UID ? `UID: ${ADMIN_UID}` : "UID: —");
-    $("#adminName").text(prof.displayName || "—");
-    $("#adminAvatar").attr("src", prof.pictureUrl || "https://placehold.co/36x36");
+    // Header
+    $id("adminUid").textContent  = ADMIN_UID ? `UID: ${ADMIN_UID}` : "UID: —";
+    $id("adminName").textContent = prof.displayName || "—";
+    // avatar ใน admin.html ไม่มี <img> header ถ้าจะใส่ ให้เพิ่ม element id="adminAvatar"
 
     bindEvents();
     await reloadAllUsers();
-  } catch (err) {
+  }catch(err){
     console.error(err);
-    Swal.fire("ผิดพลาด", "เริ่มต้นระบบ LIFF/โหลดข้อมูลไม่สำเร็จ", "error");
-  } finally {
-    overlay.hide();
-  }
-});
+    Swal.fire("ผิดพลาด","เริ่มต้นระบบ LIFF/โหลดข้อมูลไม่สำเร็จ","error");
+  }finally{ overlay.hide(); }
+}
 
 // ============ EVENTS ============
-function bindEvents() {
-  $("#btnLogout").on("click", () => { liff.logout(); location.reload(); });
-  $("#btnReload").on("click", async () => { await reloadAllUsers(); });
+function bindEvents(){
+  // รีโหลด / กลับหน้าผู้ใช้
+  $id("btnReload")?.addEventListener("click", reloadAllUsers);
+  $id("btnBackUser")?.addEventListener("click", ()=>location.href=USER_PAGE);
 
-  $("#txtSearch").on("input", function () {
-    const q = ($(this).val() || "").trim().toLowerCase();
+  // ค้นหาเรียลไทม์
+  $id("txtSearch")?.addEventListener("input", function(){
+    const q = (this.value||"").trim().toLowerCase();
     FILTERED = !q ? [...ALL_USERS] : ALL_USERS.filter(u =>
-      (u.name || "").toLowerCase().includes(q) || String(u.uid || "").toLowerCase().includes(q)
+      (u.name||"").toLowerCase().includes(q) || String(u.uid||"").toLowerCase().includes(q)
     );
-    renderTable(FILTERED);
+    renderList(FILTERED);
   });
 
-  $("#tbodyUsers")
-    .on("click", ".btn-history", async function () {
-      const uid  = $(this).data("uid");
-      const name = $(this).data("name") || uid;
-      await openHistory(uid, name);
-    })
-    .on("click", ".btn-plus", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
-      await promptAdjust(uid, name, +1);
-    })
-    .on("click", ".btn-minus", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
-      await promptAdjust(uid, name, -1);
-    })
-    .on("click", ".btn-reset", async function () {
-      const uid  = $(this).data("uid"); const name = $(this).data("name") || uid;
-      await confirmReset(uid, name);
-    });
+  // ปุ่มใน bottom sheet (offcanvas)
+  document.getElementById("sheetManage")?.addEventListener("click", async (ev)=>{
+    const el = ev.target.closest("button[data-delta]");
+    if (el) {
+      const delta = Number(el.dataset.delta || 0);
+      if (!delta) return;
+      await doAdjust(CURRENT.uid, CURRENT.name, delta);
+    }
+  });
+
+  $id("actPlus")?.addEventListener("click", ()=>doAdjust(CURRENT.uid, CURRENT.name, +1));
+  $id("actMinus")?.addEventListener("click",()=>doAdjust(CURRENT.uid, CURRENT.name, -1));
+  $id("actReset")?.addEventListener("click",()=>confirmReset(CURRENT.uid, CURRENT.name));
+  $id("actHistory")?.addEventListener("click",()=>openHistory(CURRENT.uid, CURRENT.name));
 }
 
 // ============ LOAD & RENDER ============
-async function reloadAllUsers() {
-  if (!ADMIN_UID) { ALL_USERS = []; FILTERED = []; renderTable(FILTERED); return; }
+async function reloadAllUsers(){
+  if (!ADMIN_UID) { ALL_USERS=[]; FILTERED=[]; renderList(FILTERED); return; }
   overlay.show("กำลังโหลดรายชื่อผู้ใช้...");
-  try {
-    // ต้องใช้ ?uid= กับ /api/all-scores (ฝั่ง API คาดหวังแบบนี้):contentReference[oaicite:0]{index=0}
-    const res  = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, { cache: "no-store" });
+  try{
+    // GAS all-scores ต้องส่ง uid ผู้ร้องขอ + secret (ฝั่ง proxy ทำให้แล้ว)
+    const res  = await fetch(`${API_ALL_SCORES}?uid=${encodeURIComponent(ADMIN_UID)}`, { cache:"no-store" });
     const json = await res.json();
     if (json.status === "success") {
-      ALL_USERS = (json.data || []).map(x => ({ uid: x.uid, name: x.name || "(ไม่ระบุ)", score: Number(x.score || 0) }));
-      ALL_USERS.sort((a,b) => b.score - a.score);
+      ALL_USERS = (json.data||[]).map(x => ({ uid:x.uid, name:x.name||"(ไม่ระบุ)", score:Number(x.score||0) }));
+      ALL_USERS.sort((a,b)=>b.score-a.score);
       FILTERED = [...ALL_USERS];
-      renderTable(FILTERED);
+      renderList(FILTERED);
     } else {
       Swal.fire("โหลดข้อมูลไม่สำเร็จ", json.message || "Apps Script error", "error");
-      ALL_USERS = []; FILTERED = []; renderTable(FILTERED);
+      ALL_USERS=[]; FILTERED=[]; renderList(FILTERED);
     }
-  } catch (e) {
+  }catch(e){
     console.error(e);
-    Swal.fire("ผิดพลาด", "ไม่สามารถดึงข้อมูลผู้ใช้ได้", "error");
-  } finally { overlay.hide(); }
+    Swal.fire("ผิดพลาด","ไม่สามารถดึงข้อมูลผู้ใช้ได้","error");
+  }finally{ overlay.hide(); }
 }
 
-function renderTable(rows) {
-  const $tbody = $("#tbodyUsers");
-  if (!rows || rows.length === 0) {
-    $tbody.html(`<tr><td colspan="4" class="text-center text-muted py-4">— ไม่พบข้อมูล —</td></tr>`); return;
+function renderList(rows){
+  const box = $id("listUsers");
+  if (!box) return;
+  if (!rows || !rows.length) {
+    box.innerHTML = `<div class="text-center text-muted py-4">— ไม่พบข้อมูล —</div>`; return;
   }
-  let html = "";
-  for (const r of rows) {
-    html += `
-      <tr>
-        <td><div class="fw-bold">${escapeHtml(r.name || "(ไม่ระบุ)")}</div></td>
-        <td class="small text-break">${escapeHtml(r.uid)}</td>
-        <td class="text-end"><span class="score-chip">${Number(r.score || 0)}</span></td>
-        <td class="text-end">
+  box.innerHTML = rows.map(r => `
+    <div class="card user-card p-2">
+      <div class="d-flex align-items-center gap-2">
+        <div class="flex-grow-1">
+          <div class="name">${escapeHtml(r.name || "(ไม่ระบุ)")}</div>
+          <div class="small text-muted">${escapeHtml(r.uid)}</div>
+        </div>
+        <div class="text-end">
+          <span class="score-chip">${Number(r.score||0)}</span>
+        </div>
+        <div class="ms-2">
           <div class="btn-group">
-            <button class="btn btn-soft btn-sm btn-history" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="ประวัติ"><i class="fa-regular fa-clock"></i></button>
-            <button class="btn btn-soft btn-sm btn-minus"   data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="หักคะแนน"><i class="fa-solid fa-circle-minus"></i></button>
-            <button class="btn btn-soft btn-sm btn-plus"    data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="เพิ่มคะแนน"><i class="fa-solid fa-circle-plus"></i></button>
-            <button class="btn btn-danger btn-sm btn-reset" data-uid="${attr(r.uid)}" data-name="${attr(r.name)}" title="ล้างคะแนนทั้งหมด"><i class="fa-solid fa-broom"></i></button>
+            <button class="btn btn-soft btn-icon" title="ประวัติ" onclick="openHistory('${attr(r.uid)}','${attr(r.name)}')"><i class="fa-regular fa-clock"></i></button>
+            <button class="btn btn-soft btn-icon" title="หักคะแนน" onclick="doAdjust('${attr(r.uid)}','${attr(r.name)}',-1)"><i class="fa-solid fa-circle-minus"></i></button>
+            <button class="btn btn-soft btn-icon" title="เพิ่มคะแนน" onclick="doAdjust('${attr(r.uid)}','${attr(r.name)}',+1)"><i class="fa-solid fa-circle-plus"></i></button>
+            <button class="btn btn-danger btn-icon"  title="ล้างคะแนน" onclick="confirmReset('${attr(r.uid)}','${attr(r.name)}')"><i class="fa-solid fa-broom"></i></button>
           </div>
-        </td>
-      </tr>`;
-  }
-  $tbody.html(html);
+        </div>
+      </div>
+    </div>
+  `).join("");
 }
+
+function attr(s){ return String(s||"").replaceAll(`"`,`&quot;`).replaceAll(`'`,`&#39;`); }
+function escapeHtml(s){ return String(s||"").replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
 // ============ ACTIONS ============
-async function openHistory(uid, name) {
+async function openHistory(uid, name){
+  CURRENT.uid = uid; CURRENT.name = name;
   overlay.show("กำลังโหลดประวัติ...");
-  try {
-    const res  = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`);
-    const json = await res.json();
-    if (json.status === "success") {
-      const list = json.data || [];
-      $("#historyUser").text(name || uid);
-      if (!list.length) {
-        $("#historyList").html(`<div class="list-group-item bg-transparent text-center text-muted">ไม่มีรายการ</div>`);
-      } else {
-        $("#historyList").html(list.map(i => {
-          const ts = formatDateTime(i.ts), p = Number(i.point || 0);
-          const sign = p >= 0 ? "+" : "", color = p >= 0 ? "#22c55e" : "#ef4444";
-          return `<div class="list-group-item bg-transparent d-flex justify-content-between align-items-center">
-                    <div><div class="fw-bold">${escapeHtml(i.type || "—")}</div><div class="small muted">${escapeHtml(i.code || "")}</div></div>
-                    <div class="text-end"><div style="color:${color};font-weight:800">${sign}${p}</div><div class="small muted">${ts}</div></div>
-                  </div>`;
-        }).join(""));
-      }
-      new bootstrap.Modal(document.getElementById("historyModal")).show();
-    } else {
-      Swal.fire("ผิดพลาด", json.message || "โหลดประวัติไม่สำเร็จ", "error");
-    }
-  } catch (e) {
-    console.error(e); Swal.fire("ผิดพลาด", "ไม่สามารถโหลดประวัติได้", "error");
-  } finally { overlay.hide(); }
+  try{
+    const r = await fetch(`${API_SCORE_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:"no-store" });
+    const j = await r.json();
+    const list = (j.status==="success" ? (j.data||[]) : []);
+    $id("historyUser").textContent = name || uid;
+    const box = $id("historyList");
+    box.innerHTML = !list.length
+      ? `<div class="text-center text-muted py-3">— ไม่มีประวัติ —</div>`
+      : list.map(it => `
+        <div class="list-group-item">
+          <div class="d-flex justify-content-between">
+            <div>
+              <div class="fw-semibold">${escapeHtml(it.type||"-")}</div>
+              <div class="small text-muted">${escapeHtml(it.code||"")}</div>
+            </div>
+            <div class="text-end ${Number(it.point||0)>=0?'text-success':'text-danger'} fw-bold">
+              ${Number(it.point||0)>=0?'+':''}${Number(it.point||0)}
+            </div>
+          </div>
+          <div class="small text-muted">${new Date(it.ts).toLocaleString()}</div>
+        </div>
+      `).join("");
+    const modal = new bootstrap.Modal($id("historyModal"));
+    modal.show();
+  }catch(e){
+    console.error(e);
+    Swal.fire("ผิดพลาด","โหลดประวัติไม่สำเร็จ","error");
+  }finally{ overlay.hide(); }
 }
 
-async function promptAdjust(uid, name, direction) {
-  const title = direction > 0 ? "เพิ่มคะแนน" : "หักคะแนน";
-  const { value: formValues } = await Swal.fire({
-    title, icon: direction > 0 ? "success" : "warning",
-    html:'<input id="adj-amount" type="number" class="swal2-input" placeholder="จำนวนคะแนน" />' +
-         '<input id="adj-note"   type="text"   class="swal2-input" placeholder="หมายเหตุ (ถ้ามี)" />',
-    showCancelButton: true, confirmButtonText: "ยืนยัน", cancelButtonText: "ยกเลิก",
-    preConfirm: () => {
-      const amt = Number(document.getElementById("adj-amount").value || "0");
-      const note = document.getElementById("adj-note").value || "";
-      if (!amt || amt <= 0) { Swal.showValidationMessage("กรอกจำนวนคะแนน (>0)"); return false; }
-      return { amt, note };
-    }
-  });
-  if (!formValues) return;
-  const delta = direction > 0 ? formValues.amt : -formValues.amt;
-
+async function doAdjust(uid, name, delta){
+  if (!uid || !delta) return;
   overlay.show("กำลังอัปเดตคะแนน...");
-  try {
-    const res  = await fetch(API_ADMIN_ADJUST, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: formValues.note || "" })
+  try{
+    const res = await fetch(API_ADMIN_ADJUST, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: "" })
     });
-    const json = await res.json();
-    if (json.status === "success") {
-      Swal.fire("สำเร็จ", `${title}ให้ ${escapeHtml(name)} จำนวน ${Math.abs(delta)} คะแนนแล้ว`, "success");
-      const newScore = typeof json.to !== "undefined" ? Number(json.to) : (getLocalScore(uid) + delta);
-      updateRowScore(uid, newScore);
-    } else {
-      Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถปรับคะแนนได้", "error");
-    }
-  } catch (e) {
-    console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error");
-  } finally { overlay.hide(); }
+    const j = await res.json();
+    if (j.status !== "success") throw new Error(j.message || "ปรับคะแนนไม่สำเร็จ");
+    // อัปเดตในรายการ
+    const row = ALL_USERS.find(x=>x.uid===uid);
+    if (row) row.score = Number(row.score||0)+Number(delta||0);
+    renderList(FILTERED);
+    // เปิดแผ่นจัดการคนล่าสุด
+    openSheet(uid, name, row?.score||0);
+    Swal.fire("สำเร็จ", `${delta>0?'+':''}${delta} คะแนน`, "success");
+  }catch(e){
+    console.error(e);
+    Swal.fire("ผิดพลาด", String(e.message||e), "error");
+  }finally{ overlay.hide(); }
 }
 
-async function confirmReset(uid, name) {
-  const ok = await Swal.fire({
-    title: "ล้างคะแนนทั้งหมด?", html: `คุณกำลังจะล้างคะแนนของ <b>${escapeHtml(name)}</b> เป็น <b>0</b>`,
-    icon: "warning", showCancelButton: true, confirmButtonText: "ยืนยัน", cancelButtonText: "ยกเลิก"
-  });
-  if (!ok.isConfirmed) return;
+function confirmReset(uid, name){
+  Swal.fire({ icon:"warning", title:`ล้างคะแนนของ ${name||uid}?`,
+    showCancelButton:true, confirmButtonText:"ล้างคะแนน", cancelButtonText:"ยกเลิก"
+  }).then(r=>{ if (r.isConfirmed) submitReset(uid, name); });
+}
 
+async function submitReset(uid, name){
   overlay.show("กำลังล้างคะแนน...");
-  try {
-    const res  = await fetch(API_ADMIN_RESET, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note: "Admin reset via UI" })
+  try{
+    const res = await fetch(API_ADMIN_RESET, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note:"admin reset" })
     });
-    const json = await res.json();
-    if (json.status === "success") { Swal.fire("สำเร็จ", `ล้างคะแนนของ ${escapeHtml(name)} แล้ว`, "success"); updateRowScore(uid, 0); }
-    else { Swal.fire("ไม่สำเร็จ", json.message || "ไม่สามารถล้างคะแนนได้", "error"); }
-  } catch (e) { console.error(e); Swal.fire("ผิดพลาด", "ติดต่อเซิร์ฟเวอร์ไม่สำเร็จ", "error"); }
-  finally { overlay.hide(); }
+    const j = await res.json();
+    if (j.status !== "success") throw new Error(j.message || "ล้างคะแนนไม่สำเร็จ");
+    const row = ALL_USERS.find(x=>x.uid===uid);
+    if (row) row.score = 0;
+    renderList(FILTERED);
+    openSheet(uid, name, 0);
+    Swal.fire("สำเร็จ","ล้างคะแนนเรียบร้อย","success");
+  }catch(e){
+    console.error(e);
+    Swal.fire("ผิดพลาด", String(e.message||e), "error");
+  }finally{ overlay.hide(); }
+}
+
+// เปิดแผ่นจัดการ (offcanvas)
+function openSheet(uid, name, score){
+  CURRENT = { uid, name, score:Number(score||0) };
+  $id("sheetName").textContent = name || uid;
+  $id("sheetScore").textContent = Number(score||0);
+  const off = new bootstrap.Offcanvas("#sheetManage");
+  off.show();
 }
 
 // ============ UTIL ============
