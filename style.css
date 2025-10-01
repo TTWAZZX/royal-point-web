@@ -958,7 +958,6 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-username{ font-family:"Inter","Noto Sans Thai",system-ui; font-weight:800; font-size:clamp(18px,3.6vw,24px); }
 
 /* ==== Level Meter (single) ==== */
-.lm-wrap{}
 .lm-track{ position:relative; height:10px; border-radius:8px; background:#eef2f7; overflow:hidden; }
 .lm-fill{ position:absolute; inset:0 auto 0 0; width:0%; background:linear-gradient(90deg,#22c55e,#3b82f6); }
 .lm-tick{ position:absolute; top:50%; width:2px; height:14px; background:#cbd5e1; transform:translateY(-50%); }
@@ -976,5 +975,3 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-redeem-btn{ position:absolute; right:10px; bottom:10px; border:none; background:#10b981; color:#fff; width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(16,185,129,.3); }
 .rp-reward-card.locked .rp-redeem-btn{ background:#94a3b8; box-shadow:none; }
 
-/* เพิ่มความห่างหัวข้อของรางวัลเล็กน้อย */
-.rp-card h5 { margin-bottom: .75rem; }
