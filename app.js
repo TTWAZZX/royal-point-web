@@ -307,6 +307,8 @@ async function loadRewards(){
   }
 }
 
+// กันผูก event ซ้ำ ๆ เวลาคุณ render ใหม่ (วางไว้บนสุดของไฟล์)
+
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if (!rail) return;
