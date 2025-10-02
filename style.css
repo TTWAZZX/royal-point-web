@@ -1655,3 +1655,27 @@ body.ready #topbar{width:100%;opacity:0}
   .rp-avatar-wrap{ width: 84px; height: 84px; }
   .rp-point-value{ font-size: 2.25rem; }
 }
+
+/* กลุ่ม Progress: ให้เลขอยู่ใต้บาร์เสมอ */
+.xp-group{ display:flex; flex-direction:column; gap:.25rem; }
+.xp-scale{ padding: 0 .25rem; color:#64748b; }
+.xp-scale span{ min-width: 2ch; }
+
+/* (มีอยู่แล้ว) เส้นบาร์ + ฟิลล์ */
+.rp-progress-line{ height:10px; border-radius:999px; background:#f2f4f7; position:relative; overflow:hidden; }
+.rp-progress-fill{ position:absolute; left:0; top:0; bottom:0; width:0; }
+
+/* Admin FAB: ย้ายไปล่างขวา + รองรับ safe-area */
+.admin-entry{
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  z-index: 1000;
+  background: linear-gradient(180deg,#22c55e,#16a34a);
+  color:#fff; box-shadow: 0 10px 24px rgba(0,0,0,.18);
+}
+.admin-entry i{ font-size: 1.25rem; }
+.admin-entry.d-none{ display: none !important; } /* คงการซ่อนด้วย JS */

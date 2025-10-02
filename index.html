@@ -53,21 +53,22 @@
     </div>
   </div>
 
-  <!-- Progress + ปุ่มรีเฟรชชิดขวา -->
-  <div class="d-flex align-items-center gap-2 mt-2">
-    <div id="progressBar" class="rp-progress-line flex-grow-1 prog-silver">
+  <!-- แถว Progress + ปุ่มรีเฟรชชิดขวา -->
+<div class="xp-row mt-2 d-flex align-items-center gap-2">
+  <div class="xp-group flex-grow-1 min-w-0">
+    <div id="progressBar" class="rp-progress-line prog-silver">
       <div id="progressFill" class="rp-progress-fill"></div>
     </div>
-    <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-      <i class="fa-solid fa-rotate"></i>
-    </button>
+    <div class="xp-scale d-flex justify-content-between small">
+      <span id="xpStart">0</span>
+      <span id="xpEnd">1200</span>
+    </div>
   </div>
-
-  <!-- scale labels -->
-  <div class="d-flex justify-content-between small mt-1 px-1">
-    <span id="xpStart">0</span>
-    <span id="xpEnd">1200</span>
-  </div>
+  <button id="refreshBtn" class="btn btn-outline-secondary btn-icon ms-1"
+          title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+    <i class="fa-solid fa-rotate"></i>
+  </button>
+</div>
 </section>
 
   <!-- Actions (icons only, compact & centered) -->
