@@ -1,14 +1,14 @@
 // /api/rewards.js
 export default async function handler(req, res) {
   try {
-    const GAS_URL    = process.env.GAS_URL;
+    const APPS = process.env.APPS_SCRIPT_ENDPOINT || process.env.GAS_WEBAPP_URL;
     const API_SECRET = process.env.API_SECRET;
-    if (!GAS_URL || !API_SECRET) {
-      return res.status(500).json({ status: "error", message: "Missing GAS_URL or API_SECRET" });
+    if (!APPS || !API_SECRET) {
+      return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET" });
     }
 
     // proxy -> Apps Script: action=rewards
-    const url = new URL(GAS_URL);
+    const url = new URL(APPS);
     url.searchParams.set("action", "rewards");
     url.searchParams.set("secret", API_SECRET);
 

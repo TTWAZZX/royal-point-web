@@ -120,7 +120,7 @@ async function initApp(){
 
     await refreshUserScore();
     await loadRewards();
-    renderRewards(prevScore || 0); // OK: มีการเรียกซ้ำใน setPoints() แต่เราเปลี่ยนเป็น rail.onclick แล้ว จะไม่เกิด handler ซ้อน
+    renderRewards(prevScore || 0); // render ตามรางวัลที่โหลดมา
   }catch(e){
     console.error(e);
     toastErr("เริ่มต้นระบบไม่สำเร็จ");
@@ -149,22 +149,22 @@ function bindUI(){
   stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
 
   // ยืนยันรหัสลับ (กรณีกรอกมือ)
-els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
-  const code = (els.secretInput?.value || "").trim();
-  if(!code) return toastErr("กรอกรหัสลับก่อน");
-  if (REDEEM_IN_FLIGHT) return;
+  els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
+    const code = (els.secretInput?.value || "").trim();
+    if(!code) return toastErr("กรอกรหัสลับก่อน");
+    if (REDEEM_IN_FLIGHT) return;
 
-  REDEEM_IN_FLIGHT = true;
-  setBtnLoading(els.submitBtn, true, 'กำลังยืนยัน…');
-  UiOverlay.show('กำลังยืนยันรหัส…');
+    REDEEM_IN_FLIGHT = true;
+    setBtnLoading(els.submitBtn, true, 'กำลังยืนยัน…');
+    UiOverlay.show('กำลังยืนยันรหัส…');
 
-  try { await redeemCode(code, "MANUAL"); }
-  finally {
-    setBtnLoading(els.submitBtn, false);
-    UiOverlay.hide();
-    setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
-  }
-});
+    try { await redeemCode(code, "MANUAL"); }
+    finally {
+      setBtnLoading(els.submitBtn, false);
+      UiOverlay.hide();
+      setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
+    }
+  });
 }
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
@@ -280,7 +280,7 @@ function setPoints(score){
   prevScore = score;
 }
 
-// ===== Rewards (dynamic) =====
+/* ===== Rewards (dynamic) ===== */
 const API_REWARDS = "/api/rewards";          // มีไฟล์แล้วจากแพตช์ 1
 const REWARDS_FALLBACK = [                   // เอาไว้กันหน้าโล่ง
   { id:"A", name:"Gift A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
@@ -288,32 +288,34 @@ const REWARDS_FALLBACK = [                   // เอาไว้กันห�
   { id:"C", name:"Gift C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
   { id:"D", name:"Gift D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
 ];
-let REWARDS_CACHE = [];
-let rewardRailBound = false;
 
-async function loadRewards(){
-  try{
-    const r = await fetch(API_REWARDS, { cache:"no-store" });
-    if (!r.ok) throw new Error("rewards api not ok");
-    const j = await safeJson(r);
-    if (j.status === "success" && Array.isArray(j.data)) {
-      REWARDS_CACHE = j.data.filter(x => x.active !== "0" && x.active !== 0 && x.active !== false);
+let rewardRailBound = false;
+let REWARDS_CACHE = [];
+
+async function loadRewards() {
+  try {
+    const resp = await fetch(`${API_REWARDS}?include=1`, { headers: { 'Accept': 'application/json' } });
+    const data = await resp.json();
+    if (data && data.status === 'success' && Array.isArray(data.rewards)) {
+      REWARDS_CACHE = data.rewards;
     } else {
-      throw new Error("bad rewards payload");
+      REWARDS_CACHE = [];
+      console.warn('No rewards from API:', data);
     }
-  }catch(e){
-    console.warn("rewards fallback:", e);
-    REWARDS_CACHE = [...REWARDS_FALLBACK];
+  } catch (err) {
+    REWARDS_CACHE = [];
+    console.error('loadRewards error:', err);
   }
 }
 
-// กันผูก event ซ้ำ ๆ เวลาคุณ render ใหม่ (วางไว้บนสุดของไฟล์)
-
+// render รางวัล พร้อมกันผูก event คลิกแลก (ผูกครั้งเดียว)
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if (!rail) return;
 
-  rail.innerHTML = (REWARDS_CACHE || []).map(r => {
+  const data = (REWARDS_CACHE && REWARDS_CACHE.length) ? REWARDS_CACHE : REWARDS_FALLBACK;
+
+  rail.innerHTML = data.map(r => {
     const locked  = Number(currentScore) < Number(r.cost);
     const id      = escapeHtml(r.id || "");
     const name    = escapeHtml(r.name || r.id || "");
@@ -359,7 +361,6 @@ function renderRewards(currentScore){
     rewardRailBound = true; // ✅ สำคัญ: ตั้งธงหลังผูกแล้ว
   }
 }
-
 
 // กันกดซ้ำ
 let REDEEMING = false;
@@ -521,8 +522,6 @@ async function stopScanner(){
     SCANNING = false;   // กล้องหยุดแล้ว
   }
 }
-
-
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
