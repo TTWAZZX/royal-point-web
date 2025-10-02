@@ -1760,3 +1760,9 @@ body.ready #topbar{width:100%;opacity:0}
 @media (min-width: 480px){
   .rp-profile-card .rp-progress-line{ height: 14px; }
 }
+
+/* ปิดไฮไลต์ใต้คะแนนรวม */
+.rp-profile-card .rp-point-value::after{
+  content: none !important;
+  background: none !important;
+}
