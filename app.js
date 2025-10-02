@@ -116,6 +116,7 @@ async function initApp(){
 
     if (els.username)   els.username.textContent = prof.displayName || "—";
     if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
+    enableAvatarPreview(); // NEW: กดขยายรูปได้
 
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
@@ -239,6 +240,7 @@ function setPoints(score){
 
   // 4) Track ใหม่ (ถ้ามี)
   updateLevelTrack(score);
+  updatePremiumBar(score); // NEW: ทำให้ XP bar ขยับแบบพรีเมียม
 
   // 5) ข้อความเลเวลถัดไป
   if (els.nextTier){
@@ -279,6 +281,19 @@ function setPoints(score){
   }
   // อัปเดตป้ายอันดับ + วงแหวนตาม tier (NEW)
   setRankBadge(window.USER_RANK, tier.key);
+
+  // ตั้งธีมสีของ XP bar ให้ตรงกับ tier (ไม่ต้องพึ่ง sibling selector)
+const xpWrap = document.querySelector('.xp-wrap');
+if (xpWrap){
+  const colors = {
+    silver:   ['#cfd8dc','#eceff1'],
+    gold:     ['#ffd166','#ffb703'],
+    platinum: ['#b3e5fc','#e0f7fa']
+  };
+  const [a,b] = colors[tier.key] || colors.silver;
+  xpWrap.style.setProperty('--ring-a', a);
+  xpWrap.style.setProperty('--ring-b', b);
+}
 
   prevLevel = tier.key;
   prevScore = score;
@@ -598,6 +613,20 @@ function escapeHtml(s){return String(s||"").replace(/[&<>"'`=\/]/g,a=>({'&':'&am
 function safeInt(n, d=0){ const x=Number(n); return Number.isFinite(x)?x:d; }
 async function safeJson(resp){ const t=await resp.text(); try{ return JSON.parse(t); }catch{ return {status: resp.ok?"success":"error", message:t}; } }
 
+function enableAvatarPreview(){
+  const avatar = document.getElementById("rpAvatar");
+  const img    = document.getElementById("profilePic");
+  const modalEl= document.getElementById("avatarModal");
+  const modal  = modalEl ? new bootstrap.Modal(modalEl) : null;
+  const target = document.getElementById("avatarPreviewImg");
+  if(!avatar || !img || !modal || !target) return;
+
+  avatar.addEventListener("click", ()=>{
+    target.src = img.src;
+    modal.show();
+  });
+}
+
 // padding + date formatter (hoisted)
 function pad(n){ n = safeInt(n,0); return n<10?("0"+n):String(n); }
 function fmtDT(ts){
@@ -612,6 +641,30 @@ function updateLevelTrack(score){
   const tier = getTier(score);
   const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
   els.trackFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
+}
+
+function updatePremiumBar(score){
+  const xpFill  = document.getElementById("xpFill");
+  const xpLabel = document.getElementById("xpLabel");
+  const xpStart = document.getElementById("xpStart");
+  const xpEnd   = document.getElementById("xpEnd");
+  if(!xpFill || !xpLabel || !xpStart || !xpEnd) return;
+
+  const t = getTier(score);            // ใช้ TIERS เดิมของคุณ
+  const start = t.min;
+  const end   = (t.next === Infinity) ? score : t.next;
+  const pct   = (t.next === Infinity) ? 1 : Math.max(0, Math.min(1, (score - start)/(end - start)));
+
+  xpFill.style.width = (pct*100) + "%";
+  xpStart.textContent = start.toLocaleString();
+  xpEnd.textContent   = (t.next === Infinity ? score : end).toLocaleString();
+
+  if (t.next === Infinity){
+    xpLabel.textContent = `ระดับ ${t.name} สูงสุดแล้ว • ${score.toLocaleString()} คะแนน`;
+  } else {
+    const need = end - score;
+    xpLabel.textContent = `ระดับ ${t.name} • ขาดอีก ${need.toLocaleString()} คะแนน`;
+  }
 }
 
 /* Count-up effect */

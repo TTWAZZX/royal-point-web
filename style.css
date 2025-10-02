@@ -1085,3 +1085,76 @@ body.ready #topbar{width:100%;opacity:0}
     linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.45)) padding-box,
     linear-gradient(45deg, rgba(255,255,255,.95), rgba(255,255,255,.4), rgba(0,0,0,.08)) border-box;
 }
+
+/* โหมดเห็นเต็มรูป (ไม่ตัดขอบ) */
+.rp-avatar--contain img{
+  object-fit: contain !important;
+  background: #0b1020;         /* พื้นหลังเข้มให้ตัดกับรูป */
+  padding: 4px;                 /* เพิ่มพื้นที่กันติดขอบวงแหวน */
+}
+
+/* เคอร์เซอร์บอกว่ากดขยายได้ */
+.rp-avatar { cursor: zoom-in; }
+
+/* Premium XP Bar */
+.xp-wrap{ --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.rp-avatar.tier-gold ~ .xp-wrap{ --ring-a:#ffd166; --ring-b:#ffb703; }
+.rp-avatar.tier-platinum ~ .xp-wrap{ --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+.xp-track{
+  position: relative;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  overflow: hidden;
+  /* กรอบไล่เฉด */
+  box-shadow: 0 2px 12px rgba(0,0,0,.25);
+}
+.xp-track::before{
+  content:"";
+  position:absolute; inset:0;
+  border-radius:999px;
+  padding: 1px;
+  background: linear-gradient(90deg, var(--ring-a), var(--ring-b), var(--ring-a));
+  -webkit-mask: 
+    linear-gradient(#000 0 0) content-box, 
+    linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: .9;
+}
+
+.xp-fill{
+  position:absolute; left:0; top:0; bottom:0; width:0%;
+  background: linear-gradient(90deg, rgba(255,255,255,.35), rgba(255,255,255,.05)),
+              linear-gradient(90deg, #7dd3fc, #34d399, #fbbf24);
+  background-size: 100% 100%, 200% 100%;
+  animation: xp-flow 6s linear infinite;
+}
+@keyframes xp-flow {
+  0%   { background-position: 0 0, 0% 0; }
+  100% { background-position: 0 0, 200% 0; }
+}
+
+/* Gloss layer บาง ๆ */
+.xp-gloss{
+  position:absolute; inset:0;
+  background: linear-gradient(180deg, rgba(255,255,255,.45), rgba(255,255,255,.0));
+  pointer-events:none;
+  mix-blend-mode: screen;
+}
+
+/* ติ๊กระยะ */
+.xp-ticks{
+  position:absolute; inset:0;
+  background:
+    repeating-linear-gradient(90deg,
+      transparent 0 8%, rgba(255,255,255,.10) 8% 8.6%, transparent 8.6% 16%);
+  pointer-events: none;
+  opacity: .5;
+}
+
+/* ตัวเลข */
+#xpLabel{ font-weight:700; }
