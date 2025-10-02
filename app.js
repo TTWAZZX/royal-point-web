@@ -295,6 +295,8 @@ function setPoints(score){
   }
 
   // 4) Track ใหม่ (ถ้ามี)
+  applyXpThemeByTier(tier.key);   // ถ้ามี xp theme (มีอยู่แล้ว)
+  updateXpLabels(score);          // อัปเดตตัวเลข 500 / 1200
   updateLevelTrack(score);
   updatePremiumBar(score);  // (เดิมมีอยู่แล้ว)
   bumpXpFill();             // NEW: เด้งแถบ XP เมื่อแต้มเปลี่ยน
@@ -832,4 +834,14 @@ function launchConfetti(){
       if(Date.now()<end) requestAnimationFrame(frame);
     })();
   }catch{}
+}
+
+function updateXpLabels(score){
+  const t = getTier(score);
+  const start = t.min;
+  const end   = (t.next === Infinity) ? score : t.next;
+  const xpStart = document.getElementById('xpStart');
+  const xpEnd   = document.getElementById('xpEnd');
+  if (xpStart) xpStart.textContent = String(start);
+  if (xpEnd)   xpEnd.textContent   = String(end);
 }

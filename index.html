@@ -25,58 +25,48 @@
 
 <main class="rp-container container py-3">
 
-  <!-- ===== Profile Card (clean & balanced) ===== -->
+<!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-
-  <!-- แถวหัว: Avatar ซ้าย / ข้อมูลขวา -->
   <div class="rp-head d-flex align-items-center gap-3">
-    <!-- Avatar กลม + ป้ายรางวัลระดับ -->
-    <div class="rp-avatar tier-silver" id="rpAvatar" aria-label="User avatar">
-      <img id="profilePic" src="https://placehold.co/120x120" alt="Profile picture">
-      <span class="rp-tier-medal" id="tierMedal" title="Silver" aria-hidden="true">
-        <i class="fa-solid fa-medal"></i>
-      </span>
+    <!-- Avatar (วงกลม + ป้ายระดับ) -->
+    <div class="rp-avatar-wrap" id="rpAvatar" aria-label="User avatar">
+      <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
+      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
     </div>
 
-    <!-- ข้อมูล -->
+    <!-- ชื่อ + สถานะระดับ -->
     <div class="rp-info flex-grow-1">
-      <div class="d-flex align-items-center justify-content-between gap-2">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
         <h1 id="username" class="rp-username mb-0">—</h1>
       </div>
       <div class="small text-secondary mt-1">
-        ระดับปัจจุบัน: <span id="currentLevelText">—</span>
+        ระดับปัจจุบัน: <span id="currentLevelText">Silver</span>
       </div>
-      <div id="next-tier" class="small text-secondary">—</div>
+      <div id="next-tier" class="small text-secondary mt-1">—</div>
     </div>
   </div>
 
-  <!-- คะแนนรวม (ย้ายมาวางใต้โปรไฟล์) -->
-  <div class="rp-point-row mt-2">
+  <!-- คะแนนรวม (มาอยู่ใต้โปรไฟล์) -->
+  <div class="rp-point-row mt-3">
     <div class="rp-point-value">
       <span id="points">0</span> <span class="rp-point-unit">pt</span>
     </div>
   </div>
 
-  <!-- แถว Progress + ปุ่มรีเฟรชด้านขวา -->
-  <div class="xp-row mt-2 d-flex align-items-center gap-2">
-    <div class="flex-grow-1 min-w-0">
-      <div class="xp-wrap" aria-label="Progress to next tier">
-        <div class="xp-track">
-          <div class="xp-fill" id="xpFill"></div>
-          <div class="xp-gloss"></div>
-          <div class="xp-ticks"></div>
-        </div>
-        <div class="d-flex justify-content-between small mt-1">
-          <span id="xpStart">0</span>
-          <span id="xpLabel">กำลังคำนวณ…</span>
-          <span id="xpEnd">1200</span>
-        </div>
-      </div>
+  <!-- Progress + ปุ่มรีเฟรชชิดขวา -->
+  <div class="d-flex align-items-center gap-2 mt-2">
+    <div id="progressBar" class="rp-progress-line flex-grow-1 prog-silver">
+      <div id="progressFill" class="rp-progress-fill"></div>
     </div>
-    <button id="refreshBtn" class="btn btn-outline-secondary btn-icon ms-1"
-            title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+    <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
       <i class="fa-solid fa-rotate"></i>
     </button>
+  </div>
+
+  <!-- scale labels -->
+  <div class="d-flex justify-content-between small mt-1 px-1">
+    <span id="xpStart">0</span>
+    <span id="xpEnd">1200</span>
   </div>
 </section>
 

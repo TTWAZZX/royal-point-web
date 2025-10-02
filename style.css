@@ -1594,3 +1594,64 @@ body.ready #topbar{width:100%;opacity:0}
   width:40px; height:40px; border-radius:10px;
   display:inline-grid; place-items:center;
 }
+
+/* ===== Profile Card — polish & balance ===== */
+.rp-profile-card .rp-head { align-items: center; }
+
+.rp-avatar-wrap{
+  position: relative;
+  width: 76px; height: 76px;   /* เล็กลง ~30% จากสไตล์ก่อน */
+  border-radius: 50%;
+  flex: 0 0 auto;
+  box-shadow: 0 6px 18px rgba(16,24,40,.08);
+}
+.rp-avatar-circle{
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  object-fit: cover; object-position: 50% 35%;
+  display: block;
+}
+
+/* ป้ายรางวัลระดับ (ใช้คลาส rp-level-* จาก JS) */
+.rp-level-badge{
+  position:absolute; right:-6px; bottom:-6px;
+  padding: .28rem .55rem;
+  border-radius: 999px;
+  font-weight: 700; font-size: .8rem;
+  box-shadow: 0 6px 16px rgba(0,0,0,.16), inset 0 0 0 1px rgba(255,255,255,.35);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.rp-level-badge.rp-level-silver{
+  color:#374151;
+  background: linear-gradient(180deg,#f1f5f9,#e2e8f0);
+  border: 1px solid rgba(148,163,184,.45);
+}
+.rp-level-badge.rp-level-gold{
+  color:#7c4a00;
+  background: linear-gradient(180deg,#ffe08a,#ffcd57);
+  border: 1px solid rgba(245,158,11,.5);
+}
+.rp-level-badge.rp-level-platinum{
+  color:#0b3c5d;
+  background: linear-gradient(180deg,#d9f3ff,#bfe7ff);
+  border: 1px solid rgba(59,130,246,.45);
+}
+
+/* คะแนนรวมใต้โปรไฟล์ */
+.rp-point-value { font-weight: 900; font-size: 2rem; line-height: 1; }
+.rp-point-unit  { font-weight: 800; opacity: .75; }
+
+/* Progress + ปุ่มรีเฟรชขวา */
+.rp-progress-line{ height: 10px; border-radius: 999px; background: #f2f4f7; position: relative; overflow: hidden; }
+.rp-progress-fill{ position:absolute; left:0; top:0; bottom:0; width:0; background: linear-gradient(90deg,#22c55e,#a3e635); }
+.prog-silver   .rp-progress-fill{ background: linear-gradient(90deg,#94a3b8,#cbd5e1); }
+.prog-gold     .rp-progress-fill{ background: linear-gradient(90deg,#ffcd57,#f59e0b); }
+.prog-platinum .rp-progress-fill{ background: linear-gradient(90deg,#60a5fa,#38bdf8); }
+
+.btn-icon{ width:40px; height:40px; border-radius: 12px; display:grid; place-items:center; }
+
+/* responsive fine-tune */
+@media (min-width: 480px){
+  .rp-avatar-wrap{ width: 84px; height: 84px; }
+  .rp-point-value{ font-size: 2.25rem; }
+}
