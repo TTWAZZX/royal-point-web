@@ -19,6 +19,9 @@
 
 <!-- top progress bar -->
 <div id="topbar"></div>
+<div id="offlineBanner" class="rp-offline d-none" role="status" aria-live="polite">
+  <i class="fa-solid fa-wifi-slash me-2"></i> ไม่มีสัญญาณอินเทอร์เน็ต — ข้อมูลล่าสุดจากแคช
+</div>
 
 <main class="rp-container container py-3">
 
@@ -74,6 +77,7 @@
 
   <div class="rp-right">
     <div class="d-flex align-items-center gap-2 flex-wrap">
+      <div id="statChips" class="rp-chips mt-2" aria-label="Quick stats"></div>
       <h1 id="username" class="rp-username mb-0">—</h1>
       <i class="fa-solid fa-leaf text-success-emphasis small"></i>
       <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
@@ -105,9 +109,9 @@
 
   <!-- Actions (icons only, compact & centered) -->
   <section class="rp-actions-wide d-grid gap-2 mb-3">
-    <button class="btn rp-primary act-btn" data-bs-toggle="modal" data-bs-target="#scoreModal">
-      <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
-    </button>
+    <button id="primaryAction" class="btn rp-primary act-btn" data-bs-toggle="modal" data-bs-target="#scoreModal">
+  <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
+</button>
     <button id="historyBtn" class="btn btn-outline-secondary act-btn">
       <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
     </button>

@@ -1421,3 +1421,62 @@ body.ready #topbar{width:100%;opacity:0}
 @media (prefers-reduced-motion: reduce){
   .saturn-avatar .ring, .ring-path{ animation: none; }
 }
+
+/* ---------- Quick Stat Chips ---------- */
+.rp-chips{ display:flex; gap:.5rem; flex-wrap:wrap; }
+.rp-chips .chip{
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.35rem .6rem; border-radius:999px;
+  background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.45));
+  border:1px solid rgba(255,255,255,.8);
+  box-shadow: 0 6px 18px rgba(0,0,0,.08), inset 0 0 0 1px rgba(255,255,255,.35);
+  font-weight:600; font-size:.85rem; color:#0f172a;
+}
+
+/* ---------- Primary button: swing once ---------- */
+#primaryAction.swing-once{ animation: rp-swing 900ms ease-out 1 400ms both; }
+@keyframes rp-swing{
+  0%{ transform: rotate(0) }
+  20%{ transform: rotate(-6deg) }
+  40%{ transform: rotate(5deg) }
+  60%{ transform: rotate(-3deg) }
+  100%{ transform: rotate(0) }
+}
+
+/* ---------- XP Fill bump เมื่อคะแนนเปลี่ยน ---------- */
+#xpFill.bump{ animation: xp-bump .9s cubic-bezier(.2,.8,.2,1) 1; transform-origin:left center; }
+@keyframes xp-bump{
+  0%{ filter: brightness(1); transform: scaleY(1) }
+  35%{ filter: brightness(1.15); transform: scaleY(1.25) }
+  100%{ filter: brightness(1); transform: scaleY(1) }
+}
+
+/* ---------- Offline banner ---------- */
+.rp-offline{
+  margin: .5rem auto 0; max-width: 980px;
+  display:flex; align-items:center; justify-content:center;
+  gap:.4rem; padding:.45rem .75rem; border-radius:12px;
+  background: #fff7ed; color:#9a3412; border:1px solid #fed7aa;
+}
+
+/* ---------- Saturn ring: ปรับประสิทธิภาพ ----------
+   (แนะนำให้มีอยู่แล้วจากรอบก่อน; เติม will-change เพิ่ม) */
+.saturn-avatar .ring,
+.saturn-avatar .planet img{ will-change: transform, filter; }
+
+/* ---------- Dark Mode (อิง prefers-color-scheme) ---------- */
+@media (prefers-color-scheme: dark){
+  .rp-card{ background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.12); }
+  .rp-chips .chip{
+    background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.06));
+    border-color: rgba(255,255,255,.16);
+    color: #e5e7eb;
+  }
+  .xp-track{ background: rgba(255,255,255,.12); }
+  .rp-offline{ background:#3f1d0f; color:#fed7aa; border-color:#7c2d12; }
+}
+
+/* ---------- Reduce motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  #primaryAction.swing-once, #xpFill.bump{ animation:none !important; }
+}

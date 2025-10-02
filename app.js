@@ -50,8 +50,11 @@ let UID = "";
 let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
+
 // === Rank state (new)
-window.USER_RANK = null; // ยังไม่รู้ลำดับ ให้เป็น null ไว้ก่อน
+window.USER_RANK   = window.USER_RANK   ?? null; // อันดับ (อาจไม่มีจาก API)
+window.USER_STREAK = window.USER_STREAK ?? 0;    // จำนวนวันติด (อาจไม่มีจาก API)
+
 // ---- Scan / redeem guards ----
 let SCANNING = false;          // กล้องกำลังทำงานอยู่หรือไม่
 let REDEEM_IN_FLIGHT = false;  // กำลังเรียก /api/redeem อยู่หรือไม่
@@ -121,6 +124,18 @@ async function initApp(){
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
 
+    // แอนิเมชันปุ่มหลักครั้งเดียว + haptics เล็กน้อย
+const pa = document.getElementById("primaryAction");
+if (pa){
+  pa.classList.add("swing-once");
+  pa.addEventListener("click", ()=> navigator.vibrate?.(10));
+}
+
+// สถานะ online/offline
+toggleOfflineBanner(!navigator.onLine);
+window.addEventListener("online",  ()=> toggleOfflineBanner(false));
+window.addEventListener("offline", ()=> toggleOfflineBanner(true));
+
     await refreshUserScore();
     await loadRewards();
     renderRewards(prevScore || 0); // render ตามรางวัลที่โหลดมา
@@ -185,26 +200,66 @@ async function refreshUserScore(){
   if(!UID) return;
   // แสดง overlay ถ้าช้าเกิน 300ms เพื่อลดการกะพริบ
   const timer = setTimeout(()=>UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
+
   try{
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
     const j = await safeJson(r);
+
     if (j.status === "success" && j.data){
       const sc = Number(j.data.score || 0);
+
+      // เก็บ rank / streak ถ้ามีจาก API
+      if (typeof j.data.rank !== "undefined")       window.USER_RANK   = j.data.rank;
+      if (typeof j.data.streakDays !== "undefined") window.USER_STREAK = j.data.streakDays;
+
+      // อัปเดต UI หลัก
       setPoints(sc);
+
+      // อัปเดตชิปสรุปด้านใต้ชื่อ
+      updateStatChips({
+        tierName: getTier(sc).name,
+        points: sc,
+        streakDays: window.USER_STREAK,
+        uid: UID
+      });
+
+      // แคชคะแนนล่าสุด + ปิดแบนเนอร์ออฟไลน์ (ถือว่าออนไลน์)
       localStorage.setItem("lastScore", String(sc));
+      toggleOfflineBanner(false);
+
     } else {
+      // โหมดแคช/ออฟไลน์
       const cached = Number(localStorage.getItem("lastScore") || "0");
       setPoints(cached);
+      updateStatChips({
+        tierName: getTier(cached).name,
+        points: cached,
+        streakDays: window.USER_STREAK,
+        uid: UID
+      });
+      toggleOfflineBanner(!navigator.onLine);
     }
+
   }catch(e){
     console.error(e);
+
+    // ล้มเหลว → ใช้คะแนนแคช + โชว์แบนเนอร์ถ้าออฟไลน์
     const cached = Number(localStorage.getItem("lastScore") || "0");
     setPoints(cached);
+    updateStatChips({
+      tierName: getTier(cached).name,
+      points: cached,
+      streakDays: window.USER_STREAK,
+      uid: UID
+    });
+    toggleOfflineBanner(!navigator.onLine);
+
   }finally{
     clearTimeout(timer);
     UiOverlay.hide();
   }
 }
+
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
 function setPoints(score){
@@ -240,7 +295,14 @@ function setPoints(score){
 
   // 4) Track ใหม่ (ถ้ามี)
   updateLevelTrack(score);
-  updatePremiumBar(score); // NEW: ทำให้ XP bar ขยับแบบพรีเมียม
+  updatePremiumBar(score);  // (เดิมมีอยู่แล้ว)
+  bumpXpFill();             // NEW: เด้งแถบ XP เมื่อแต้มเปลี่ยน
+  updateStatChips({         // NEW: อัปเดตชิปสรุปทุกครั้งที่ UI เปลี่ยนแต้ม
+    tierName: getTier(score).name,
+    points: score,
+    streakDays: window.USER_STREAK,
+    uid: UID
+  });
 
   // 5) ข้อความเลเวลถัดไป
   if (els.nextTier){
@@ -383,7 +445,7 @@ function renderRewards(currentScore){
            data-id="${id}" data-cost="${cost}">
         ${tagHtml}
         <div class="rp-reward-img">
-          <img src="${img}" alt="${name}">
+          <img src="${img}" alt="${name}" loading="lazy">
         </div>
         <div class="rp-reward-body p-2">
           <div class="d-flex justify-content-between align-items-center">
@@ -642,6 +704,32 @@ function enableAvatarPreview(){
   });
 }
 
+function updateStatChips({ tierName, points, streakDays, uid } = {}){
+  const box = document.getElementById("statChips");
+  if(!box) return;
+
+  const chips = [];
+  if (tierName) chips.push(`<span class="chip"><i class="fa-solid fa-medal"></i> ${tierName}</span>`);
+  if (typeof points === "number") chips.push(`<span class="chip"><i class="fa-solid fa-star"></i> ${points.toLocaleString()} pt</span>`);
+  if (typeof streakDays === "number") chips.push(`<span class="chip"><i class="fa-solid fa-fire"></i> ${streakDays} วันติด</span>`);
+  if (uid) chips.push(`<span class="chip"><i class="fa-solid fa-user"></i> ${uid.slice(-4).padStart(uid.length,"•")}</span>`);
+
+  box.innerHTML = chips.join("") || `<span class="chip"><i class="fa-regular fa-circle-question"></i> กำลังโหลด…</span>`;
+}
+
+function toggleOfflineBanner(on){
+  const el = document.getElementById("offlineBanner");
+  if (el) el.classList.toggle("d-none", !on);
+}
+
+function bumpXpFill(){
+  const xpFill = document.getElementById("xpFill");
+  if (!xpFill) return;
+  xpFill.classList.remove("bump");
+  void xpFill.offsetWidth; // รีเฟรชเพื่อให้ animation เล่นซ้ำได้
+  xpFill.classList.add("bump");
+}
+
 // padding + date formatter (hoisted)
 function pad(n){ n = safeInt(n,0); return n<10?("0"+n):String(n); }
 function fmtDT(ts){
@@ -680,6 +768,33 @@ function updatePremiumBar(score){
     const need = end - score;
     xpLabel.textContent = `ระดับ ${t.name} • ขาดอีก ${need.toLocaleString()} คะแนน`;
   }
+}
+
+function updateStatChips({ tierName, points, streakDays, uid } = {}){
+  const box = document.getElementById("statChips");
+  if(!box) return;
+
+  const chips = [];
+  if (tierName) chips.push(`<span class="chip"><i class="fa-solid fa-medal"></i> ${tierName}</span>`);
+  if (typeof points === "number") chips.push(`<span class="chip"><i class="fa-solid fa-star"></i> ${points.toLocaleString()} pt</span>`);
+  if (typeof streakDays === "number") chips.push(`<span class="chip"><i class="fa-solid fa-fire"></i> ${streakDays} วันติด</span>`);
+  // (ออปชัน) แสดง UID สั้น
+  if (uid) chips.push(`<span class="chip"><i class="fa-solid fa-user"></i> ${uid.slice(-4).padStart(uid.length,"•")}</span>`);
+
+  box.innerHTML = chips.join("") || `<span class="chip"><i class="fa-regular fa-circle-question"></i> กำลังโหลด…</span>`;
+}
+
+function toggleOfflineBanner(on){
+  const el = document.getElementById("offlineBanner");
+  if (el) el.classList.toggle("d-none", !on);
+}
+
+function bumpXpFill(){
+  const xpFill = document.getElementById("xpFill");
+  if (!xpFill) return;
+  xpFill.classList.remove("bump");
+  void xpFill.offsetWidth; // reflow เพื่อให้เล่นแอนิเมชันซ้ำได้
+  xpFill.classList.add("bump");
 }
 
 /* Count-up effect */
