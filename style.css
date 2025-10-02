@@ -1235,3 +1235,52 @@ body.ready #topbar{width:100%;opacity:0}
   height: calc(var(--aw) * 1.31); /* อัตราส่วนสูง */
   border-radius: 50% / 62%;
 }
+
+/* ====== Saturn Avatar ====== */
+.saturn-avatar{
+  --size: 136px;     /* ขนาดดาว */
+  --tilt: -18deg;    /* องศาเอียงของวงแหวน */
+  --ring-a:#cfd8dc;  /* โทนเริ่มต้น (silver) */
+  --ring-b:#eceff1;
+  position: relative;
+  width: var(--size);
+  aspect-ratio: 1 / 1;
+  display: inline-block;
+  isolation: isolate;
+}
+.saturn-avatar .planet{
+  position:absolute; inset:0;
+  border-radius: 50%;
+  overflow: hidden;
+  z-index: 1;
+  box-shadow: 0 10px 26px rgba(0,0,0,.25);
+}
+.saturn-avatar .planet img{
+  width: 100%; height: 100%;
+  object-fit: cover;        /* ครอปแบบเดิม */
+  object-position: 50% 35%; /* ลดโอกาสตัดหัว */
+  display: block;
+}
+.saturn-avatar .ring{
+  position:absolute;
+  inset: -18% -22%;
+  transform: rotate(var(--tilt));
+  z-index: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,.25));
+}
+.saturn-avatar .ring--front{ z-index: 2; }
+.saturn-avatar .rp-rank-badge{ position:absolute; right:-6px; bottom:-6px; }
+
+/* เปลี่ยนโทนตาม Tier */
+.saturn-avatar.tier-silver   { --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.saturn-avatar.tier-gold     { --ring-a:#ffd166; --ring-b:#ffb703; }
+.saturn-avatar.tier-platinum { --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+/* แอนิเมชันนุ่ม ๆ ให้วงแหวน */
+@keyframes ring-glide { 0%{opacity:.95} 50%{opacity:.88} 100%{opacity:.95} }
+.saturn-avatar .ring ellipse{ animation: ring-glide 6s ease-in-out infinite; }
+
+@media (min-width: 480px){
+  .saturn-avatar{ --size: 148px; }
+}

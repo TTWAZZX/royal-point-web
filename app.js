@@ -295,6 +295,8 @@ if (xpWrap){
   xpWrap.style.setProperty('--ring-b', b);
 }
 
+applyXpThemeByTier(tier.key);
+
   prevLevel = tier.key;
   prevScore = score;
 }
@@ -318,6 +320,19 @@ function setRankBadge(rank, tierKey){
     badgeEl.style.display = "inline-flex";
     rankText.textContent = `#${rank}`;
   }
+}
+
+function applyXpThemeByTier(tierKey){
+  const xpWrap = document.querySelector('.xp-wrap');
+  if (!xpWrap) return;
+  const colors = {
+    silver:   ['#cfd8dc','#eceff1'],
+    gold:     ['#ffd166','#ffb703'],
+    platinum: ['#b3e5fc','#e0f7fa']
+  };
+  const [a,b] = colors[tierKey] || colors.silver;
+  xpWrap.style.setProperty('--ring-a', a);
+  xpWrap.style.setProperty('--ring-b', b);
 }
 
 /* ===== Rewards (dynamic) ===== */
