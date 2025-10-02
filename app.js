@@ -296,7 +296,6 @@ function setPoints(score){
 
   // 4) Track ใหม่ (ถ้ามี)
   applyXpThemeByTier(tier.key);   // ถ้ามี xp theme (มีอยู่แล้ว)
-  updateXpLabels(score);          // อัปเดตตัวเลข 500 / 1200
   updateLevelTrack(score);
   updatePremiumBar(score);  // (เดิมมีอยู่แล้ว)
   bumpXpFill();             // NEW: เด้งแถบ XP เมื่อแต้มเปลี่ยน
