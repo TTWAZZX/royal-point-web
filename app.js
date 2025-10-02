@@ -704,17 +704,14 @@ function enableAvatarPreview(){
   });
 }
 
-function updateStatChips({ tierName, points, streakDays, uid } = {}){
+function updateStatChips({ tierName, points, streakDays } = {}){
   const box = document.getElementById("statChips");
   if(!box) return;
-
   const chips = [];
   if (tierName) chips.push(`<span class="chip"><i class="fa-solid fa-medal"></i> ${tierName}</span>`);
   if (typeof points === "number") chips.push(`<span class="chip"><i class="fa-solid fa-star"></i> ${points.toLocaleString()} pt</span>`);
   if (typeof streakDays === "number") chips.push(`<span class="chip"><i class="fa-solid fa-fire"></i> ${streakDays} วันติด</span>`);
-  if (uid) chips.push(`<span class="chip"><i class="fa-solid fa-user"></i> ${uid.slice(-4).padStart(uid.length,"•")}</span>`);
-
-  box.innerHTML = chips.join("") || `<span class="chip"><i class="fa-regular fa-circle-question"></i> กำลังโหลด…</span>`;
+  box.innerHTML = chips.join("");
 }
 
 function toggleOfflineBanner(on){

@@ -27,82 +27,74 @@
 
   <!-- ===== Profile Card (clean & balanced) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-  <div class="rp-left">
-    <!-- Saturn Avatar (โปรไฟล์ทรง "ดาวเสาร์") -->
-<div class="saturn-avatar tier-gold is-compact" id="rpAvatar" aria-label="User avatar with rank">
-  <!-- วงแหวนด้านหลัง -->
-  <svg class="ring ring--back" viewBox="0 0 100 100" aria-hidden="true">
-    <defs>
-      <linearGradient id="satGradBack" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%"  stop-color="var(--ring-a)"/>
-        <stop offset="50%" stop-color="var(--ring-b)"/>
-        <stop offset="100%" stop-color="var(--ring-a)"/>
-      </linearGradient>
-    </defs>
-    <!-- dash เล็ก/ถี่ เคลื่อนช้า -->
-    <ellipse class="ring-path ring-path--slow" cx="50" cy="50" rx="70" ry="26"
-             fill="none" stroke="url(#satGradBack)" stroke-width="7" />
-  </svg>
 
-  <!-- ดาว (โปรไฟล์) -->
-  <div class="planet">
-    <img id="profilePic" src="https://placehold.co/120x120" alt="Profile picture">
-  </div>
+  <div class="rp-head d-flex align-items-center gap-3">
+    <!-- Avatar ดาวเสาร์ (กลมสนิท + วงแหวนแบบแกว่ง) -->
+    <div class="saturn-avatar tier-gold is-compact" id="rpAvatar" aria-label="User avatar with rank">
+      <!-- ring (หลัง) -->
+      <svg class="ring ring--back" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="satGradBack" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="var(--ring-a)"/>
+            <stop offset="50%" stop-color="var(--ring-b)"/>
+            <stop offset="100%" stop-color="var(--ring-a)"/>
+          </linearGradient>
+        </defs>
+        <ellipse cx="50" cy="50" rx="70" ry="26" fill="none" stroke="url(#satGradBack)" stroke-width="7"/>
+      </svg>
 
-  <!-- วงแหวนด้านหน้า (คลิปเฉพาะส่วนที่ทับหน้าดาว) -->
-  <svg class="ring ring--front" viewBox="0 0 100 100" aria-hidden="true">
-    <defs>
-      <linearGradient id="satGradFront" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%"  stop-color="var(--ring-a)"/>
-        <stop offset="50%" stop-color="var(--ring-b)"/>
-        <stop offset="100%" stop-color="var(--ring-a)"/>
-      </linearGradient>
-      <clipPath id="planetClip" clipPathUnits="userSpaceOnUse">
-        <circle cx="50" cy="50" r="50"/>
-      </clipPath>
-    </defs>
-    <g clip-path="url(#planetClip)">
-      <!-- dash ใหญ่/ห่าง เคลื่อนเร็วกว่าเล็กน้อย → พารัลแลกซ์ -->
-      <ellipse class="ring-path ring-path--fast" cx="50" cy="50" rx="70" ry="26"
-               fill="none" stroke="url(#satGradFront)" stroke-width="7" />
-    </g>
-  </svg>
+      <!-- ดาว (โปรไฟล์) -->
+      <div class="planet">
+        <img id="profilePic" src="https://placehold.co/120x120" alt="Profile picture">
+      </div>
 
-  <!-- ป้ายอันดับ -->
-  <div class="rp-rank-badge" id="rankBadge">
-    <span class="rp-rank-crown"><i class="fa-solid fa-crown"></i></span>
-    <span class="rp-rank-text" id="rankText">#1</span>
-  </div>
-</div>
-
-  <div class="rp-right">
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <div id="statChips" class="rp-chips mt-2" aria-label="Quick stats"></div>
-      <h1 id="username" class="rp-username mb-0">—</h1>
-      <i class="fa-solid fa-leaf text-success-emphasis small"></i>
-      <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-        <i class="fa-solid fa-rotate"></i>
-      </button>
+      <!-- ring (หน้า) -->
+      <svg class="ring ring--front" viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <linearGradient id="satGradFront" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="var(--ring-a)"/>
+            <stop offset="50%" stop-color="var(--ring-b)"/>
+            <stop offset="100%" stop-color="var(--ring-a)"/>
+          </linearGradient>
+          <clipPath id="planetClip" clipPathUnits="userSpaceOnUse">
+            <circle cx="50" cy="50" r="50"/>
+          </clipPath>
+        </defs>
+        <g clip-path="url(#planetClip)">
+          <ellipse cx="50" cy="50" rx="70" ry="26" fill="none" stroke="url(#satGradFront)" stroke-width="7"/>
+        </g>
+      </svg>
     </div>
 
-    <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">Silver</span></div>
-    <div id="next-tier" class="small text-secondary mt-1">—</div>
-
-    <div class="rp-point-value mt-1">
-      <span id="points">0</span> <span class="rp-point-unit">pt</span>
+    <!-- ข้อมูลด้านขวา: ชื่อ + 2 บรรทัดสถานะ -->
+    <div class="rp-info flex-grow-1">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h1 id="username" class="rp-username mb-0">—</h1>
+        <button id="refreshBtn" class="btn btn-outline-secondary btn-icon" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+      </div>
+      <div class="small text-secondary mt-1">ระดับปัจจุบัน: <span id="currentLevelText">—</span></div>
+      <div id="next-tier" class="small text-secondary">—</div>
+      <!-- UID: เอาออก ไม่ต้องมีแถว UID ที่เคยเป็นจุดไข่ปลาแล้วลงท้าย 4 ตัว -->
     </div>
+  </div>
 
-    <div class="xp-wrap mt-3" aria-label="Progress to next tier">
-      <div class="xp-track">
-        <div class="xp-fill" id="xpFill"></div>
-        <div class="xp-gloss"></div>
-        <div class="xp-ticks"></div>
-      </div>
-      <div class="d-flex justify-content-between small mt-1">
-        <span id="xpStart">0</span>
-        <span id="xpLabel">กำลังคำนวณ…</span>
-        <span id="xpEnd">1200</span>
-      </div>
+  <div class="rp-point-value mt-2">
+    <span id="points">0</span> <span class="rp-point-unit">pt</span>
+  </div>
+
+  <!-- XP bar พรีเมียมที่ใช้เดิม -->
+  <div class="xp-wrap mt-2" aria-label="Progress to next tier">
+    <div class="xp-track">
+      <div class="xp-fill" id="xpFill"></div>
+      <div class="xp-gloss"></div>
+      <div class="xp-ticks"></div>
+    </div>
+    <div class="d-flex justify-content-between small mt-1">
+      <span id="xpStart">0</span>
+      <span id="xpLabel">กำลังคำนวณ…</span>
+      <span id="xpEnd">1200</span>
     </div>
   </div>
 </section>

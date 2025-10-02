@@ -1480,3 +1480,55 @@ body.ready #topbar{width:100%;opacity:0}
 @media (prefers-reduced-motion: reduce){
   #primaryAction.swing-once, #xpFill.bump{ animation:none !important; }
 }
+
+/* จัดหัวการ์ดให้อยู่คนละฝั่ง (ซ้าย=avatar / ขวา=ข้อมูล) */
+.rp-profile-card .rp-head{ display:flex; align-items:center; gap:12px; }
+@media (max-width: 390px){ .rp-profile-card .rp-head{ gap:10px; } }
+
+/* ดาวเสาร์: ขนาด/สีตาม tier; ใช้แบบ compact */
+.saturn-avatar{
+  --size: 95px;          /* ย่อจาก 136px ~30% */
+  --tilt: -18deg;        /* มุมเอียงหลัก */
+  --ring-scale: 1.08;    /* สัดส่วนวงแหวนรอบดาว */
+  --ring-a:#ffd166;      /* ปรับด้วย .tier-* ที่ app.js ตั้งไว้ */
+  --ring-b:#ffb703;
+  position: relative;
+  width: var(--size);
+  aspect-ratio: 1/1;
+  isolation: isolate;
+}
+
+/* กลมสนิทแน่นอน (กันสไตล์อื่นมา override) */
+.saturn-avatar .planet{ position:absolute; inset:0; border-radius:50% !important; overflow:hidden !important; z-index:1; box-shadow:0 8px 22px rgba(0,0,0,.28); }
+.saturn-avatar .planet img{ width:100%; height:100%; object-fit:cover; object-position:50% 34%; border-radius:50% !important; display:block; }
+
+/* วงแหวน — จัดให้อยู่กึ่งกลาง และ “แกว่งนุ่ม ๆ” (ไม่หมุนเป็นวง) */
+.saturn-avatar .ring{
+  position:absolute;
+  width:160%; height:160%;
+  left:50%; top:50%;
+  transform: translate(-50%,-50%) rotate(var(--tilt)) scale(var(--ring-scale));
+  transform-origin:50% 50%;
+  pointer-events:none; z-index:0;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,.25));
+  animation: ring-sway 7s ease-in-out infinite; /* ← เปลี่ยนจากหมุนรอบเป็นแกว่ง */
+}
+.saturn-avatar .ring--front{ z-index:2; }
+
+/* โทนสี ring ตาม tier */
+.saturn-avatar.tier-silver   { --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.saturn-avatar.tier-gold     { --ring-a:#ffd166; --ring-b:#ffb703; }
+.saturn-avatar.tier-platinum { --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+/* keyframes: แกว่งไป-กลับเล็กน้อยเพื่อความพรีเมียม */
+@keyframes ring-sway{
+  0%   { transform: translate(-50%,-50%) rotate(calc(var(--tilt) - 3deg)) scale(var(--ring-scale)); }
+  50%  { transform: translate(-50%,-50%) rotate(calc(var(--tilt) + 3deg)) scale(var(--ring-scale)); }
+  100% { transform: translate(-50%,-50%) rotate(calc(var(--tilt) - 3deg)) scale(var(--ring-scale)); }
+}
+
+/* ซ่อน UID ทุกกรณี (ถ้าโค้ดเก่ายังมี element นี้อยู่) */
+.rp-profile-card .uid-row,
+.rp-profile-card [data-role="uid"],
+.rp-profile-card .user-id,
+.rp-profile-card .uid { display:none !important; }
