@@ -1285,21 +1285,50 @@ body.ready #topbar{width:100%;opacity:0}
   .saturn-avatar{ --size: 148px; }
 }
 
-/* วงแหวน */
+/* วงแหวน (จัดกลางเป๊ะ + ปรับสเกลได้) */
+.saturn-avatar { --ring-scale: 1.10; --tilt: -18deg; } /* ปรับได้ตามใจ */
 .saturn-avatar .ring{
-  position:absolute;
-  inset: -18% -22%;
-  transform: rotate(var(--tilt));
+  position: absolute;
+  width: 160%;
+  height: 160%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(var(--tilt)) scale(var(--ring-scale));
+  transform-origin: 50% 50%;
   z-index: 0;
   pointer-events: none;
   filter: drop-shadow(0 4px 18px rgba(0,0,0,.25));
-  animation: sat-rotate 22s linear infinite; /* 🔄 เพิ่มบรรทัดนี้ */
+  animation: sat-rotate 26s linear infinite, sat-breathe 6s ease-in-out infinite;
 }
 
-/* หมุนครบ 360° โดยคงองศาเอียง --tilt */
+/* วงกลมไฮไลต์หลังโปรไฟล์ (แทนสี่เหลี่ยมทอง) */
+.saturn-avatar::after{
+  content:"";
+  position:absolute;
+  left:50%; top:50%;
+  width: 86%; height: 86%;
+  transform: translate(-50%,-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255,199,71,.45), rgba(255,199,71,0));
+  z-index: -1;         /* อยู่หลังดาวและวงแหวน */
+  filter: blur(0.6px); /* ละมุนเบา ๆ */
+}
+
+/* หมุนครบ 360° โดยคงมุมเอียง */
 @keyframes sat-rotate {
-  from { transform: rotate(var(--tilt)); }
-  to   { transform: rotate(calc(var(--tilt) + 360deg)); }
+  from { transform: translate(-50%,-50%) rotate(var(--tilt)) scale(var(--ring-scale)); }
+  to   { transform: translate(-50%,-50%) rotate(calc(var(--tilt) + 360deg)) scale(var(--ring-scale)); }
+}
+
+/* พริ้วนุ่ม ๆ (ขยับสเกลเล็กน้อย) */
+@keyframes sat-breathe {
+  0%,100% { filter: drop-shadow(0 4px 18px rgba(0,0,0,.25)); }
+  50%     { filter: drop-shadow(0 6px 22px rgba(0,0,0,.30)); }
+}
+
+/* จูนให้พอดีกับจอเล็ก */
+@media (max-width: 390px){
+  .saturn-avatar{ --ring-scale: 1.06; } /* หดวงแหวนลงนิดให้พอดีวงกลม */
 }
 
 /* ย่อขนาด avatar ลง ~30% */
@@ -1307,3 +1336,7 @@ body.ready #topbar{width:100%;opacity:0}
 @media (min-width: 480px){
   .saturn-avatar.is-compact { --size: 104px; }
 }
+
+#xpLabel{ display: none; }
+
+.saturn-avatar .planet img{ object-position: 50% 32%; } /* ดันขึ้น/ลงได้ */
