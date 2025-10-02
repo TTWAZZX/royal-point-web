@@ -1679,3 +1679,84 @@ body.ready #topbar{width:100%;opacity:0}
 }
 .admin-entry i{ font-size: 1.25rem; }
 .admin-entry.d-none{ display: none !important; } /* คงการซ่อนด้วย JS */
+
+/* ===== Progress row nearly full ===== */
+.rp-profile-card .xp-row{
+  gap: .5rem;
+  width: 100%;
+}
+.rp-profile-card .xp-group{
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;                 /* ระยะระหว่างบาร์กับตัวเลข */
+}
+.rp-profile-card .rp-progress-line{
+  width: 100%;
+  height: 12px;                /* บาร์อวบขึ้นเล็กน้อย */
+  border-radius: 999px;
+  background: #f2f4f7;
+  position: relative;
+  overflow: hidden;
+}
+.rp-profile-card .rp-progress-fill{
+  position:absolute; left:0; top:0; bottom:0; width:0;
+  background: linear-gradient(90deg,#60a5fa,#38bdf8); /* ถูกเปลี่ยนสีโดย prog-* */
+}
+.prog-silver   .rp-progress-fill{ background: linear-gradient(90deg,#94a3b8,#cbd5e1); }
+.prog-gold     .rp-progress-fill{ background: linear-gradient(90deg,#ffcd57,#f59e0b); }
+.prog-platinum .rp-progress-fill{ background: linear-gradient(90deg,#60a5fa,#38bdf8); }
+
+.rp-profile-card .xp-scale{ padding: 0 .25rem; color:#64748b; }
+.rp-profile-card .xp-scale span{ min-width: 2ch; }
+
+/* ปุ่มรีเฟรชให้ “พอดี” ทางขวา */
+.rp-profile-card .btn-icon{
+  flex: 0 0 44px;
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  display: grid; place-items: center;
+}
+
+/* ===== Emphasize คะแนนรวม ===== */
+.rp-profile-card .rp-point-row{ margin-top: .5rem; }
+.rp-profile-card .rp-point-value{
+  position: relative;
+  font-size: clamp(36px, 7.2vw, 52px);
+  font-weight: 900;
+  letter-spacing: -.01em;
+  line-height: 1;
+}
+.rp-profile-card #points{
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 rgba(255,255,255,.6), 0 10px 28px rgba(16,24,40,.18);
+}
+.rp-profile-card .rp-point-value::after{
+  /* ไฮไลต์ฟุ้งใต้ตัวเลขแบบพรีเมียม */
+  content:"";
+  position:absolute; left:-8px; right:-8px; bottom:-3px; height:42%;
+  background: radial-gradient(120% 120% at 50% 100%, rgba(96,165,250,.18), rgba(96,165,250,0));
+  pointer-events:none; z-index:-1;
+}
+.rp-profile-card .rp-point-unit{ font-size:.6em; font-weight:800; color:#475569; }
+
+/* ===== Admin FAB bottom-right (force override) ===== */
+.admin-entry{
+  position: fixed !important;
+  top: auto !important; left: auto !important;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  z-index: 2000;
+  background: linear-gradient(180deg,#22c55e,#16a34a);
+  color:#fff; box-shadow: 0 10px 24px rgba(0,0,0,.18);
+}
+.admin-entry i{ font-size: 1.25rem; }
+.admin-entry.d-none{ display: none !important; }  /* ให้ JS ซ่อนได้ตามเดิม */
+
+@media (min-width: 480px){
+  .rp-profile-card .rp-progress-line{ height: 14px; }
+}
