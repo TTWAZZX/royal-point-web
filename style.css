@@ -1284,3 +1284,26 @@ body.ready #topbar{width:100%;opacity:0}
 @media (min-width: 480px){
   .saturn-avatar{ --size: 148px; }
 }
+
+/* วงแหวน */
+.saturn-avatar .ring{
+  position:absolute;
+  inset: -18% -22%;
+  transform: rotate(var(--tilt));
+  z-index: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,.25));
+  animation: sat-rotate 22s linear infinite; /* 🔄 เพิ่มบรรทัดนี้ */
+}
+
+/* หมุนครบ 360° โดยคงองศาเอียง --tilt */
+@keyframes sat-rotate {
+  from { transform: rotate(var(--tilt)); }
+  to   { transform: rotate(calc(var(--tilt) + 360deg)); }
+}
+
+/* ย่อขนาด avatar ลง ~30% */
+.saturn-avatar.is-compact { --size: 95px; }
+@media (min-width: 480px){
+  .saturn-avatar.is-compact { --size: 104px; }
+}
