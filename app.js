@@ -266,6 +266,7 @@ function setPoints(score){
   score = Number(score || 0);
 
   const tier = getTier(score);
+  setTierMedal(tier);   // ← NEW: อัปเดตป้ายรางวัลบน avatar
   const idx  = TIERS.findIndex(t => t.key === tier.key);
   const nextTierObj = TIERS[idx + 1] || null;
 
@@ -725,6 +726,19 @@ function bumpXpFill(){
   xpFill.classList.remove("bump");
   void xpFill.offsetWidth; // รีเฟรชเพื่อให้ animation เล่นซ้ำได้
   xpFill.classList.add("bump");
+}
+
+function setTierMedal(tier){
+  const avatar = document.getElementById("rpAvatar");
+  const medal  = document.getElementById("tierMedal");
+  if(!avatar || !medal || !tier) return;
+
+  // เคลียร์คลาสเดิม แล้วใส่คลาสตามระดับ
+  avatar.classList.remove("tier-silver","tier-gold","tier-platinum");
+  avatar.classList.add(`tier-${tier.key}`);
+
+  // ปรับไตเติล/aria
+  medal.title = tier.name;
 }
 
 // padding + date formatter (hoisted)
