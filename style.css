@@ -994,3 +994,94 @@ body.ready #topbar{width:100%;opacity:0}
 }
 #rp-ovl .rp-ovl-text{ font-weight:600 }
 @keyframes rp-spin{to{ transform:rotate(360deg) }}
+
+/* Avatar wrapper with premium ring */
+.rp-avatar{
+  position: relative;
+  width: 120px;
+  aspect-ratio: 1/1;
+  border-radius: 50%;
+  padding: 4px; /* space for ring */
+  isolation: isolate;
+}
+.rp-avatar img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+
+/* Animated gradient ring (conic mask) */
+.rp-avatar::before{
+  content:"";
+  position:absolute; inset:0;
+  border-radius:50%;
+  padding: 2px; /* ring thickness */
+  background: conic-gradient(var(--ring-a), var(--ring-b), var(--ring-a));
+  -webkit-mask:
+    radial-gradient(farthest-side,transparent calc(100% - 6px), #000 0);
+          mask: radial-gradient(farthest-side,transparent calc(100% - 6px), #000 0);
+  animation: rp-rotate 6s linear infinite;
+  z-index: -1;
+}
+@keyframes rp-rotate { to { transform: rotate(360deg); } }
+
+/* Tier colors */
+.rp-avatar.tier-silver { --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.rp-avatar.tier-gold   { --ring-a:#ffd166; --ring-b:#ffb703; }
+.rp-avatar.tier-platinum { --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+/* Rank badge (glass pill) */
+.rp-rank-badge{
+  position: absolute; right: -6px; bottom: -6px;
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .35rem .6rem;
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.45));
+  border: 1px solid rgba(255,255,255,.8);
+  box-shadow: 0 6px 18px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.4);
+}
+
+/* Crown + text */
+.rp-rank-crown{ font-size: 16px; line-height: 1; }
+.rp-avatar.tier-silver  .rp-rank-crown{ color:#9e9e9e; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.rp-avatar.tier-gold    .rp-rank-crown{ color:#f59e0b; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+.rp-avatar.tier-platinum .rp-rank-crown{ color:#60a5fa; filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+
+.rp-rank-text{
+  font-weight: 900;
+  letter-spacing: .2px;
+  color: #0f172a; /* slate-900 */
+  text-shadow: 0 1px 0 rgba(255,255,255,.6);
+  position: relative;
+}
+
+/* subtle shimmer on text for premium feel */
+.rp-rank-text::after{
+  content:"";
+  position:absolute; left:-10%; top:0; bottom:0; width: 30%;
+  background: linear-gradient(75deg, transparent, rgba(255,255,255,.85), transparent);
+  transform: skewX(-20deg);
+  opacity: .0; pointer-events: none;
+  animation: rp-shimmer 3.2s ease-in-out infinite;
+}
+@keyframes rp-shimmer {
+  10%{ opacity:.0; transform: translateX(0) skewX(-20deg); }
+  25%{ opacity:.75; transform: translateX(220%) skewX(-20deg); }
+  40%{ opacity:.0; transform: translateX(260%) skewX(-20deg); }
+}
+
+/* Optional: slight hover lift if avatar is clickable */
+.rp-avatar:hover{ transform: translateY(-1px); transition: transform .2s ease; }
+
+.rp-rank-badge{
+  /* ของเดิมคงไว้ */
+  border: 1px solid rgba(255,255,255,.85);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,.45)) padding-box,
+    linear-gradient(45deg, rgba(255,255,255,.95), rgba(255,255,255,.4), rgba(0,0,0,.08)) border-box;
+}

@@ -50,6 +50,8 @@ let UID = "";
 let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
+// === Rank state (new)
+window.USER_RANK = null; // ยังไม่รู้ลำดับ ให้เป็น null ไว้ก่อน
 // ---- Scan / redeem guards ----
 let SCANNING = false;          // กล้องกำลังทำงานอยู่หรือไม่
 let REDEEM_IN_FLIGHT = false;  // กำลังเรียก /api/redeem อยู่หรือไม่
@@ -275,9 +277,32 @@ function setPoints(score){
       lmLabel.textContent = `อยู่ระดับ ${t.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`;
     }
   }
+  // อัปเดตป้ายอันดับ + วงแหวนตาม tier (NEW)
+  setRankBadge(window.USER_RANK, tier.key);
 
   prevLevel = tier.key;
   prevScore = score;
+}
+
+function setRankBadge(rank, tierKey){
+  const avatar = document.getElementById("rpAvatar");
+  const rankText = document.getElementById("rankText");
+  if(!avatar || !rankText) return;
+
+  // เคลียร์ tier เดิม แล้วใส่ใหม่
+  avatar.classList.remove("tier-silver","tier-gold","tier-platinum");
+  const map = { silver:"tier-silver", gold:"tier-gold", platinum:"tier-platinum" };
+  avatar.classList.add(map[tierKey] || "tier-silver");
+
+  // จัดการโชว์/ซ่อนป้าย และเซ็ตข้อความ
+  const badgeEl = avatar.querySelector(".rp-rank-badge");
+  if(!badgeEl) return;
+  if(rank == null || rank === ""){
+    badgeEl.style.display = "none";
+  }else{
+    badgeEl.style.display = "inline-flex";
+    rankText.textContent = `#${rank}`;
+  }
 }
 
 /* ===== Rewards (dynamic) ===== */

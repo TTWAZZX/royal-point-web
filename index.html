@@ -25,11 +25,13 @@
   <!-- ===== Profile Card (clean & balanced) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
   <div class="rp-left">
-    <div class="rp-avatar-wrap">
-      <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120x120" alt="profile"/>
-      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
-    </div>
+    <div class="rp-avatar tier-silver" id="rpAvatar" aria-label="User avatar with rank">
+  <img id="profilePic" src="https://placehold.co/120x120" alt="Profile picture">
+  <div class="rp-rank-badge" id="rankBadge" aria-live="polite">
+    <span class="rp-rank-crown" aria-hidden="true"><i class="fa-solid fa-crown"></i></span>
+    <span class="rp-rank-text" id="rankText">#1</span>
   </div>
+</div>
 
   <div class="rp-right">
     <div class="d-flex align-items-center gap-2 flex-wrap">
