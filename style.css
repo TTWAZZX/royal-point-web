@@ -1340,3 +1340,84 @@ body.ready #topbar{width:100%;opacity:0}
 #xpLabel{ display: none; }
 
 .saturn-avatar .planet img{ object-position: 50% 32%; } /* ดันขึ้น/ลงได้ */
+
+/* ขนาด/เอียง/สเกลแหวนปรับได้ */
+.saturn-avatar{
+  --size: 95px;          /* ย่อ ~30% จาก 136px */
+  --tilt: -18deg;        /* องศาเอียง */
+  --ring-scale: 1.08;    /* ความกว้างวงแหวนเทียบดาว */
+  --ring-a:#ffd166;      /* gold tier by default; ถูกแทนที่ด้วย .tier-* */
+  --ring-b:#ffb703;
+  position: relative;
+  width: var(--size);
+  aspect-ratio: 1/1;
+  display: inline-block;
+  isolation: isolate;
+}
+
+/* ดาว */
+.saturn-avatar .planet{
+  position:absolute; inset:0;
+  border-radius:50%; overflow:hidden; z-index:1;
+  box-shadow: 0 8px 22px rgba(0,0,0,.28);
+}
+.saturn-avatar .planet img{
+  width:100%; height:100%; object-fit:cover; object-position:50% 34%;
+  display:block;
+}
+/* เงาวงแหวนพาดบนดาว */
+.saturn-avatar .planet::after{
+  content:""; position:absolute; inset:0; border-radius:50%;
+  background:
+    radial-gradient(100% 58% at 50% 50%, rgba(0,0,0,.25), rgba(0,0,0,0) 60%);
+  transform: rotate(var(--tilt));
+  mix-blend-mode: multiply; opacity:.25; pointer-events:none;
+}
+
+/* จัดแหวนให้อยู่กลาง + หมุน + หายใจ */
+.saturn-avatar .ring{
+  position:absolute;
+  width:160%; height:160%;
+  left:50%; top:50%;
+  transform: translate(-50%, -50%) rotate(var(--tilt)) scale(var(--ring-scale));
+  transform-origin:50% 50%;
+  pointer-events:none; z-index:0;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,.25));
+  animation: ring-spin 24s linear infinite, ring-breathe 6s ease-in-out infinite;
+}
+.saturn-avatar .ring--front{ z-index:2; }
+
+/* ลายเม็ดฝุ่นวิ่งรอบวง */
+.ring-path{
+  stroke-linecap: round;
+  /* dash pattern + speed หลัก */
+  stroke-dasharray: 6 14;
+  animation: ring-dash 6s linear infinite;
+}
+/* เลเยอร์หน้าวิ่งเร็วขึ้นนิด → พารัลแลกซ์ */
+.ring-path--fast{ stroke-dasharray: 10 18; animation-duration: 5s; opacity:.95; }
+.ring-path--slow{ opacity:.85; }
+
+/* คีย์เฟรม */
+@keyframes ring-spin {
+  from { transform: translate(-50%,-50%) rotate(var(--tilt)) scale(var(--ring-scale)); }
+  to   { transform: translate(-50%,-50%) rotate(calc(var(--tilt) + 360deg)) scale(var(--ring-scale)); }
+}
+@keyframes ring-breathe {
+  0%,100% { filter: drop-shadow(0 4px 18px rgba(0,0,0,.25)); }
+  50%     { filter: drop-shadow(0 6px 24px rgba(0,0,0,.32)); }
+}
+/* dash เลื่อนให้เห็นการหมุนตามแนววง */
+@keyframes ring-dash {
+  to { stroke-dashoffset: -200; }
+}
+
+/* theme ตาม tier เดิม */
+.saturn-avatar.tier-silver   { --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.saturn-avatar.tier-gold     { --ring-a:#ffd166; --ring-b:#ffb703; }
+.saturn-avatar.tier-platinum { --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+/* ลด motion เมื่อผู้ใช้ตั้งค่า */
+@media (prefers-reduced-motion: reduce){
+  .saturn-avatar .ring, .ring-path{ animation: none; }
+}
