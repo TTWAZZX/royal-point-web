@@ -1158,3 +1158,80 @@ body.ready #topbar{width:100%;opacity:0}
 
 /* ตัวเลข */
 #xpLabel{ font-weight:700; }
+
+/* ===== Avatar oval presets ===== */
+
+/* ค่าปกติ (วงกลมเดิม) */
+.rp-avatar{
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  padding: 4px;            /* เว้นที่ให้วงแหวน */
+  isolation: isolate;
+  /* แหวนใช้ตัวแปรความหนาได้ */
+  --ring-thickness: 6px;
+}
+
+/* รูปด้านใน: ครอปแบบ cover (ตัดขอบ) */
+.rp-avatar img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;        /* 🔒 ครอปเหมือนเดิม */
+  object-position: 50% 35%; /* ดันหน้าให้อยู่สูงขึ้นเล็กน้อย กันหัวโดนตัด */
+  border-radius: inherit;
+  display: block;
+  box-shadow: 0 6px 20px rgba(0,0,0,.25);
+}
+
+/* วงแหวนรอบรูป (ยังหมุนได้) — ปรับให้รองรับวงรี */
+.rp-avatar::before{
+  content:"";
+  position:absolute; inset:0;
+  border-radius: inherit;
+  padding: 2px; /* ความหนาแหวนชั้นนอก */
+  background: conic-gradient(var(--ring-a), var(--ring-b), var(--ring-a));
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thickness)), #000 0);
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-thickness)), #000 0);
+  animation: rp-rotate 6s linear infinite;
+  z-index: -1;
+}
+@keyframes rp-rotate { to { transform: rotate(360deg); } }
+
+/* ===== พรีเซ็ตทรงวงรี ===== */
+/* ทรงรีมาตรฐาน (นิด ๆ) */
+.rp-avatar--oval{
+  width: 128px;
+  height: 150px;            /* สูงขึ้นนิดหน่อย */
+  border-radius: 50% / 58%; /* วงรีแนวตั้ง */
+}
+
+/* ทรงรีสูง (ตามที่ขอ “อยากสูงขึ้น”) */
+.rp-avatar--oval-tall{
+  width: 128px;
+  height: 168px;            /* สูงขึ้นชัดเจน */
+  border-radius: 50% / 62%;
+}
+
+/* ทรงรีแนวนอน (กว้างกว่า สูงน้อยกว่า) */
+.rp-avatar--oval-wide{
+  width: 150px;
+  height: 120px;
+  border-radius: 50% / 45%;
+}
+
+/* ถ้าเคยมีโหมด contain ไว้ก่อน ให้แน่ใจว่าไม่ใช้ร่วม (หรือปล่อยทับได้) */
+.rp-avatar--contain img{ object-fit: contain !important; }
+
+/* Tier colors (เดิม) */
+.rp-avatar.tier-silver { --ring-a:#cfd8dc; --ring-b:#eceff1; }
+.rp-avatar.tier-gold   { --ring-a:#ffd166; --ring-b:#ffb703; }
+.rp-avatar.tier-platinum { --ring-a:#b3e5fc; --ring-b:#e0f7fa; }
+
+.rp-avatar--oval-tall{
+  --aw: clamp(112px, 22vw, 160px);
+  width: var(--aw);
+  height: calc(var(--aw) * 1.31); /* อัตราส่วนสูง */
+  border-radius: 50% / 62%;
+}
