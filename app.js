@@ -13,6 +13,34 @@ let CURRENT_UID =
   document.querySelector('[data-uid]')?.dataset.uid ||
   '';
 
+// ========== DEBUG UTIL ==========
+const DEBUG = true;
+const dlog = (...a) => { if (DEBUG) console.log('[RP]', ...a); };
+
+// เรียกหลาย endpoint ไล่ไปเรื่อย ๆ ใครตอบ 2xx ก่อนใช้ตัวนั้น
+async function tryEndpoints(urls, fetchInit = {}, { scope = '' } = {}) {
+  let lastErr;
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, fetchInit);
+      const text = await res.text();
+      if (!res.ok) {
+        dlog(`fetch failed ${scope}`, url, res.status, text);
+        lastErr = new Error(text || `HTTP ${res.status}`);
+        continue;
+      }
+      let json;
+      try { json = JSON.parse(text); } catch { json = text; }
+      dlog(`fetch ok ${scope}`, url, json);
+      return json;
+    } catch (e) {
+      dlog(`fetch error ${scope}`, url, e);
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('all_endpoints_failed');
+}
+
 function getArrFromResponse(res) {
   if (Array.isArray(res)) return res;
   if (res && Array.isArray(res.items)) return res.items;
@@ -247,22 +275,21 @@ function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", 
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI (เวอร์ชันแก้ ReferenceError + แยก success/offline ชัดเจน)
 // ===== refreshUserScore: ดึงคะแนนให้ครอบจักรวาล + เก็บไว้เทียบก่อน–หลัง =====
 async function refreshUserScore() {
-  const uid = (typeof UID !== 'undefined' && UID) || (typeof CURRENT_UID !== 'undefined' && CURRENT_UID) || window.__UID || '';
-  if (!uid) { console.warn('refreshUserScore: no UID'); return Number(window.__userBalance ?? 0); }
+  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || '';
+  if (!uid) { dlog('refreshUserScore: no UID'); return Number(window.__userBalance ?? 0); }
 
-  // helper: เลือก balance จากได้ทั้งบนสุด/ซ้อนใน data/obj อื่น ๆ
   function pickBalance(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const cands = [
-      obj.balance, obj.points, obj.point, obj.score, obj.total_points, obj.totalPoints,
-      obj?.data?.balance, obj?.data?.points, obj?.data?.point, obj?.data?.score, obj?.data?.total_points,
+      obj.balance, obj.points, obj.point, obj.score,
+      obj.total_points, obj.totalPoints,
+      obj?.data?.balance, obj?.data?.points, obj?.data?.point, obj?.data?.score,
       obj?.user_points?.balance, obj?.up?.balance, obj?.user?.balance,
     ];
     for (const v of cands) {
       const n = Number(v);
       if (!Number.isNaN(n)) return n;
     }
-    // เผื่อ API ส่งเป็น array เช่น [{balance: 123}]
     const arr = obj?.data || obj?.items || (Array.isArray(obj) ? obj : null);
     if (Array.isArray(arr) && arr.length) {
       for (const row of arr) {
@@ -273,7 +300,6 @@ async function refreshUserScore() {
     return null;
   }
 
-  // เอนด์พอยท์ที่ลองไล่ยิง (ตัวไหนตอบก่อน ใช้ตัวนั้น)
   const qs = `uid=${encodeURIComponent(uid)}`;
   const endpoints = [
     `/api/score?${qs}`,
@@ -283,61 +309,49 @@ async function refreshUserScore() {
     `/api/user-points?${qs}`,
   ];
 
-  let payload = null;
+  let payload;
   try {
-    payload = await tryEndpoints(endpoints, {}, { scope: 'inline' });
+    payload = await tryEndpoints(endpoints, {}, { scope: 'score' });
   } catch (e) {
-    console.error('refreshUserScore: all endpoints failed', e);
-    // โหมดออฟไลน์: ใช้แคชถ้ามี
+    dlog('refreshUserScore failed, use cache', e);
     const cached = Number(localStorage.getItem('userBalance') || window.__userBalance || 0);
-    updateScoreUI(cached);
+    updateUI(cached);
     return cached;
   }
 
-  // พยายามหยิบ balance ให้ได้ค่า
   let balance = pickBalance(payload);
   if (balance === null) {
-    // กันกรณี API แปลก ๆ
-    const maybeNum = Number(payload);
-    balance = Number.isFinite(maybeNum) ? maybeNum : 0;
+    const maybe = Number(payload);
+    balance = Number.isFinite(maybe) ? maybe : 0;
   }
 
-  // เก็บไว้เป็นค่าอ้างอิงให้ redeemCode() เทียบได้
   window.__userBalance = Number(balance || 0);
   localStorage.setItem('userBalance', String(window.__userBalance));
-
-  // อัปเดต UI
-  updateScoreUI(window.__userBalance);
-
+  updateUI(window.__userBalance);
   return window.__userBalance;
 
-  // === helper: อัปเดตหน้าจอแบบปลอดภัย (ถ้ามี element ก็อัป) ===
-  function updateScoreUI(val) {
+  function updateUI(val) {
     const n = Number(val || 0);
-
-    // คะแนนหลัก
     const ptEl = (window.els && els.points) || document.getElementById('points');
     if (ptEl) ptEl.textContent = n.toLocaleString();
 
-    // แสดงคู่ XP ถ้ามี (เช่น "608 / 1,200 คะแนน")
     const xpPair = document.getElementById('xpPair');
-    if (xpPair && typeof window.__tierMax === 'number') {
-      xpPair.textContent = `${n.toLocaleString()} / ${Number(window.__tierMax).toLocaleString()} คะแนน`;
+    const max = Number(window.__tierMax || 0);
+    if (xpPair) {
+      if (max > 0) {
+        xpPair.textContent = `${n.toLocaleString()} / ${max.toLocaleString()} คะแนน`;
+      } else {
+        // ถ้าไม่รู้ max ให้โชว์เฉพาะยอด (กัน 0/0 ดูแปลกตา)
+        xpPair.textContent = `${n.toLocaleString()} คะแนน`;
+      }
     }
 
-    // แถบ progress ถ้ามี
     const fill = document.getElementById('progressFill');
-    const bar  = document.getElementById('progressBar');
     if (fill) {
-      const max = Number(window.__tierMax || 0) || Math.max(n, 1);
-      const pct = Math.max(0, Math.min(100, (n / max) * 100));
+      const denom = max > 0 ? max : Math.max(n, 1);
+      const pct = Math.max(0, Math.min(100, (n / denom) * 100));
       fill.style.width = `${pct}%`;
-      // ป้องกันกระตุก: ถ้ายังไม่ได้โชว์ให้บังคับ reflow เบา ๆ
-      if (bar) bar.offsetHeight; // noop reflow
     }
-
-    // เก็บลง state เผื่อใช้ที่อื่น
-    window.__lastScoreRefreshAt = Date.now();
   }
 }
 
@@ -744,99 +758,83 @@ async function redeemReward(reward, btn){
 
 /* ================= Redeem code / Scanner ================= */
 // ใช้แทนฟังก์ชันเดิมทั้งหมด
-async function redeemCode(code, source = 'QR'){
-  if(!code) { toastErr('ไม่มีรหัส'); return; }
+async function redeemCode(code, source = 'QR') {
+  if (!code) { toastErr('ไม่มีรหัส'); return; }
 
-  // 1) เก็บคะแนนก่อนแลก
-  const before = Number((window.__userBalance ?? 0));
-
-  // ถ้าเรามีฟังก์ชันดึงคะแนนไว้แล้ว ให้ sync ให้ชัวร์สักรอบ
-  // (ถ้ากังวลเรื่องโหลดบ่อย สามารถคอมเมนต์บรรทัดนี้ได้)
+  // ก่อนแลก: เก็บยอด
   try { await refreshUserScore(); } catch {}
+  const before = Number(window.__userBalance || 0);
 
-  const balanceBefore = Number((window.__userBalance ?? before) || 0);
+  // ลองส่งหลาย body shape เผื่อ API ใช้ชื่อฟิลด์ต่างกัน
+  const bodies = [
+    { code, source },
+    { coupon: code, source },
+    { coupon_code: code, source },
+  ];
 
-  // 2) ยิงไปยัง endpoint ต่าง ๆ (เลือกตัวที่ตอบ)
-  let resp;
-  try{
-    resp = await tryEndpoints(
-      [
-        '/api/redeem',               // หลัก
-        '/api/redeem-code',          // ชื่ออื่นที่อาจใช้
-        '/api/coupon/redeem',        // อีกชื่อ
-        '/api/claim-coupon'          // อีกชื่อ
-      ],
-      {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json' },
-        body: JSON.stringify({ code, source })
-      },
-      { scope: 'inline' }
-    );
-  }catch(e){
-    console.error('redeem error', e);
-    // แยกเคสคูปองถูกใช้แล้วให้ข้อความชัดเจนหน่อย ถ้าแบ็กเอนด์ส่งสถานะมา
-    const msg = (e?.message || '').toLowerCase();
-    if (msg.includes('used') || msg.includes('already')) {
-      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-    } else {
-      toastErr('แลกคูปองไม่สำเร็จ');
+  let resp, lastErr;
+  for (const body of bodies) {
+    try {
+      resp = await tryEndpoints(
+        [
+          '/api/redeem',
+          '/api/redeem-code',
+          '/api/coupon/redeem',
+          '/api/claim-coupon',
+        ],
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        },
+        { scope: 'redeem' }
+      );
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
     }
+  }
+  if (lastErr) {
+    const msg = (lastErr?.message || '').toLowerCase();
+    if (msg.includes('used') || msg.includes('already')) toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+    else toastErr('แลกคูปองไม่สำเร็จ');
     return;
   }
 
-  // 3) ดึงจำนวนคะแนนที่ได้จาก response ให้ครอบจักรวาล
-  function pickAmount(obj){
+  // หาจำนวนคะแนนที่เพิ่มจาก response
+  function pickAmount(obj) {
     if (!obj || typeof obj !== 'object') return null;
     const cands = [
-      obj.amount, obj.delta, obj.added,
-      obj.point, obj.points, obj.value, obj.score, obj.increment,
+      obj.amount, obj.delta, obj.added, obj.increment,
+      obj.point, obj.points, obj.value, obj.score,
       obj?.data?.amount, obj?.data?.delta, obj?.data?.point, obj?.data?.points
     ];
-    for (const n of cands){
-      const v = Number(n);
-      if (!Number.isNaN(v)) return v;
+    for (const v of cands) {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
     }
     return null;
   }
 
   let added = pickAmount(resp);
 
-  // 4) ถ้า API ไม่บอกจำนวนมา → ใช้ “ก่อน–หลัง” แทน
-  let balanceAfter = balanceBefore;
-  try {
-    await refreshUserScore(); // ดึงยอดหลัง
-    balanceAfter = Number(window.__userBalance ?? balanceBefore);
-  } catch {}
-
-  if (added === null) {
-    added = balanceAfter - balanceBefore;
-  }
-
-  // ปกป้องเคสที่ diff = 0 เพราะคูปองใช้แล้ว แต่ API บอก success
-  // ถ้ามีฟิลด์สถานะก็เช็คเพิ่มได้
-  if (added === 0) {
-    // ลองดู flag จาก resp ว่าใช้แล้วหรือยัง
-    const statusStr = (resp?.status || resp?.data?.status || '').toString().toLowerCase();
-    if (statusStr.includes('used')) {
-      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-      return;
-    }
-  }
-
-  // 5) แจ้งผลสวย ๆ
-  if (added > 0) {
-    toastOk(`สำเร็จ +${added} คะแนน`);
-  } else if (added < 0) {
-    // เผื่อกรณีเป็นคูปองลบ/ปรับลด (ไม่น่ามี แต่กันพลาด)
-    toastOk(`สำเร็จ ${added} คะแนน`);
-  } else {
-    // 0 จริง ๆ (อาจเพราะคูปองหมดอายุ/ใช้แล้ว/ไม่พบ ฯลฯ)
-    toastErr('คูปองไม่ถูกเพิ่มคะแนน');
-  }
-
-  // 6) อัปเดต UI ให้ตรง
+  // หลังแลก: ดึงยอดใหม่ → ใช้ก่อน–หลัง ถ้า API ไม่บอกค่ามา
   try { await refreshUserScore(); } catch {}
+  const after = Number(window.__userBalance || before);
+  if (added === null) added = after - before;
+
+  // ถ้ากลับมา 0 และ status บอกว่า used ให้แจ้งชัดเจน
+  const statusStr = (resp?.status || resp?.data?.status || '').toString().toLowerCase();
+  if (added === 0 && statusStr.includes('used')) {
+    toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+    return;
+  }
+
+  if (added > 0) toastOk(`สำเร็จ +${added} คะแนน`);
+  else if (added < 0) toastOk(`สำเร็จ ${added} คะแนน`);
+  else toastErr('คูปองไม่ถูกเพิ่มคะแนน');
+
   try { await openHistory(); } catch {}
 }
 
