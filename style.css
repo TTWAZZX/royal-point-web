@@ -3170,3 +3170,17 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   box-shadow: 0 6px 14px rgba(0,0,0,.12);
   backdrop-filter: blur(6px);
 }
+
+/* (ใส่ใน style.css) */
+.rp-reward-img{ position:relative; overflow:hidden; border-radius:14px; }
+.rp-reward-img img{ width:100%; height:160px; object-fit:cover; display:block; }
+.rp-reward-badge{
+  position:absolute; top:8px; right:8px;
+  padding:2px 8px; font-size:12px; font-weight:700;
+  background:rgba(255,255,255,.9); border:1px solid rgba(0,0,0,.06);
+  border-radius:999px; box-shadow:0 6px 14px rgba(0,0,0,.12);
+  backdrop-filter:blur(6px);
+}
+@media (max-width:480px){
+  .rp-reward-img img{ height:140px; }
+}

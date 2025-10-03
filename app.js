@@ -432,37 +432,101 @@ function applyXpThemeByTier(tierKey){
   xpWrap.style.setProperty('--ring-b', b);
 }
 
-/* ===== Rewards (dynamic) ===== */
+/* ===== Rewards (dynamic) — FULL BLOCK (replace old one) ===== */
 const API_REWARDS = "/api/rewards";
 
-/** ลำดับคะแนน 44 ช่อง (ตามที่ระบุ) */
+/** ลำดับคะแนน 44 ช่อง (ตามที่กำหนด) */
 const COST_ORDER = [
   40, 50, 60, 70, 80,
   100,100,100,100,
   120,120,120,120,
-  150,180,200,150,180,200,200,
-  220,230,250,250,250,250,250,250,
+  150,180,200, 150,180,200,200,
+  220,230,
+  250,250,250,250,250,250,
   350,380,
   400,400,400,400,400,400,
   450,500,500,
   600,700,800,900,1000
 ];
 
+/* ========= Reward Images (Frontend Mapping) ========= */
+/** อ้างด้วย ID ของรางวัล (ใช้เมื่อรู้ id ที่แน่ชัด เช่น R01-40) */
+const IMAGE_BY_ID = {
+  // ตัวอย่าง (ถ้าคุณใช้ id รูปแบบนี้อยู่)
+  // "R01-40": "https://lh3.googleusercontent.com/d/1o_VHWrIuc9o56MCRuzjrycB8W5w_dT5d",
+  // "R02-50": "https://lh3.googleusercontent.com/d/1vEP5DqyX0vgkv3_XDAyLxJpLm3zUtrqR",
+  // "R03-60": "https://lh3.googleusercontent.com/d/1Ve6_BNWlL59BdQXaTLdxdvX4iLYomUyX",
+};
+
+/** ใส่รูปตามลำดับ “ช่อง” 1–44 (index เริ่ม 0)
+ *  ด้านล่างเป็น URL จำลองด้วย placehold.co — เปลี่ยนเป็นลิงก์จริงของคุณเมื่อพร้อม
+ */
+const IMAGE_BY_INDEX = [
+  "https://lh3.googleusercontent.com/d/1o_VHWrIuc9o56MCRuzjrycB8W5w_dT5d", // ช่อง 1 (40 pt)
+  "https://lh3.googleusercontent.com/d/1vEP5DqyX0vgkv3_XDAyLxJpLm3zUtrqR", // ช่อง 2 (50 pt)
+  "https://lh3.googleusercontent.com/d/1Ve6_BNWlL59BdQXaTLdxdvX4iLYomUyX", // ช่อง 3 (60 pt)
+  "https://placehold.co/640x480?text=Gift+04", // 70
+  "https://placehold.co/640x480?text=Gift+05", // 80
+  "https://placehold.co/640x480?text=Gift+06", // 100
+  "https://placehold.co/640x480?text=Gift+07", // 100
+  "https://placehold.co/640x480?text=Gift+08", // 100
+  "https://placehold.co/640x480?text=Gift+09", // 100
+  "https://placehold.co/640x480?text=Gift+10", // 120
+  "https://placehold.co/640x480?text=Gift+11", // 120
+  "https://placehold.co/640x480?text=Gift+12", // 120
+  "https://placehold.co/640x480?text=Gift+13", // 120
+  "https://placehold.co/640x480?text=Gift+14", // 150
+  "https://placehold.co/640x480?text=Gift+15", // 180
+  "https://placehold.co/640x480?text=Gift+16", // 200
+  "https://placehold.co/640x480?text=Gift+17", // 150
+  "https://placehold.co/640x480?text=Gift+18", // 180
+  "https://placehold.co/640x480?text=Gift+19", // 200
+  "https://placehold.co/640x480?text=Gift+20", // 200
+  "https://placehold.co/640x480?text=Gift+21", // 220
+  "https://placehold.co/640x480?text=Gift+22", // 230
+  "https://placehold.co/640x480?text=Gift+23", // 250
+  "https://placehold.co/640x480?text=Gift+24", // 250
+  "https://placehold.co/640x480?text=Gift+25", // 250
+  "https://placehold.co/640x480?text=Gift+26", // 250
+  "https://placehold.co/640x480?text=Gift+27", // 250
+  "https://placehold.co/640x480?text=Gift+28", // 250
+  "https://placehold.co/640x480?text=Gift+29", // 350
+  "https://placehold.co/640x480?text=Gift+30", // 380
+  "https://placehold.co/640x480?text=Gift+31", // 400
+  "https://placehold.co/640x480?text=Gift+32", // 400
+  "https://placehold.co/640x480?text=Gift+33", // 400
+  "https://placehold.co/640x480?text=Gift+34", // 400
+  "https://placehold.co/640x480?text=Gift+35", // 400
+  "https://placehold.co/640x480?text=Gift+36", // 400
+  "https://placehold.co/640x480?text=Gift+37", // 450
+  "https://placehold.co/640x480?text=Gift+38", // 500
+  "https://placehold.co/640x480?text=Gift+39", // 500
+  "https://placehold.co/640x480?text=Gift+40", // 600
+  "https://placehold.co/640x480?text=Gift+41", // 700
+  "https://placehold.co/640x480?text=Gift+42", // 800
+  "https://placehold.co/640x480?text=Gift+43", // 900
+  "https://placehold.co/640x480?text=Gift+44"  // 1000
+];
+
+/** เลือกรูปตามลำดับ: ID → INDEX → r.img จาก API → placeholder */
+function pickRewardImage(r, slotIndex){
+  const fallback = `https://placehold.co/640x480?text=${encodeURIComponent(r?.name || `Gift ${slotIndex+1}`)}`;
+  const idGuess  = r?.id || `R${String(slotIndex+1).padStart(2,'0')}-${r?.cost ?? ''}`;
+  // ถ้า IMAGE_BY_ID ตรง id → ใช้เลย, ไม่งั้นดูตามลำดับช่อง, ไม่งั้นใช้ r.img จาก API, ไม่งั้น fallback
+  return IMAGE_BY_ID[idGuess] || IMAGE_BY_INDEX[slotIndex] || r?.img || fallback;
+}
+
 /** สร้าง fallback 44 กล่องจากลำดับคะแนน */
 function buildFallbackRewards(costs){
   return costs.map((cost, idx)=>({
-    id: `R${String(idx+1).padStart(2,'0')}-${cost}`,
+    id:   `R${String(idx+1).padStart(2,'0')}-${cost}`,
     name: `Gift ${idx+1}`,
-    img: `https://placehold.co/640x480?text=Gift+${idx+1}`,
-    cost: Number(cost)
+    cost: Number(cost),
+    img:  IMAGE_BY_INDEX[idx] || `https://placehold.co/640x480?text=Gift+${idx+1}`
   }));
 }
 
-/** จัดเรียง rewards ให้ตรงตาม COST_ORDER
- *  - ถ้ามีของใน API ที่ cost ตรง ให้หยิบมาเรียงตามลำดับ
- *  - ถ้าขาดชิ้นไหน ให้เติม placeholder
- *  - (ถ้ามีของเกิน/คะแนนไม่อยู่ในลำดับ จะไม่ถูกใช้)
- */
+/** จัดเรียง rewards จาก API ให้ตรงตาม COST_ORDER และเติมที่ขาด */
 function orderRewardsBySequence(list, sequence){
   const buckets = new Map();
   list.forEach(r=>{
@@ -475,24 +539,17 @@ function orderRewardsBySequence(list, sequence){
   sequence.forEach((cost, i)=>{
     const b = buckets.get(cost);
     if (b && b.length){
-      // ใช้ของจริงจาก API ก่อน
-      out.push(b.shift());
+      out.push(b.shift()); // ใช้ของจริงจาก API
     }else{
-      // เติมการ์ด placeholder
-      out.push({
-        id: `R${String(i+1).padStart(2,'0')}-${cost}`,
-        name: `Gift ${i+1}`,
-        img: `https://placehold.co/640x480?text=Gift+${i+1}`,
-        cost: Number(cost)
-      });
+      out.push({ id:`R${String(i+1).padStart(2,'0')}-${cost}`, name:`Gift ${i+1}`, cost:Number(cost) });
     }
   });
   return out;
 }
 
 /** state & cache */
-let rewardRailBound = false;
 let REWARDS_CACHE = [];
+let rewardRailBound = false;
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
 async function loadRewards() {
@@ -500,7 +557,6 @@ async function loadRewards() {
     const resp = await fetch(`${API_REWARDS}?include=1`, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
     const data = await resp.json();
     if (data && data.status === 'success' && Array.isArray(data.rewards)) {
-      // จัดเรียงตาม COST_ORDER + เติมที่ขาด
       REWARDS_CACHE = orderRewardsBySequence(data.rewards, COST_ORDER);
     } else {
       console.warn('No rewards from API:', data);
@@ -517,20 +573,23 @@ function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if (!rail) return;
 
-  const data = (REWARDS_CACHE && REWARDS_CACHE.length) ? REWARDS_CACHE : buildFallbackRewards(COST_ORDER);
+  const data = (REWARDS_CACHE && REWARDS_CACHE.length)
+    ? REWARDS_CACHE
+    : buildFallbackRewards(COST_ORDER);
 
   rail.innerHTML = data.map((r, i) => {
     const locked  = Number(currentScore) < Number(r.cost);
     const id      = escapeHtml(r.id || `R${i+1}`);
     const name    = escapeHtml(r.name || id);
-    const img     = r.img || `https://placehold.co/640x480?text=Gift+${i+1}`;
+    const img     = pickRewardImage(r, i); // ใช้ helper รูป
     const cost    = Number(r.cost || 0);
 
     return `
       <div class="rp-reward-card ${locked ? 'locked' : ''}"
            data-id="${id}" data-cost="${cost}" title="${name}">
         <div class="rp-reward-img">
-          <img src="${img}" alt="${name}" loading="lazy">
+          <img src="${img}" alt="${name}" loading="lazy"
+               onerror="this.onerror=null;this.src='https://placehold.co/640x480?text=${encodeURIComponent(name)}';">
           <div class="rp-reward-badge">${cost} pt</div>
         </div>
         <div class="rp-reward-body p-2">
@@ -557,6 +616,7 @@ function renderRewards(currentScore){
     rewardRailBound = true;
   }
 }
+/* ===== end Rewards (dynamic) ===== */
 
 // กันกดซ้ำ
 let REDEEMING = false;
