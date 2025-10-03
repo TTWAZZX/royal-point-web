@@ -2752,3 +2752,31 @@ body.ready #topbar{width:100%;opacity:0}
   .btn-refresh{ width:32px; height:32px; border-radius:10px; }
   .rp-right-meta{ gap:4px; }
 }
+
+/* จัดแถวขวาบนให้เป็นบรรทัดเดียว */
+.rp-rightcol{ margin-left:auto; }
+.rp-rightrow{
+  display:flex; align-items:center; gap:8px;
+  /* กันล้นบรรทัดบนจอเล็ก */
+  flex-wrap:nowrap;
+}
+
+/* ปรับขนาดชิปเวลาให้อ่านง่ายแต่ไม่กินที่ */
+.mini-chip.lastsync{ font-size:.68rem; padding:.22rem .58rem; }
+
+/* ปุ่มรีเฟรชขนาดเล็ก */
+.btn-refresh{
+  display:inline-grid; place-items:center;
+  background:rgba(255,255,255,.75); backdrop-filter:blur(8px);
+  border:1px solid rgba(0,0,0,.06); box-shadow:0 6px 16px rgba(2,6,23,.08);
+}
+.btn-refresh--sm{ width:30px; height:30px; border-radius:10px; }
+.btn-refresh i{ font-size:14px; }
+.btn-refresh.spin i{ animation:rp-spin .9s linear; }
+@keyframes rp-spin{ to{ transform:rotate(1turn); } }
+
+@media (max-width:420px){
+  .mini-chip.lastsync{ font-size:.62rem; padding:.18rem .5rem; }
+  .btn-refresh--sm{ width:28px; height:28px; border-radius:9px; }
+  .btn-refresh i{ font-size:13px; }
+}
