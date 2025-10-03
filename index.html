@@ -51,29 +51,29 @@
     </div>
   </div>
 
-  <!-- Progress (เต็มกรอบ) + ตัวเลขคู่ -->
-  <div class="xp-wrap mt-3">
-    <div id="progressBar" class="rp-progress-line prog-silver">
-      <div id="progressFill" class="rp-progress-fill"></div>
-    </div>
-    <div class="d-flex justify-content-center small rp-xp-pair">
-      <span id="xpPair">0 / 0 คะแนน</span>
-    </div>
-  </div>
-
   <!-- คะแนนสะสม (ใหญ่/มี label) -->
-  <div class="rp-score-block mt-2">
-    <div class="rp-score-label">คะแนนสะสม</div>
-    <div class="rp-point-value">
-      <span id="points">0</span><span class="rp-point-unit"> pt</span>
-    </div>
+<div class="rp-score-block mt-2">
+  <div class="rp-score-label">คะแนนสะสม</div>
+  <div class="rp-point-value">
+    <span id="points">0</span><span class="rp-point-unit"> pt</span>
   </div>
+</div>
 
-  <!-- สถานะ/แท็กสั้น ๆ -->
-  <div class="mt-1">
-    <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
-    <span id="tierStatus" class="small text-secondary">—</span>
+<!-- Progress (ยาวเต็มกรอบ) + ตัวเลขคู่ตรงกลาง -->
+<div class="xp-wrap mt-2">
+  <div id="progressBar" class="rp-progress-line prog-silver">
+    <div id="progressFill" class="rp-progress-fill"></div>
   </div>
+  <div class="d-flex justify-content-center small rp-xp-pair">
+    <span id="xpPair">0 / 0 คะแนน</span>
+  </div>
+</div>
+
+<!-- สถานะ/แท็กสั้น ๆ — ย้ายมาไว้ใต้ Progress และจัดกลาง -->
+<div class="rp-status-center mt-1">
+  <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+  <span id="tierStatus" class="small text-secondary">—</span>
+</div>
 </section>
 
   <!-- Actions (icons only, compact & centered) -->

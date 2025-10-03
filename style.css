@@ -1900,3 +1900,24 @@ body.ready #topbar{width:100%;opacity:0}
   .rp-avatar-wrap{ width:72px; height:72px; }
   .rp-card-refresh{ top:8px; right:8px; width:30px; height:30px; }
 }
+
+/* Progress + ตัวเลขคู่ */
+.xp-wrap{ display:flex; flex-direction:column; gap:.35rem; }
+.rp-progress-line{ width:100%; height:14px; border-radius:999px; background:#eff2f6; position:relative; overflow:hidden; }
+.rp-progress-fill{ position:absolute; inset:0 auto 0 0; width:0; background:linear-gradient(90deg,#60a5fa,#38bdf8); }
+.prog-silver   .rp-progress-fill{ background:linear-gradient(90deg,#94a3b8,#cbd5e1); }
+.prog-gold     .rp-progress-fill{ background:linear-gradient(90deg,#ffcd57,#f59e0b); }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#60a5fa,#38bdf8); }
+.rp-xp-pair{ justify-content:center; color:#475569; }
+.rp-xp-pair #xpPair{ font-variant-numeric: tabular-nums; }
+
+/* จัดสถานะให้อยู่กลาง ใต้บาร์ */
+.rp-status-center{
+  display:flex; justify-content:center; align-items:center; gap:.5rem;
+  text-align:center;
+}
+
+/* ยก overlay badge ให้ “อยู่หน้ารูป” แน่นอน */
+.rp-avatar-wrap{ position:relative; overflow:hidden; }
+.rp-avatar-circle{ position:relative; z-index:1; }
+.rp-tier-dot{ position:absolute; z-index:2; }  /* ← เพิ่ม z-index */
