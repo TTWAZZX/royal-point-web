@@ -268,6 +268,14 @@ function setPoints(score){
 
   // ---- Tier + Next tier ----
   const tier = getTier(score);
+
+  applyPremiumTheme(tier.key);  // ← ย้อมธีมการ์ดตามระดับ
+  bumpScoreFx();                // ← เด้งตัวเลขทุกครั้ง
+
+  // ฟองคะแนนลอยขึ้น
+  const delta = Number(score) - Number(prevScore || 0);
+  if (delta) showScoreDelta(delta);
+  
   const idx  = TIERS.findIndex(t => t.key === tier.key);
   const nextTierObj = TIERS[idx + 1] || null;
 
@@ -886,3 +894,43 @@ function enableTierTooltip(){
     new bootstrap.Tooltip(el);
   }catch{}
 }
+
+/* ===== Premium helpers ===== */
+
+/** ตั้งธีมให้การ์ดด้วย data-tier (ใช้กับ CSS glow/gradient) */
+function applyPremiumTheme(tierKey){
+  const card = document.querySelector('.rp-profile-card');
+  if (card) card.setAttribute('data-tier', tierKey);
+}
+
+/** ทำให้ตัวเลขคะแนนเด้งนุ่ม ๆ */
+function bumpScoreFx(){
+  const el = document.querySelector('.rp-point-value');
+  if (!el) return;
+  el.classList.remove('bump'); void el.offsetWidth; // restart animation
+  el.classList.add('bump');
+}
+
+/** แสดงฟองคะแนนลอยขึ้น (+/- delta) */
+function showScoreDelta(delta){
+  if (!delta) return;
+  const stack = document.querySelector('.rp-score-stack');
+  if (!stack) return;
+  const chip = document.createElement('div');
+  chip.className = 'rp-score-floater' + (delta < 0 ? ' minus' : '');
+  chip.textContent = (delta>0?'+':'') + delta;
+  stack.appendChild(chip);
+  setTimeout(()=>chip.remove(), 1200);
+}
+
+/** สปินปุ่มรีเฟรช + haptic */
+(function wireRefreshFx(){
+  const btn = document.getElementById('refreshBtn');
+  if (!btn || btn.dataset._spinwired) return;
+  btn.dataset._spinwired = 1;
+  btn.addEventListener('click', ()=>{
+    btn.classList.add('spin');
+    navigator.vibrate?.(8);
+    setTimeout(()=>btn.classList.remove('spin'), 900);
+  });
+})();

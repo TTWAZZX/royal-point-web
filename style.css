@@ -2365,3 +2365,78 @@ body.ready #topbar{width:100%;opacity:0}
 
 /* ปิดสไตล์เก่าที่อาจวาง 2 คอลัมน์ */
 .rp-head, .rp-right-points{ display:none !important; }  /* กัน DOM เก่าหลงเหลือ */
+
+/* ========== Royal Point – Premium Polish Pack ========== */
+
+/* ใช้ data-tier บนการ์ดกำหนดธีมสี */
+.rp-profile-card{
+  --c1:#ffd166; --c2:#f59e0b;      /* default gold */
+  --glow:rgba(245,158,11,.35);
+  position: relative;
+}
+.rp-profile-card[data-tier="silver"]   { --c1:#cbd5e1; --c2:#94a3b8; --glow:rgba(148,163,184,.35); }
+.rp-profile-card[data-tier="gold"]     { --c1:#ffd166; --c2:#f59e0b; --glow:rgba(245,158,11,.35); }
+.rp-profile-card[data-tier="platinum"] { --c1:#60a5fa; --c2:#38bdf8; --glow:rgba(59,130,246,.35); }
+
+/* Ambient glow ด้านหลังการ์ด (นุ่ม ไม่แย่งซีน) */
+.rp-profile-card::before{
+  content:""; position:absolute; inset:-10px; border-radius:22px; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(60% 120% at 0% 0%, var(--c1) 0%, transparent 60%),
+    radial-gradient(60% 120% at 100% 0%, var(--c2) 0%, transparent 60%);
+  opacity:.35; filter:blur(18px);
+}
+.rp-profile-card > *{ position:relative; z-index:1; } /* ยกเนื้อหามาอยู่หน้า */
+
+/* Avatar ring / overlay badge sheen */
+.rp-avatar-wrap{ isolation:isolate; }         /* กัน z-index ซ้อนแปลก */
+.rp-avatar-wrap::after{
+  content:""; position:absolute; inset:-2px; border-radius:50%;
+  background:conic-gradient(from 210deg, var(--c1), var(--c2), var(--c1));
+  opacity:.25; z-index:0;
+}
+.rp-tier-dot{ z-index:2; }
+@keyframes pillSheen { from{transform:translateX(-120%);} to{transform:translateX(120%);} }
+.rp-tier-pill{ position:relative; overflow:hidden; }
+.rp-tier-pill::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(120deg, transparent 0, rgba(255,255,255,.9) 14%, transparent 28%);
+  transform:translateX(-120%); opacity:.55; animation:pillSheen 3.2s ease-in-out infinite;
+}
+
+/* Progress bar: gradient + shimmer + gloss */
+@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
+.rp-progress-line{ position:relative; overflow:hidden; border:1px solid rgba(148,163,184,.25); }
+.rp-progress-line::after{
+  content:""; position:absolute; inset:1px; border-radius:999px;
+  background:linear-gradient(180deg, rgba(255,255,255,.45), rgba(255,255,255,0));
+  pointer-events:none;
+}
+.rp-progress-fill{
+  background-image:linear-gradient(90deg, var(--c1), var(--c2));
+}
+.rp-progress-fill::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg, transparent, rgba(255,255,255,.38), transparent);
+  background-size:200% 100%; animation:shimmer 2.8s linear infinite;
+}
+
+/* คะแนนเด้งนุ่ม ๆ */
+@keyframes rpBump { 0%{transform:translateY(0) scale(1)} 35%{transform:translateY(-1px) scale(1.03)} 100%{transform:translateY(0) scale(1)} }
+.rp-point-value.bump{ animation:rpBump .45s ease; }
+
+/* ฟองคะแนนลอยขึ้น (+50 / −30) */
+.rp-score-stack{ position:relative; }
+@keyframes floatUp { 0%{opacity:0; transform:translateY(0) scale(.9)} 20%{opacity:1} 100%{opacity:0; transform:translateY(-18px) scale(1)} }
+.rp-score-floater{
+  position:absolute; left:0; top:-8px; transform:translateX(0);
+  background:#16a34a; color:#fff; padding:.15rem .5rem; border-radius:999px;
+  font-weight:800; font-size:.8rem; box-shadow:0 8px 16px rgba(22,163,74,.18);
+  animation:floatUp 1.2s ease forwards;
+}
+.rp-score-floater.minus{ background:#dc2626; box-shadow:0 8px 16px rgba(220,38,38,.18); }
+
+/* ปุ่มรีเฟรช: หมุนสั้น ๆ + กดเด้ง */
+@keyframes spinOnce{ to{ transform:rotate(360deg) } }
+.rp-card-refresh.spin i{ animation:spinOnce .8s ease; }
+.rp-card-refresh:active{ transform:scale(.96); }
