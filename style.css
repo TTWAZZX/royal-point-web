@@ -1836,3 +1836,67 @@ body.ready #topbar{width:100%;opacity:0}
   .rp-avatar-wrap{ width:72px; height:72px; }
   .rp-card-refresh{ top:8px; right:8px; width:34px; height:34px; }
 }
+
+/* การ์ด + ปุ่มรีเฟรชมุมขวาบน */
+.rp-profile-card{ position:relative; }
+.rp-card-refresh{
+  position:absolute; top:10px; right:10px;
+  width:32px; height:32px; border-radius:9px;
+  display:grid; place-items:center;
+  box-shadow:0 8px 18px rgba(0,0,0,.12);
+  z-index:2;
+}
+
+/* Avatar + overlay badge */
+.rp-avatar-wrap{ position:relative; width:76px; height:76px; border-radius:50%; overflow:hidden; flex:0 0 auto; }
+.rp-avatar-circle{ width:100%; height:100%; border-radius:50%; object-fit:cover; object-position:50% 34%; display:block; }
+.rp-tier-dot{
+  position:absolute; right:-4px; bottom:-4px;
+  width:26px; height:26px; border-radius:50%;
+  display:grid; place-items:center; font-size:.9rem;
+  color:#0b3c5d; background:radial-gradient(closest-side,#d9f3ff,#bfe7ff);
+  border:1px solid rgba(59,130,246,.35);
+  box-shadow:0 6px 16px rgba(0,0,0,.16), inset 0 0 0 1px rgba(255,255,255,.35);
+}
+.rp-avatar-wrap.rp-tier-silver .rp-tier-dot{ color:#374151; background:radial-gradient(closest-side,#e7ecef,#cfd8dc); border-color:rgba(148,163,184,.45); }
+.rp-avatar-wrap.rp-tier-gold   .rp-tier-dot{ color:#7c4a00; background:radial-gradient(closest-side,#ffe08a,#ffcd57); border-color:rgba(245,158,11,.5); }
+
+/* Pill ของระดับ (ที่เดียว) */
+.rp-tier-pill{
+  padding:.25rem .6rem; border-radius:999px; font-weight:700; font-size:.8rem;
+  display:inline-flex; align-items:center;
+  box-shadow:0 6px 16px rgba(0,0,0,.08), inset 0 0 0 1px rgba(255,255,255,.35);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.rp-tier-pill.rp-tier-silver  { color:#374151; background:linear-gradient(180deg,#f1f5f9,#e2e8f0); border:1px solid rgba(148,163,184,.45); }
+.rp-tier-pill.rp-tier-gold    { color:#7c4a00; background:linear-gradient(180deg,#ffe08a,#ffcd57); border:1px solid rgba(245,158,11,.5); }
+.rp-tier-pill.rp-tier-platinum{ color:#0b3c5d; background:linear-gradient(180deg,#d9f3ff,#bfe7ff); border:1px solid rgba(59,130,246,.45); }
+
+/* Progress (เต็มกรอบกลางการ์ด) */
+.xp-wrap{ display:flex; flex-direction:column; gap:.35rem; }
+.rp-progress-line{ width:100%; height:14px; border-radius:999px; background:#eff2f6; position:relative; overflow:hidden; }
+.rp-progress-fill{ position:absolute; inset:0 auto 0 0; width:0; background:linear-gradient(90deg,#60a5fa,#38bdf8); }
+.prog-silver   .rp-progress-fill{ background:linear-gradient(90deg,#94a3b8,#cbd5e1); }
+.prog-gold     .rp-progress-fill{ background:linear-gradient(90deg,#ffcd57,#f59e0b); }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#60a5fa,#38bdf8); }
+.rp-xp-pair { justify-content:center; color:#475569; }
+.rp-xp-pair #xpPair{ font-variant-numeric: tabular-nums; }
+
+/* คะแนนสะสม (ย้ายมาใต้บาร์) */
+.rp-score-label{ font-size:.8rem; font-weight:700; color:#64748b; letter-spacing:.02em; }
+.rp-point-value{ font-weight:900; font-size:clamp(34px, 7vw, 48px); line-height:1; letter-spacing:-.01em; }
+.rp-point-unit{ font-weight:800; color:#475569; margin-left:.25rem; }
+
+/* Tag สถานะสั้น ๆ */
+.rp-tag{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.2rem .55rem; border-radius:999px; font-weight:700; font-size:.75rem;
+  background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,.55));
+  border:1px solid rgba(148,163,184,.35); color:#0f172a;
+}
+.rp-tag.d-none{ display:none !important; }
+
+@media (max-width:390px){
+  .rp-avatar-wrap{ width:72px; height:72px; }
+  .rp-card-refresh{ top:8px; right:8px; width:30px; height:30px; }
+}

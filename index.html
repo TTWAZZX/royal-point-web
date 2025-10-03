@@ -27,17 +27,16 @@
 
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-
   <!-- ปุ่มรีเฟรชมุมขวาบน -->
   <button id="refreshBtn" class="btn btn-light btn-icon rp-card-refresh" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
     <i class="fa-solid fa-rotate"></i>
   </button>
 
-  <!-- แถวหัว: รูป + ชื่อ + Badge -->
+  <!-- หัวการ์ด: รูป + ชื่อ + Badge -->
   <div class="rp-head d-flex align-items-center gap-3">
-    <!-- รูปโปรไฟล์ + overlay badge -->
-    <div class="rp-avatar-wrap" id="rpAvatar" aria-label="User avatar">
+    <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
       <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
+      <!-- overlay badge เล็ก -->
       <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-gem"></i></span>
     </div>
 
@@ -48,39 +47,32 @@
         <span id="tierPill" class="rp-tier-pill rp-tier-silver">
           <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
         </span>
-        <i id="levelInfo" class="fa-regular fa-circle-question text-secondary small"
-           data-bs-toggle="tooltip"
-           title="เกณฑ์ระดับ: Silver 0–499 • Gold 500–1199 • Platinum ≥1200"></i>
-      </div>
-
-      <!-- Tag สถานะสั้น ๆ (จะสลับข้อความด้วย JS) -->
-      <div class="mt-1">
-        <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
-        <span id="tierStatus" class="small text-secondary">—</span>
       </div>
     </div>
   </div>
 
-  <!-- คะแนนรวม + Progress (กลุ่มเดียวกัน) -->
-  <div class="rp-score-block mt-3">
-    <div class="d-flex align-items-end justify-content-between">
-      <div>
-        <div class="rp-score-label">คะแนนสะสม</div>
-        <div class="rp-point-value">
-          <span id="points">0</span><span class="rp-point-unit"> pt</span>
-        </div>
-      </div>
+  <!-- Progress (เต็มกรอบ) + ตัวเลขคู่ -->
+  <div class="xp-wrap mt-3">
+    <div id="progressBar" class="rp-progress-line prog-silver">
+      <div id="progressFill" class="rp-progress-fill"></div>
     </div>
+    <div class="d-flex justify-content-center small rp-xp-pair">
+      <span id="xpPair">0 / 0 คะแนน</span>
+    </div>
+  </div>
 
-    <div class="xp-wrap mt-2">
-      <div id="progressBar" class="rp-progress-line prog-silver">
-        <div id="progressFill" class="rp-progress-fill"></div>
-      </div>
-      <div class="d-flex justify-content-between small rp-xp-pair">
-        <!-- แสดงแบบ 1209 / 1200 คะแนน -->
-        <span id="xpPair">0 / 0 คะแนน</span>
-      </div>
+  <!-- คะแนนสะสม (ใหญ่/มี label) -->
+  <div class="rp-score-block mt-2">
+    <div class="rp-score-label">คะแนนสะสม</div>
+    <div class="rp-point-value">
+      <span id="points">0</span><span class="rp-point-unit"> pt</span>
     </div>
+  </div>
+
+  <!-- สถานะ/แท็กสั้น ๆ -->
+  <div class="mt-1">
+    <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+    <span id="tierStatus" class="small text-secondary">—</span>
   </div>
 </section>
 
