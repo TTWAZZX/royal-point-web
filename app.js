@@ -858,11 +858,24 @@ function setTierUI(tier, score){
 }
 
 function setXpPair(score){
-  const el = document.getElementById('xpPair');
-  if (!el) return;
-  const tier = getTier(score);
-  const goal = (tier.next === Infinity) ? Number(score||0) : tier.next;
-  el.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
+  const t = getTier(score);
+  const target = t.next === Infinity ? score : t.next;     // max ของช่วงนี้
+  const xpPairEl = document.getElementById('xpPair');
+  if (xpPairEl){
+    xpPairEl.textContent = `${score.toLocaleString()} / ${target.toLocaleString()} คะแนน`;
+  }
+  // สถานะกึ่งกลาง (tag/ข้อความใต้บาร์)
+  const tag = document.getElementById('tierTag');
+  const st  = document.getElementById('tierStatus');
+  if (t.next === Infinity){
+    tag?.classList.remove('d-none');
+    tag && (tag.textContent = '✨ Max Level');
+    st && (st.textContent = '');
+  }else{
+    tag?.classList.add('d-none');
+    const need = Math.max(0, t.next - score);
+    st && (st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`);
+  }
 }
 
 // เปิด tooltip ของ Bootstrap (info icon)

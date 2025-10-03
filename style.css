@@ -2335,3 +2335,33 @@ body.ready #topbar{width:100%;opacity:0}
   border:1px solid rgba(148,163,184,.35); color:#0f172a;
 }
 .rp-tag.d-none{ display:none !important; }
+
+/* === Force new vertical layout for the profile card === */
+.rp-profile-card{ 
+  display:block !important;            /* เลิก grid 2 คอลัมน์ */
+}
+.rp-topline{
+  display:flex; align-items:center; gap:12px; /* รูป+ชื่อ+badge เป็นบรรทัดหัว */
+}
+
+/* คะแนนสะสม + แถบความคืบหน้า วางเป็นสแต็กเต็มกว้าง */
+.rp-score-stack{ display:flex; flex-direction:column; gap:.25rem; }
+.rp-progress-area{ display:block; width:100%; margin-top:.5rem; }
+.rp-progress-line{ width:100%; }      /* ให้บาร์ยาวเต็มกรอบ */
+.rp-xp-pair{ text-align:center; }     /* 1,149 / 1,200 คะแนน ให้อยู่กึ่งกลาง */
+
+/* ปุ่มรีเฟรช — ขนาดเล็กจริง ๆ และไม่โดน .btn-icon ทับ */
+.rp-card-refresh{
+  position:absolute; top:10px; right:10px;
+  width:28px !important; height:28px !important;
+  border-radius:8px; display:grid; place-items:center;
+  box-shadow:0 8px 18px rgba(0,0,0,.12); z-index:5;
+}
+
+/* Overlay badge ต้อง “อยู่หน้ารูป” เสมอ */
+.rp-avatar-wrap{ position:relative; isolation:isolate; }
+.rp-avatar-circle{ position:relative; z-index:1; }
+.rp-tier-dot{ position:absolute; right:2px; bottom:2px; z-index:2; }
+
+/* ปิดสไตล์เก่าที่อาจวาง 2 คอลัมน์ */
+.rp-head, .rp-right-points{ display:none !important; }  /* กัน DOM เก่าหลงเหลือ */
