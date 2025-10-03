@@ -3051,3 +3051,45 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   box-shadow: 0 8px 24px rgba(34,197,94,.35);
 }
 .rp-primary:active{ transform: translateY(1px); }
+
+/* วางมุมขวาบนของการ์ด และจัดให้อยู่ชิดกัน */
+.rp-top-right{
+  position:absolute; top:10px; right:12px;
+  display:flex; align-items:center; gap:8px; z-index:3;
+}
+
+/* pill อัปเดต */
+.rp-updated-pill{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:.35rem .6rem; line-height:1; font-size:.85rem;
+  background:linear-gradient(180deg,#fff,#f7f7f7);
+  border:1px solid rgba(0,0,0,.08);
+  border-radius:999px; box-shadow:0 1px 0 rgba(0,0,0,.05);
+  white-space:nowrap;
+}
+
+/* ปุ่มรีเฟรชขนาดเท่า pill */
+.btn-icon.mini{ width:30px; height:30px; padding:0; border-radius:10px; }
+
+/* มือถือ: ย่อทั้งคู่ให้ “มินิสุด ๆ” */
+@media (max-width:480px){
+  .rp-updated-pill{ transform:scale(.72); transform-origin:right center; }
+  .rp-top-right{ gap:6px; }
+  .btn-icon.mini{ width:26px; height:26px; border-radius:9px; }
+}
+
+/* สแตกคะแนน: ลดช่องว่าง */
+.rp-score-stack{
+  display:flex; flex-direction:column;
+  gap:.125rem;             /* เดิมอาจมากไป → เหลือ 2px */
+  margin-top:.35rem;       /* ปรับได้ตามชอบ */
+}
+.rp-score-label{
+  font-size:.9rem; color:#6b7280;
+  margin:0;                /* ตัด margin เริ่มต้น */
+  line-height:1.1;
+}
+.rp-point-value{
+  margin:0;                /* กัน margin เผลอๆ จากสไตล์อื่น */
+  line-height:1;           /* ทำให้เลขแนบชิด */
+}
