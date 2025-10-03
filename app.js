@@ -789,30 +789,39 @@ async function openHistory(){
 
     // API ตัวใหม่ส่ง items (ไม่ใช่ data) — รองรับสองแบบเพื่อความเข้ากันได้
     const list = Array.isArray(j.items) ? j.items :
-                 (Array.isArray(j.data)  ? j.data  : []);
+             (Array.isArray(j.data)  ? j.data  : []);
 
-    list.sort((a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts));
-                 
-    els.historyList.innerHTML = list.length
-      ? list.map(i=>{
-          const ts = fmtDT(i.created_at || i.ts);                 // รองรับทั้ง created_at/ts
-          const p  = Number((i.amount ?? i.point) || 0);          // รองรับทั้ง amount/point
-          const sign  = p >= 0 ? "+" : "";
-          const color = p >= 0 ? "#16a34a" : "#dc2626";
-          const type  = i.type || "—";
-          const code  = i.code || "";
-          return `<div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                      <div class="fw-bold">${escapeHtml(type)}</div>
-                      <div class="small text-muted">${escapeHtml(code)}</div>
-                    </div>
-                    <div class="text-end">
-                      <div style="color:${color};font-weight:800">${sign}${p}</div>
-                      <div class="small text-muted">${ts}</div>
-                    </div>
-                  </div>`;
-        }).join("")
-      : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
+// เรียงล่าสุดก่อน + ผูกอันดับด้วย uuid (ถ้ามี)
+list.sort((a, b) => {
+  const tb = new Date(b.created_at || b.ts).getTime() || 0;
+  const ta = new Date(a.created_at || a.ts).getTime() || 0;
+  if (tb !== ta) return tb - ta;
+  // tie-break: ใช้ uuid ถ้ามี (ให้ b ก่อน)
+  const ub = (b.uuid || '').toString();
+  const ua = (a.uuid || '').toString();
+  return ub.localeCompare(ua);
+});
+
+els.historyList.innerHTML = list.length
+  ? list.map(i => {
+      const ts = fmtDT(i.created_at || i.ts);
+      const p  = Number((i.amount ?? i.point) || 0);
+      const sign  = p >= 0 ? "+" : "";
+      const color = p >= 0 ? "#16a34a" : "#dc2626";
+      const type  = i.type || "—";
+      const code  = i.code || "";
+      return `<div class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="fw-bold">${escapeHtml(type)}</div>
+                  <div class="small text-muted">${escapeHtml(code)}</div>
+                </div>
+                <div class="text-end">
+                  <div style="color:${color};font-weight:800">${sign}${p}</div>
+                  <div class="small text-muted">${ts}</div>
+                </div>
+              </div>`;
+    }).join("")
+  : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
   }catch(e){
     console.error(e);
     UiOverlay.hide();

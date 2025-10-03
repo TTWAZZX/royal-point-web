@@ -1,4 +1,4 @@
-// /api/score-history.js — safe version for Supabase (no reserved-name issues)
+// /api/score-history.js
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -13,46 +13,29 @@ module.exports = async (req, res) => {
       return res.status(405).json({ status: 'error', message: 'Method not allowed' });
     }
 
-    const uidRaw = String(req.query.uid || '');
-    const uid = uidRaw.trim();
-    const limit = Math.min(parseInt(req.query.limit || '25', 10), 100);
-    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+    const uid = String(req.query.uid || '').trim();
+    const limit  = Math.min(parseInt(req.query.limit  || '25', 10), 100);
+    const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
+    if (!uid) return res.status(400).json({ status: 'error', message: 'uid required' });
 
-    if (!uid) {
-      return res.status(400).json({ status: 'error', message: 'uid required' });
-    }
-
-    // 1) แปลง uid -> user_id
     const { data: user, error: uerr } = await supabase
       .from('users')
       .select('id')
       .eq('uid', uid)
       .single();
+    if (uerr || !user) return res.status(404).json({ status: 'error', message: 'user_not_found' });
 
-    if (uerr || !user) {
-      // ไม่พบผู้ใช้ → บอกเป็น 404 ชัดเจน
-      return res.status(404).json({ status: 'error', message: 'user_not_found' });
-    }
-
-    // 2) ดึงประวัติ — ตัดคอลัมน์ 'text' ออกเพื่อกันชนคำสงวน
-    // 2) ดึงประวัติ — จัดเรียงล่าสุดอยู่ก่อน
-   const { data, error } = await supabase
-     .from('point_transactions')
-     .select('amount, code, type, created_by, created_at')
-     .eq('user_id', user.id)
-     .order('created_at', { ascending: false })   // << ล่าสุดก่อน
-  // ถ้ามีคอลัมน์ไอดี (เช่น 'id' หรือ 'uuid') อยากผูกอันดับเสถียร:
-  // .order('id', { ascending: false })
-  .range(offset, offset + limit - 1);
-
+    // เลือก uuid มาด้วย และเรียง created_at DESC แล้วผูกอันดับด้วย uuid DESC
+    const { data, error } = await supabase
+      .from('point_transactions')
+      .select('uuid, amount, code, type, created_by, created_at')  // << include uuid
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }) // ล่าสุดก่อน
+      .order('uuid',       { ascending: false }) // tie-break ให้เสถียร
+      .range(offset, offset + limit - 1);
 
     if (error) {
-      // เพื่อดีบั๊กง่าย ให้ส่งรายละเอียดแบบ non-500 (ไม่ทำให้ modal แดง)
-      return res.status(200).json({
-        status: 'error',
-        message: 'db_error',
-        detail: process.env.NODE_ENV === 'production' ? undefined : String(error?.message || error)
-      });
+      return res.status(200).json({ status: 'error', message: 'db_error' });
     }
 
     return res.status(200).json({
@@ -61,11 +44,6 @@ module.exports = async (req, res) => {
       nextOffset: offset + (data?.length || 0)
     });
   } catch (e) {
-    // กัน 500 ที่อ่านไม่ออก: ส่งรายละเอียดคืน (ยกเว้น production)
-    return res.status(200).json({
-      status: 'error',
-      message: 'unhandled_error',
-      detail: process.env.NODE_ENV === 'production' ? undefined : String(e)
-    });
+    return res.status(200).json({ status: 'error', message: 'unhandled_error' });
   }
 };
