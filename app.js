@@ -826,13 +826,14 @@ function updateXpLabels(score){
   if (xpEnd)   xpEnd.textContent   = String(end);
 }
 
+// อัปเดต pill/dot/สถานะ ตามระดับ
 function setTierUI(tier, score){
-  const pill    = document.getElementById('tierPill');
-  const pillName= document.getElementById('tierName');
-  const avatar  = document.getElementById('rpAvatar');
-  const dot     = document.getElementById('tierDot');
-  const status  = document.getElementById('tierStatus');
-  const tag     = document.getElementById('tierTag');
+  const pill     = document.getElementById('tierPill');
+  const pillName = document.getElementById('tierName');
+  const avatar   = document.getElementById('rpAvatar');
+  const dot      = document.getElementById('tierDot');
+  const status   = document.getElementById('tierStatus');
+  const tag      = document.getElementById('tierTag');
 
   pill?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   pill?.classList.add(`rp-tier-${tier.key}`);
@@ -856,13 +857,15 @@ function setTierUI(tier, score){
   }
 }
 
+// อัปเดต “ปัจจุบัน / เป้าหมาย คะแนน” ใต้บาร์
 function setXpPair(score){
   const pair = document.getElementById('xpPair');
   if (!pair) return;
   const tier = getTier(score);
-  const goal = (tier.next === Infinity) ? score : tier.next;
+  const goal = (tier.next === Infinity) ? Number(score||0) : tier.next;
   pair.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
 }
+
 // เปิด tooltip ของ Bootstrap (info icon)
 function enableTierTooltip(){
   try{

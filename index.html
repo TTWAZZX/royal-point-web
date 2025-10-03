@@ -32,12 +32,12 @@
     <i class="fa-solid fa-rotate"></i>
   </button>
 
-  <!-- แถวหัว: Avatar + ชื่อ + แบดจ์ (ซ้าย) -->
+  <!-- แถวบน: Avatar + ชื่อ + Badge (ซ้าย) -->
   <div class="rp-topline">
     <div class="rp-left">
       <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
         <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-        <!-- overlay badge ลอยหน้า -->
+        <!-- overlay badge (ลอยหน้ารูป) -->
         <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
       </div>
       <div class="rp-title">
@@ -49,7 +49,7 @@
     </div>
   </div>
 
-  <!-- คะแนนสะสม (ใหญ่/ซ้าย) -->
+  <!-- คะแนนสะสม (ตัวใหญ่) -->
   <div class="rp-score-stack mt-2">
     <div class="rp-score-label">คะแนนสะสม</div>
     <div class="rp-point-value">
@@ -67,10 +67,12 @@
     </div>
   </div>
 
-  <!-- สถานะใต้บาร์ (กึ่งกลาง) -->
+  <!-- สถานะ (กึ่งกลาง) -->
   <div class="rp-status-center mt-1">
     <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
     <span id="tierStatus" class="small text-secondary">—</span>
+    <!-- เผื่อโค้ดเก่ายังอ้างถึง -->
+    <span id="next-tier" class="visually-hidden"></span>
   </div>
 </section>
 
