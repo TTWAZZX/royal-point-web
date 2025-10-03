@@ -259,6 +259,42 @@ function bindUI(){
   });
 }
 
+// ---------- helper: อัปเดตข้อความ "อัปเดตล่าสุด" บนปุ่มรีเฟรช ----------
+function setLastUpdated(fromCache = false){
+  // หา element ปุ่มรีเฟรช (คุณมี id="refreshBtn" ใน index.html แล้ว)
+  const el = document.getElementById('refreshBtn');
+  if (!el) return;
+
+  const now = new Date();
+  const label = fromCache ? 'อัปเดตจากแคช' : 'อัปเดตล่าสุด';
+  const text  = `${label}: ${now.toLocaleString('th-TH', {
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+  })}`;
+
+  // อัปเดต title (fallback ถ้าไม่มี tooltip)
+  el.setAttribute('title', text);
+
+  // ถ้าใช้ Bootstrap tooltip ให้รีเฟรชข้อความใน tooltip ด้วย
+  try {
+    if (window.bootstrap?.Tooltip) {
+      let tip = bootstrap.Tooltip.getInstance(el);
+      if (!tip) tip = new bootstrap.Tooltip(el);
+      // รองรับทั้ง BS5.3 (setContent) และวิธีเดิม (update)
+      if (typeof tip.setContent === 'function') {
+        tip.setContent({ '.tooltip-inner': text });
+      } else {
+        // บางเวอร์ชันต้องแก้ data attribute ด้วย
+        el.setAttribute('data-bs-original-title', text);
+        tip.update();
+      }
+    }
+  } catch (e) {
+    // เงียบ ๆ พอ ไม่ให้พัง
+    console.warn('tooltip update skipped', e);
+  }
+}
+
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
@@ -333,7 +369,7 @@ async function refreshUserScore(){
   pair && (pair.textContent = `${cur} / ${max} คะแนน`);
 
   // ตราปั๊มเวลาอัปเดต (หรือบอกว่าเป็นแคช)
-  setLastUpdated(fromCache);
+  try { setLastUpdated?.(fromCache); } catch {}
 }
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
