@@ -275,7 +275,7 @@ function setPoints(score){
   // ฟองคะแนนลอยขึ้น
   const delta = Number(score) - Number(prevScore || 0);
   if (delta) showScoreDelta(delta);
-  
+
   const idx  = TIERS.findIndex(t => t.key === tier.key);
   const nextTierObj = TIERS[idx + 1] || null;
 

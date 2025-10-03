@@ -2440,3 +2440,106 @@ body.ready #topbar{width:100%;opacity:0}
 @keyframes spinOnce{ to{ transform:rotate(360deg) } }
 .rp-card-refresh.spin i{ animation:spinOnce .8s ease; }
 .rp-card-refresh:active{ transform:scale(.96); }
+
+/* ===== Microchips for XP Pair & Status (หรู นุ่ม ตรงกลาง) ===== */
+.rp-xp-pair,
+.rp-status-center{ justify-content:center; }
+
+.rp-xp-pair span,
+.rp-status-center #tierStatus{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.22rem .6rem; border-radius:999px;
+  background:linear-gradient(180deg,#ffffff,#f6f9ff);
+  border:1px solid rgba(148,163,184,.35);
+  box-shadow:
+    0 6px 14px rgba(2,6,23,.06),
+    inset 0 1px 0 rgba(255,255,255,.65);
+  color:#334155; font-weight:700;
+  font-size:clamp(12px, 2.4vw, 13px);   /* เล็กลงทันทีบนเดสก์ท็อป */
+  line-height:1;
+  letter-spacing:.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* เพิ่มไอคอนเล็ก ๆ แบบไม่พึ่ง codepoint ของ FontAwesome (กันเพี้ยน) */
+.rp-xp-pair span::before{ content:"🎯"; font-size:.9em; }
+.rp-status-center #tierStatus::before{ content:"↗️"; font-size:.9em; }
+
+/* จอมือถือ: เล็กลง ~50% (ตามที่ขอ) */
+@media (max-width:480px){
+  .rp-xp-pair span,
+  .rp-status-center #tierStatus{
+    font-size:.62rem !important;
+    padding:.18rem .44rem;
+  }
+}
+
+/* ถ้าเป็น Max Level ให้ใช้แท็กที่มีอยู่ (#tierTag) เป็นชิปแบบเดียวกัน */
+#tierTag.rp-tag{
+  padding:.22rem .6rem; font-size:.72rem; font-weight:800;
+  background:linear-gradient(180deg,rgba(255,255,255,.9),rgba(255,255,255,.65));
+  border:1px solid rgba(148,163,184,.35);
+}
+
+/* ===== Premium Medal (Badge หน้ารูป) – ทำเป็นเหรียญเคลือบแก้ว ===== */
+.rp-tier-dot{
+  width:26px; height:26px; border-radius:50%;
+  display:grid; place-items:center; font-size:.9rem;
+  color:#7c4a00;                /* gold icon */
+  background:radial-gradient(closest-side,#ffe08a,#ffcd57);
+  border:1px solid rgba(245,158,11,.6);
+  box-shadow:
+    0 8px 16px rgba(0,0,0,.16),
+    inset 0 2px 0 rgba(255,255,255,.8),
+    inset 0 -2px 6px rgba(124,74,0,.15);
+  position:absolute; right:2px; bottom:2px; z-index:2;
+  overflow:hidden;
+}
+
+/* วงแหวนเคลือบ + sheen เบา ๆ */
+.rp-tier-dot::before{
+  content:""; position:absolute; inset:-1px; border-radius:inherit;
+  background:conic-gradient(from 210deg, rgba(255,255,255,.7), transparent 40%, rgba(0,0,0,.08) 60%, transparent 85%, rgba(255,255,255,.7));
+  opacity:.45; pointer-events:none;
+}
+@keyframes dotSheen{ from{ transform:translateX(-120%) } to{ transform:translateX(120%) } }
+.rp-tier-dot::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(120deg,transparent 0, rgba(255,255,255,.9) 16%, transparent 28%);
+  transform:translateX(-120%);
+  animation:dotSheen 3.6s ease-in-out infinite;
+  opacity:.45;
+}
+
+/* สีเหรียญตามระดับ */
+.rp-avatar-wrap.rp-tier-silver .rp-tier-dot{
+  color:#374151;
+  background:radial-gradient(closest-side,#eef2f7,#d7dee6);
+  border-color:rgba(148,163,184,.55);
+}
+.rp-avatar-wrap.rp-tier-platinum .rp-tier-dot{
+  color:#0b3c5d;
+  background:radial-gradient(closest-side,#e6f7ff,#cdefff);
+  border-color:rgba(59,130,246,.55);
+}
+
+/* ทำให้เหรียญลอยหน้าแน่นอน */
+.rp-avatar-wrap{ isolation:isolate; }
+.rp-avatar-circle{ position:relative; z-index:1; }
+
+/* ===== แต่ง Progress ให้สมูท/แพงขึ้น (ใช้สีตาม tier จาก data-tier) ===== */
+.rp-profile-card{
+  --c1:#ffd166; --c2:#f59e0b;
+}
+.rp-profile-card[data-tier="silver"]   { --c1:#cbd5e1; --c2:#94a3b8; }
+.rp-profile-card[data-tier="gold"]     { --c1:#ffd166; --c2:#f59e0b; }
+.rp-profile-card[data-tier="platinum"] { --c1:#60a5fa; --c2:#38bdf8; }
+
+.rp-progress-fill{
+  background-image:linear-gradient(90deg,var(--c1),var(--c2));
+}
+.rp-progress-line::after{
+  content:""; position:absolute; inset:1px; border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0));
+  pointer-events:none;
+}
