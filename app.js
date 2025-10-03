@@ -220,8 +220,19 @@ async function refreshUserScore(){
       if (typeof j.data.streakDays !== "undefined") window.USER_STREAK = j.data.streakDays;
 
       // อัปเดต UI หลัก
+      // กรณีออนไลน์สำเร็จ
       setPoints(sc);
-      
+      updateStatChips({ /* … */ });
+      localStorage.setItem("lastScore", String(sc));
+      toggleOfflineBanner(false);
+      setRefreshTooltip(new Date(), false);     // ← เพิ่มบรรทัดนี้
+
+      // กรณีแคช/ออฟไลน์ (ทั้ง else และ catch)
+      setPoints(cached);
+      updateStatChips({ /* … */ });
+      toggleOfflineBanner(!navigator.onLine);
+      setRefreshTooltip(new Date(), true);      // ← เพิ่มบรรทัดนี้
+
       // อัปเดตชิปสรุปและชิปเล็กฝั่งซ้าย (ถ้ามี)
       updateStatChips({
         tierName: getTier(sc).name,
@@ -757,6 +768,26 @@ function fmtDT(ts){
   const d = new Date(ts);
   if (isNaN(d)) return String(ts||"");
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function setRefreshTooltip(ts = new Date(), offline = false){
+  const btn = document.getElementById('refreshBtn');
+  if (!btn) return;
+  const d = (ts instanceof Date) ? ts : new Date(ts);
+  const two = n => String(n).padStart(2,'0');
+  const txt = `อัปเดตล่าสุด${offline ? ' (ออฟไลน์แคช)' : ''}: ${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+
+  // อัปเดตทั้ง title และ data-bs-original-title (รองรับ Bootstrap 5)
+  btn.setAttribute('title', txt);
+  btn.setAttribute('data-bs-original-title', txt);
+
+  // สร้าง tooltip ถ้ายังไม่มี แล้วอัปเดตข้อความ
+  const tip = bootstrap.Tooltip.getInstance(btn) || new bootstrap.Tooltip(btn, { placement: 'left', trigger: 'hover focus' });
+  if (typeof tip.setContent === 'function') {
+    tip.setContent({ '.tooltip-inner': txt });   // 5.3+
+  } else {
+    tip.update(); // 5.0–5.2
+  }
 }
 
 function setLastSync(ts, fromCache){
