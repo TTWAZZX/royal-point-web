@@ -796,10 +796,10 @@ list.sort((a, b) => {
   const tb = new Date(b.created_at || b.ts).getTime() || 0;
   const ta = new Date(a.created_at || a.ts).getTime() || 0;
   if (tb !== ta) return tb - ta;
-  // tie-break: ใช้ uuid ถ้ามี (ให้ b ก่อน)
-  const ub = (b.uuid || '').toString();
-  const ua = (a.uuid || '').toString();
-  return ub.localeCompare(ua);
+  // tie-break ด้วย id ถ้ามี
+  const ib = (b.id ?? '').toString();
+  const ia = (a.id ?? '').toString();
+  return ib.localeCompare(ia);
 });
 
 els.historyList.innerHTML = list.length
