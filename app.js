@@ -245,79 +245,99 @@ function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", 
 /* ================= Score / Level / Progress ================= */
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI (เวอร์ชันแก้ ReferenceError + แยก success/offline ชัดเจน)
-async function refreshUserScore(){
-  if (!UID) return;
+// ===== refreshUserScore: ดึงคะแนนให้ครอบจักรวาล + เก็บไว้เทียบก่อน–หลัง =====
+async function refreshUserScore() {
+  const uid = (typeof UID !== 'undefined' && UID) || (typeof CURRENT_UID !== 'undefined' && CURRENT_UID) || window.__UID || '';
+  if (!uid) { console.warn('refreshUserScore: no UID'); return Number(window.__userBalance ?? 0); }
 
-  const timer = setTimeout(() => UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
+  // helper: เลือก balance จากได้ทั้งบนสุด/ซ้อนใน data/obj อื่น ๆ
+  function pickBalance(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const cands = [
+      obj.balance, obj.points, obj.point, obj.score, obj.total_points, obj.totalPoints,
+      obj?.data?.balance, obj?.data?.points, obj?.data?.point, obj?.data?.score, obj?.data?.total_points,
+      obj?.user_points?.balance, obj?.up?.balance, obj?.user?.balance,
+    ];
+    for (const v of cands) {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return n;
+    }
+    // เผื่อ API ส่งเป็น array เช่น [{balance: 123}]
+    const arr = obj?.data || obj?.items || (Array.isArray(obj) ? obj : null);
+    if (Array.isArray(arr) && arr.length) {
+      for (const row of arr) {
+        const n = pickBalance(row);
+        if (n !== null) return n;
+      }
+    }
+    return null;
+  }
 
+  // เอนด์พอยท์ที่ลองไล่ยิง (ตัวไหนตอบก่อน ใช้ตัวนั้น)
+  const qs = `uid=${encodeURIComponent(uid)}`;
+  const endpoints = [
+    `/api/score?${qs}`,
+    `/api/user?${qs}`,
+    `/api/profile?${qs}`,
+    `/api/get-score?${qs}`,
+    `/api/user-points?${qs}`,
+  ];
+
+  let payload = null;
   try {
-    const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
-    const j = await safeJson(r);
-
-    if (j.status === "success" && j.data){
-      const sc = Number(j.data.score || 0);
-
-      // เก็บค่าพิเศษถ้ามี
-      if (typeof j.data.rank !== "undefined")       window.USER_RANK   = j.data.rank;
-      if (typeof j.data.streakDays !== "undefined") window.USER_STREAK = j.data.streakDays;
-
-      // อัปเดต UI หลัก
-      setPoints(sc);
-      updateStatChips({
-        tierName: getTier(sc).name,
-        points: sc,
-        streakDays: window.USER_STREAK,
-        uid: UID
-      });
-      if (typeof updateLeftMiniChips === "function"){
-        updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
-      }
-
-      // แคชคะแนนล่าสุด + อัปเดตชิปสถานะ/ทิปเวลารีเฟรช
-      localStorage.setItem("lastScore", String(sc));
-      toggleOfflineBanner(false);
-      if (typeof setLastSync === "function") setLastSync(Date.now(), false);
-      if (typeof updateNetChip === "function") updateNetChip();
-      setRefreshTooltip(new Date(), false);
-    } else {
-      // โหมดแคช/ออฟไลน์ (กรณี API ไม่ success)
-      const cached = Number(localStorage.getItem("lastScore") || "0");
-      setPoints(cached);
-      updateStatChips({
-        tierName: getTier(cached).name,
-        points: cached,
-        streakDays: window.USER_STREAK,
-        uid: UID
-      });
-      if (typeof updateLeftMiniChips === "function"){
-        updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
-      }
-      toggleOfflineBanner(!navigator.onLine);
-      if (typeof setLastSync === "function") setLastSync(Date.now(), true);
-      if (typeof updateNetChip === "function") updateNetChip();
-      setRefreshTooltip(new Date(), true);
-    }
+    payload = await tryEndpoints(endpoints, {}, { scope: 'inline' });
   } catch (e) {
-    console.error(e);
-    // ล้มเหลว → ใช้คะแนนแคช
-    const cached = Number(localStorage.getItem("lastScore") || "0");
-    setPoints(cached);
-    updateStatChips({
-      tierName: getTier(cached).name,
-      points: cached,
-      streakDays: window.USER_STREAK,
-      uid: UID
-    });
-    if (typeof updateLeftMiniChips === "function"){
-      updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
+    console.error('refreshUserScore: all endpoints failed', e);
+    // โหมดออฟไลน์: ใช้แคชถ้ามี
+    const cached = Number(localStorage.getItem('userBalance') || window.__userBalance || 0);
+    updateScoreUI(cached);
+    return cached;
+  }
+
+  // พยายามหยิบ balance ให้ได้ค่า
+  let balance = pickBalance(payload);
+  if (balance === null) {
+    // กันกรณี API แปลก ๆ
+    const maybeNum = Number(payload);
+    balance = Number.isFinite(maybeNum) ? maybeNum : 0;
+  }
+
+  // เก็บไว้เป็นค่าอ้างอิงให้ redeemCode() เทียบได้
+  window.__userBalance = Number(balance || 0);
+  localStorage.setItem('userBalance', String(window.__userBalance));
+
+  // อัปเดต UI
+  updateScoreUI(window.__userBalance);
+
+  return window.__userBalance;
+
+  // === helper: อัปเดตหน้าจอแบบปลอดภัย (ถ้ามี element ก็อัป) ===
+  function updateScoreUI(val) {
+    const n = Number(val || 0);
+
+    // คะแนนหลัก
+    const ptEl = (window.els && els.points) || document.getElementById('points');
+    if (ptEl) ptEl.textContent = n.toLocaleString();
+
+    // แสดงคู่ XP ถ้ามี (เช่น "608 / 1,200 คะแนน")
+    const xpPair = document.getElementById('xpPair');
+    if (xpPair && typeof window.__tierMax === 'number') {
+      xpPair.textContent = `${n.toLocaleString()} / ${Number(window.__tierMax).toLocaleString()} คะแนน`;
     }
-    toggleOfflineBanner(!navigator.onLine);
-    if (typeof setLastSync === "function") setLastSync(Date.now(), true);
-    if (typeof updateNetChip === "function") updateNetChip();
-    setRefreshTooltip(new Date(), true);
-  } finally {
-    clearTimeout(timer);
-    UiOverlay.hide();
+
+    // แถบ progress ถ้ามี
+    const fill = document.getElementById('progressFill');
+    const bar  = document.getElementById('progressBar');
+    if (fill) {
+      const max = Number(window.__tierMax || 0) || Math.max(n, 1);
+      const pct = Math.max(0, Math.min(100, (n / max) * 100));
+      fill.style.width = `${pct}%`;
+      // ป้องกันกระตุก: ถ้ายังไม่ได้โชว์ให้บังคับ reflow เบา ๆ
+      if (bar) bar.offsetHeight; // noop reflow
+    }
+
+    // เก็บลง state เผื่อใช้ที่อื่น
+    window.__lastScoreRefreshAt = Date.now();
   }
 }
 
@@ -723,34 +743,101 @@ async function redeemReward(reward, btn){
 }
 
 /* ================= Redeem code / Scanner ================= */
-async function redeemCode(code, type){
-  UiOverlay.show('กำลังตรวจสอบคูปอง…');
+// ใช้แทนฟังก์ชันเดิมทั้งหมด
+async function redeemCode(code, source = 'QR'){
+  if(!code) { toastErr('ไม่มีรหัส'); return; }
+
+  // 1) เก็บคะแนนก่อนแลก
+  const before = Number((window.__userBalance ?? 0));
+
+  // ถ้าเรามีฟังก์ชันดึงคะแนนไว้แล้ว ให้ sync ให้ชัวร์สักรอบ
+  // (ถ้ากังวลเรื่องโหลดบ่อย สามารถคอมเมนต์บรรทัดนี้ได้)
+  try { await refreshUserScore(); } catch {}
+
+  const balanceBefore = Number((window.__userBalance ?? before) || 0);
+
+  // 2) ยิงไปยัง endpoint ต่าง ๆ (เลือกตัวที่ตอบ)
+  let resp;
   try{
-    const r = await fetch(API_REDEEM, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ uid: UID, code, type })
-    });
-    const j = await safeJson(r);
-    if(j.status === "success"){
-      navigator.vibrate?.(12);
-      UiOverlay.hide();               // ซ่อนก่อนขึ้นข้อความสำเร็จ
-      await refreshUserScore();
-      stopScanner();
-      if(els.secretInput) els.secretInput.value = "";
-      if(els.modal){
-        const m = bootstrap.Modal.getInstance(els.modal); m && m.hide();
-      }
-      toastOk(`รับคะแนนแล้ว +${j.point || 0}`);
-    }else{
-      UiOverlay.hide();
-      toastErr(j.message || "คูปองไม่ถูกต้องหรือถูกใช้ไปแล้ว");
-    }
+    resp = await tryEndpoints(
+      [
+        '/api/redeem',               // หลัก
+        '/api/redeem-code',          // ชื่ออื่นที่อาจใช้
+        '/api/coupon/redeem',        // อีกชื่อ
+        '/api/claim-coupon'          // อีกชื่อ
+      ],
+      {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ code, source })
+      },
+      { scope: 'inline' }
+    );
   }catch(e){
-    UiOverlay.hide();
-    console.error(e);
-    toastErr("ไม่สามารถยืนยันรับคะแนนได้");
+    console.error('redeem error', e);
+    // แยกเคสคูปองถูกใช้แล้วให้ข้อความชัดเจนหน่อย ถ้าแบ็กเอนด์ส่งสถานะมา
+    const msg = (e?.message || '').toLowerCase();
+    if (msg.includes('used') || msg.includes('already')) {
+      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+    } else {
+      toastErr('แลกคูปองไม่สำเร็จ');
+    }
+    return;
   }
+
+  // 3) ดึงจำนวนคะแนนที่ได้จาก response ให้ครอบจักรวาล
+  function pickAmount(obj){
+    if (!obj || typeof obj !== 'object') return null;
+    const cands = [
+      obj.amount, obj.delta, obj.added,
+      obj.point, obj.points, obj.value, obj.score, obj.increment,
+      obj?.data?.amount, obj?.data?.delta, obj?.data?.point, obj?.data?.points
+    ];
+    for (const n of cands){
+      const v = Number(n);
+      if (!Number.isNaN(v)) return v;
+    }
+    return null;
+  }
+
+  let added = pickAmount(resp);
+
+  // 4) ถ้า API ไม่บอกจำนวนมา → ใช้ “ก่อน–หลัง” แทน
+  let balanceAfter = balanceBefore;
+  try {
+    await refreshUserScore(); // ดึงยอดหลัง
+    balanceAfter = Number(window.__userBalance ?? balanceBefore);
+  } catch {}
+
+  if (added === null) {
+    added = balanceAfter - balanceBefore;
+  }
+
+  // ปกป้องเคสที่ diff = 0 เพราะคูปองใช้แล้ว แต่ API บอก success
+  // ถ้ามีฟิลด์สถานะก็เช็คเพิ่มได้
+  if (added === 0) {
+    // ลองดู flag จาก resp ว่าใช้แล้วหรือยัง
+    const statusStr = (resp?.status || resp?.data?.status || '').toString().toLowerCase();
+    if (statusStr.includes('used')) {
+      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+      return;
+    }
+  }
+
+  // 5) แจ้งผลสวย ๆ
+  if (added > 0) {
+    toastOk(`สำเร็จ +${added} คะแนน`);
+  } else if (added < 0) {
+    // เผื่อกรณีเป็นคูปองลบ/ปรับลด (ไม่น่ามี แต่กันพลาด)
+    toastOk(`สำเร็จ ${added} คะแนน`);
+  } else {
+    // 0 จริง ๆ (อาจเพราะคูปองหมดอายุ/ใช้แล้ว/ไม่พบ ฯลฯ)
+    toastErr('คูปองไม่ถูกเพิ่มคะแนน');
+  }
+
+  // 6) อัปเดต UI ให้ตรง
+  try { await refreshUserScore(); } catch {}
+  try { await openHistory(); } catch {}
 }
 
 async function startScanner(){
