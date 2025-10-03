@@ -27,23 +27,22 @@
 
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-  <!-- ปุ่มรีเฟรชมุมขวาบน -->
+  <!-- ปุ่มรีเฟรชมุมขวาบน (เล็ก กระชับ) -->
   <button id="refreshBtn" class="btn btn-light btn-icon rp-card-refresh" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
     <i class="fa-solid fa-rotate"></i>
   </button>
 
-  <!-- หัวการ์ด: รูป + ชื่อ + Badge -->
-  <div class="rp-head d-flex align-items-center gap-3">
+  <!-- หัวการ์ด: รูป + ชื่อ + Badge ระดับ -->
+  <div class="rp-top d-flex align-items-center gap-3">
     <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
       <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-      <!-- overlay badge เล็ก -->
+      <!-- overlay badge (อยู่หน้ารูป) -->
       <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-gem"></i></span>
     </div>
 
-    <div class="rp-info flex-grow-1">
+    <div class="rp-title flex-grow-1">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <h1 id="username" class="rp-username mb-0">—</h1>
-        <!-- Badge ระดับ (ที่เดียว) -->
         <span id="tierPill" class="rp-tier-pill rp-tier-silver">
           <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
         </span>
@@ -52,39 +51,29 @@
   </div>
 
   <!-- คะแนนสะสม (ใหญ่/มี label) -->
-<div class="rp-score-block mt-2">
-  <div class="rp-score-label">คะแนนสะสม</div>
-  <div class="rp-point-value">
-    <span id="points">0</span><span class="rp-point-unit"> pt</span>
+  <div class="rp-score-block mt-3">
+    <div class="rp-score-label">คะแนนสะสม</div>
+    <div class="rp-point-value">
+      <span id="points">0</span><span class="rp-point-unit"> pt</span>
+    </div>
   </div>
-</div>
 
-<!-- Progress (ยาวเต็มกรอบ) + ตัวเลขคู่ตรงกลาง -->
-<div class="xp-wrap mt-2">
-  <div id="progressBar" class="rp-progress-line prog-silver">
-    <div id="progressFill" class="rp-progress-fill"></div>
+  <!-- Progress bar (ยาวเต็ม) + ตัวเลขคู่กึ่งกลาง -->
+  <div class="xp-wrap mt-2">
+    <div id="progressBar" class="rp-progress-line prog-silver">
+      <div id="progressFill" class="rp-progress-fill"></div>
+    </div>
+    <div class="text-center small rp-xp-pair">
+      <span id="xpPair">0 / 0 คะแนน</span>
+    </div>
   </div>
-  <div class="d-flex justify-content-center small rp-xp-pair">
-    <span id="xpPair">0 / 0 คะแนน</span>
-  </div>
-</div>
 
-<!-- สถานะ/แท็กสั้น ๆ — ย้ายมาไว้ใต้ Progress และจัดกลาง -->
-<div class="rp-status-center mt-1">
-  <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
-  <span id="tierStatus" class="small text-secondary">—</span>
-</div>
+  <!-- สถานะสั้น ๆ ใต้บาร์ (กึ่งกลาง) -->
+  <div class="rp-status-center mt-1">
+    <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+    <span id="tierStatus" class="small text-secondary">—</span>
+  </div>
 </section>
-
-  <!-- Actions (icons only, compact & centered) -->
-  <section class="rp-actions-wide d-grid gap-2 mb-3">
-    <button id="primaryAction" class="btn rp-primary act-btn" data-bs-toggle="modal" data-bs-target="#scoreModal">
-  <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
-</button>
-    <button id="historyBtn" class="btn btn-outline-secondary act-btn">
-      <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
-    </button>
-  </section>
 
   <!-- ===== Ads Carousel ===== -->
   <section class="rp-glass rp-card p-0 mb-3 hover-lift">
