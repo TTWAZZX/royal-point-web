@@ -2821,3 +2821,68 @@ body.ready #topbar{width:100%;opacity:0}
   .mini-chip.lastsync{ font-size:.62rem; padding:.12rem .48rem; }
   .btn-refresh i{ font-size:11px; }
 }
+
+/* === Right header row: chip + refresh (tiny) === */
+.rp-rightrow{ display:flex; align-items:center; gap:4px; }
+
+/* ขนาดบนเดสก์ท็อป */
+:root{
+  --rp-chip-h: 26px;          /* ความสูงชิปเวลา */
+  --rp-refresh-hit: 24px;     /* ขนาดพื้นที่แตะจริง */
+  --rp-refresh-visual: 12px;  /* วงปุ่มที่เห็นจริง (จิ๋ว) */
+}
+
+/* ชิปเวลา */
+.mini-chip.lastsync{
+  height: var(--rp-chip-h);
+  display:inline-flex; align-items:center;
+  font-size:.62rem; line-height:1;
+  padding:.12rem .48rem;
+}
+
+/* ปุ่มรีเฟรช: “หน้าตาเล็ก–แตะง่าย” */
+.btn-refresh{
+  position:relative;
+  display:inline-grid; place-items:center;
+  border:none; background:transparent;
+  box-shadow:none;
+}
+.btn-refresh--sm{
+  width: var(--rp-refresh-hit);
+  height: var(--rp-refresh-hit);
+  border-radius: 12px;           /* ฮิตบ็อกซ์โค้งนุ่ม แตะง่าย */
+}
+
+/* วาดวงปุ่มเล็กอยู่กลางฮิตบ็อกซ์ */
+.btn-refresh--sm::before{
+  content:"";
+  position:absolute;
+  width: var(--rp-refresh-visual);
+  height: var(--rp-refresh-visual);
+  inset: calc( (var(--rp-refresh-hit) - var(--rp-refresh-visual)) / 2 );
+  border-radius: 8px;
+  background: rgba(255,255,255,.85);
+  border: 1px solid rgba(0,0,0,.06);
+  box-shadow: 0 6px 16px rgba(2,6,23,.08);
+  backdrop-filter: blur(8px);
+}
+
+/* ไอคอนหมุนอยู่กลางวงเล็ก */
+.btn-refresh i{
+  position:absolute; left:50%; top:50%;
+  transform: translate(-50%,-50%);
+  font-size: 10px;
+}
+.btn-refresh.spin i{ animation: rp-spin .9s linear; }
+@keyframes rp-spin{ to{ transform: translate(-50%,-50%) rotate(1turn); } }
+
+/* --- มือถือ: มินิสุด ๆ แต่ยังแตะ 32px --- */
+@media (pointer:coarse){
+  :root{
+    --rp-chip-h: 24px;
+    --rp-refresh-hit: 32px;      /* แตะง่าย */
+    --rp-refresh-visual: 14px;   /* หน้าตาเล็กมาก */
+  }
+  .mini-chip.lastsync{ font-size:.60rem; padding:.10rem .42rem; }
+  .btn-refresh i{ font-size: 11px; }
+}
