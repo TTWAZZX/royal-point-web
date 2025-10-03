@@ -35,12 +35,16 @@ module.exports = async (req, res) => {
     }
 
     // 2) ดึงประวัติ — ตัดคอลัมน์ 'text' ออกเพื่อกันชนคำสงวน
-    const { data, error } = await supabase
-      .from('point_transactions')
-      .select('amount, code, type, created_by, created_at') // << no "text"
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // 2) ดึงประวัติ — จัดเรียงล่าสุดอยู่ก่อน
+   const { data, error } = await supabase
+     .from('point_transactions')
+     .select('amount, code, type, created_by, created_at')
+     .eq('user_id', user.id)
+     .order('created_at', { ascending: false })   // << ล่าสุดก่อน
+  // ถ้ามีคอลัมน์ไอดี (เช่น 'id' หรือ 'uuid') อยากผูกอันดับเสถียร:
+  // .order('id', { ascending: false })
+  .range(offset, offset + limit - 1);
+
 
     if (error) {
       // เพื่อดีบั๊กง่าย ให้ส่งรายละเอียดแบบ non-500 (ไม่ทำให้ modal แดง)

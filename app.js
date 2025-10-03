@@ -791,6 +791,8 @@ async function openHistory(){
     const list = Array.isArray(j.items) ? j.items :
                  (Array.isArray(j.data)  ? j.data  : []);
 
+    list.sort((a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts));
+                 
     els.historyList.innerHTML = list.length
       ? list.map(i=>{
           const ts = fmtDT(i.created_at || i.ts);                 // รองรับทั้ง created_at/ts
