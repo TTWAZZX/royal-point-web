@@ -797,9 +797,9 @@ list.sort((a, b) => {
   const ta = new Date(a.created_at || a.ts).getTime() || 0;
   if (tb !== ta) return tb - ta;
   // tie-break ด้วย id ถ้ามี
-  const ib = (b.id ?? '').toString();
-  const ia = (a.id ?? '').toString();
-  return ib.localeCompare(ia);
+  const ib = Number(b.id ?? 0);
+  const ia = Number(a.id ?? 0);
+  return ib - ia;
 });
 
 els.historyList.innerHTML = list.length
