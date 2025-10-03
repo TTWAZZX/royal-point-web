@@ -270,6 +270,7 @@ function setPoints(score){
   const tier = getTier(score);
 
   applyPremiumTheme(tier.key);  // ← ย้อมธีมการ์ดตามระดับ
+  spawnAvatarSparkles();       // ให้ประกายลอยเล็ก ๆ รอบโปรไฟล์
   bumpScoreFx();                // ← เด้งตัวเลขทุกครั้ง
 
   // ฟองคะแนนลอยขึ้น
@@ -930,5 +931,83 @@ function showScoreDelta(delta){
     btn.classList.add('spin');
     navigator.vibrate?.(8);
     setTimeout(()=>btn.classList.remove('spin'), 900);
+  });
+})();
+
+/* ===== Premium Plus – JS helpers ===== */
+
+/** ย้อมธีมการ์ดตาม tier (มีใน pack ก่อนหน้าแล้วก็โอเค) */
+function applyPremiumTheme(tierKey){
+  const card = document.querySelector('.rp-profile-card');
+  if (card) card.setAttribute('data-tier', tierKey);
+}
+
+/** 3D tilt บนเดสก์ท็อป */
+(function enableCardTilt(){
+  const card = document.querySelector('.rp-profile-card');
+  if (!card || 'ontouchstart' in window) return; // มือถือไม่ใช้
+  card.classList.add('rp-tilt');
+  const max = 8; // องศาสูงสุด
+  let raf;
+  function onMove(e){
+    const rect = card.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(()=>{
+      card.style.transform = `rotateX(${(-y*max).toFixed(2)}deg) rotateY(${(x*max).toFixed(2)}deg)`;
+      card.dataset.tilt = "1";
+    });
+  }
+  function reset(){ card.style.transform=''; card.dataset.tilt="0"; }
+  card.addEventListener('mousemove', onMove);
+  card.addEventListener('mouseleave', reset);
+})();
+
+/** สร้าง sparkles 1 ชุดรอบ avatar (ใช้สีตาม tier) */
+function spawnAvatarSparkles(){
+  const wrap = document.querySelector('.rp-avatar-wrap');
+  const card = document.querySelector('.rp-profile-card');
+  if (!wrap || !card) return;
+  const n = 6;
+  for (let i=0;i<n;i++){
+    const dot = document.createElement('span');
+    dot.className = 'rp-sparkle';
+    const size = 5 + Math.random()*4;
+    const left = -6 + Math.random()*72;   // วางแถว ๆ รอบรูป
+    const top  = 40 + Math.random()*10;
+    dot.style.cssText = `
+      left:${left}px; top:${top}px; width:${size}px; height:${size}px;
+      background: radial-gradient(circle at 30% 30%, var(--spA), var(--spB));
+      animation:sparkleFloat ${900+Math.random()*600}ms ease forwards;
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,.18));
+    `;
+    wrap.appendChild(dot);
+    setTimeout(()=>dot.remove(), 1200);
+  }
+}
+
+/** Tooltip บน progress: แตะ/คลิกเพื่อโชว์ % และแต้มที่ต้องใช้ */
+(function wireXpTooltip(){
+  const bar = document.getElementById('progressBar');
+  if (!bar) return;
+  let tip;
+  function show(msg){
+    hide();
+    tip = document.createElement('div');
+    tip.className = 'rp-xp-tip';
+    tip.textContent = msg;
+    bar.style.position='relative';
+    bar.appendChild(tip);
+    setTimeout(hide, 1400);
+  }
+  function hide(){ tip && tip.remove(); tip=null; }
+  bar.addEventListener('click', ()=>{
+    const sc = Number(document.getElementById('points')?.textContent || 0);
+    const t  = getTier(sc);
+    if (t.next === Infinity){ show('ครบแล้ว • Max Level ✨'); return; }
+    const need = Math.max(0, t.next - sc);
+    const pct = Math.min(100, Math.round(((sc - t.min)/(t.next - t.min))*100));
+    show(`${pct}% • ขาดอีก ${need.toLocaleString()} คะแนน`);
   });
 })();

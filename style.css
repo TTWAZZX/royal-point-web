@@ -2630,3 +2630,51 @@ body.ready #topbar{width:100%;opacity:0}
   background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0));
   pointer-events:none;
 }
+
+/* ===== Premium Plus Pack (no HTML changes) ===== */
+
+/* 1) Halo หลังภาพ และเหรียญลอยหน้ารูปให้ชัด */
+.rp-avatar-wrap{ overflow:visible !important; isolation:isolate; }
+.rp-avatar-wrap::before{
+  content:""; position:absolute; inset:-12px; z-index:0; border-radius:50%;
+  background:radial-gradient(closest-side, rgba(255,255,255,.0), rgba(255,255,255,.15) 55%, transparent 70%),
+             radial-gradient(60% 60% at 50% 60%, var(--c1, #ffd166), transparent 70%);
+  filter:blur(10px); opacity:.7;
+}
+.rp-tier-dot{
+  position:absolute; right:-8px; bottom:-6px; z-index:3;
+  width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  color:#7c4a00; background:radial-gradient(closest-side,#ffe08a,#ffcd57);
+  border:1px solid rgba(245,158,11,.65); outline:2px solid #fff;
+  box-shadow: 0 10px 20px rgba(0,0,0,.18), inset 0 2px 0 rgba(255,255,255,.85), inset 0 -3px 8px rgba(124,74,0,.18);
+}
+
+/* 2) Sparkles รอบ avatar */
+.rp-sparkle{ position:absolute; z-index:2; width:6px; height:6px; border-radius:50%; pointer-events:none; }
+@keyframes sparkleFloat { 0%{transform:translateY(0) scale(.9); opacity:0}
+  15%{opacity:1} 100%{transform:translateY(-22px) scale(1.05); opacity:0}}
+/* โทนสีจาก tier */
+.rp-profile-card{ --c1:#ffd166; --c2:#f59e0b; --spA:rgba(255,209,102,.95); --spB:rgba(245,158,11,.9); }
+.rp-profile-card[data-tier="silver"]   { --c1:#cbd5e1; --c2:#94a3b8; --spA:rgba(203,213,225,.95); --spB:rgba(148,163,184,.9); }
+.rp-profile-card[data-tier="platinum"] { --c1:#60a5fa; --c2:#38bdf8; --spA:rgba(96,165,250,.95);  --spB:rgba(56,189,248,.9); }
+
+/* 3) การ์ด 3D tilt (เดสก์ท็อปเท่านั้น) */
+.rp-profile-card.rp-tilt{
+  transform-style:preserve-3d; transition:transform .18s ease, box-shadow .18s ease;
+}
+.rp-profile-card.rp-tilt[data-tilt="1"]{ box-shadow:0 18px 42px rgba(2,6,23,.08); }
+
+/* 4) Tooltip สำหรับ progress */
+.rp-xp-tip{
+  position:absolute; left:50%; transform:translate(-50%,-8px);
+  padding:.28rem .55rem; border-radius:8px; font-weight:800; font-size:.72rem;
+  color:#0f172a; background:#fff; border:1px solid rgba(148,163,184,.35);
+  box-shadow:0 10px 20px rgba(2,6,23,.08); white-space:nowrap; pointer-events:none;
+}
+.rp-xp-tip::after{ content:""; position:absolute; left:50%; bottom:-6px; transform:translateX(-50%);
+  border:6px solid transparent; border-top-color:#fff; }
+
+/* respect user setting */
+@media (prefers-reduced-motion:reduce){
+  .rp-tier-dot::after, .rp-tier-pill::after, .rp-progress-fill::after{ animation:none !important; }
+}
