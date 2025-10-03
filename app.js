@@ -202,38 +202,25 @@ function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", 
 
 /* ================= Score / Level / Progress ================= */
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI
+// ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI (เวอร์ชันแก้ ReferenceError + แยก success/offline ชัดเจน)
 async function refreshUserScore(){
   if (!UID) return;
 
-  // แสดง overlay ถ้าช้าเกิน 300ms เพื่อลดการกะพริบ
   const timer = setTimeout(() => UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
 
-  try{
+  try {
     const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
     const j = await safeJson(r);
 
     if (j.status === "success" && j.data){
       const sc = Number(j.data.score || 0);
 
-      // เก็บ rank / streak ถ้ามีจาก API
+      // เก็บค่าพิเศษถ้ามี
       if (typeof j.data.rank !== "undefined")       window.USER_RANK   = j.data.rank;
       if (typeof j.data.streakDays !== "undefined") window.USER_STREAK = j.data.streakDays;
 
       // อัปเดต UI หลัก
-      // กรณีออนไลน์สำเร็จ
       setPoints(sc);
-      updateStatChips({ /* … */ });
-      localStorage.setItem("lastScore", String(sc));
-      toggleOfflineBanner(false);
-      setRefreshTooltip(new Date(), false);     // ← เพิ่มบรรทัดนี้
-
-      // กรณีแคช/ออฟไลน์ (ทั้ง else และ catch)
-      setPoints(cached);
-      updateStatChips({ /* … */ });
-      toggleOfflineBanner(!navigator.onLine);
-      setRefreshTooltip(new Date(), true);      // ← เพิ่มบรรทัดนี้
-
-      // อัปเดตชิปสรุปและชิปเล็กฝั่งซ้าย (ถ้ามี)
       updateStatChips({
         tierName: getTier(sc).name,
         points: sc,
@@ -244,14 +231,14 @@ async function refreshUserScore(){
         updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
       }
 
-      // แคชคะแนนล่าสุด + สถานะเน็ต/เวลาอัปเดต
+      // แคชคะแนนล่าสุด + อัปเดตชิปสถานะ/ทิปเวลารีเฟรช
       localStorage.setItem("lastScore", String(sc));
       toggleOfflineBanner(false);
       if (typeof setLastSync === "function") setLastSync(Date.now(), false);
       if (typeof updateNetChip === "function") updateNetChip();
-
+      setRefreshTooltip(new Date(), false);
     } else {
-      // โหมดแคช/ออฟไลน์
+      // โหมดแคช/ออฟไลน์ (กรณี API ไม่ success)
       const cached = Number(localStorage.getItem("lastScore") || "0");
       setPoints(cached);
       updateStatChips({
@@ -266,12 +253,11 @@ async function refreshUserScore(){
       toggleOfflineBanner(!navigator.onLine);
       if (typeof setLastSync === "function") setLastSync(Date.now(), true);
       if (typeof updateNetChip === "function") updateNetChip();
+      setRefreshTooltip(new Date(), true);
     }
-
-  }catch(e){
+  } catch (e) {
     console.error(e);
-
-    // ล้มเหลว → ใช้คะแนนแคช + โชว์แบนเนอร์ถ้าออฟไลน์
+    // ล้มเหลว → ใช้คะแนนแคช
     const cached = Number(localStorage.getItem("lastScore") || "0");
     setPoints(cached);
     updateStatChips({
@@ -286,8 +272,8 @@ async function refreshUserScore(){
     toggleOfflineBanner(!navigator.onLine);
     if (typeof setLastSync === "function") setLastSync(Date.now(), true);
     if (typeof updateNetChip === "function") updateNetChip();
-
-  }finally{
+    setRefreshTooltip(new Date(), true);
+  } finally {
     clearTimeout(timer);
     UiOverlay.hide();
   }
@@ -780,6 +766,7 @@ async function stopScanner(){
 
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
+/* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
   if (!UID) return;
 
@@ -794,21 +781,28 @@ async function openHistory(){
     const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
     const j = await safeJson(r);
     UiOverlay.hide();
+
     if (j.status !== "success") {
       els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
       return;
     }
-    const list = j.data || [];
+
+    // API ตัวใหม่ส่ง items (ไม่ใช่ data) — รองรับสองแบบเพื่อความเข้ากันได้
+    const list = Array.isArray(j.items) ? j.items :
+                 (Array.isArray(j.data)  ? j.data  : []);
+
     els.historyList.innerHTML = list.length
       ? list.map(i=>{
-          const ts = fmtDT(i.ts);
-          const p  = Number(i.point||0);
-          const sign = p>=0?"+":"";
-          const color = p>=0?"#16a34a":"#dc2626";
+          const ts = fmtDT(i.created_at || i.ts);                 // รองรับทั้ง created_at/ts
+          const p  = Number((i.amount ?? i.point) || 0);          // รองรับทั้ง amount/point
+          const sign  = p >= 0 ? "+" : "";
+          const color = p >= 0 ? "#16a34a" : "#dc2626";
+          const type  = i.type || "—";
+          const code  = i.code || "";
           return `<div class="list-group-item d-flex justify-content-between align-items-center">
                     <div>
-                      <div class="fw-bold">${escapeHtml(i.type||"—")}</div>
-                      <div class="small text-muted">${escapeHtml(i.code||"")}</div>
+                      <div class="fw-bold">${escapeHtml(type)}</div>
+                      <div class="small text-muted">${escapeHtml(code)}</div>
                     </div>
                     <div class="text-end">
                       <div style="color:${color};font-weight:800">${sign}${p}</div>

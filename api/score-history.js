@@ -29,7 +29,13 @@ module.exports = async (req, res) => {
       .range(offset, offset + limit - 1)
     if (error) return res.status(500).json({ status:'error', message:'db_error' })
 
-    return res.status(200).json({ status:'success', items: data ?? [], nextOffset: offset + (data?.length || 0) })
+    // /api/score-history.js (ยืนยันรูปแบบให้ UI อ่านได้)
+  return res.status(200).json({
+    status: 'success',
+    items: data ?? [],
+    nextOffset: offset + (data?.length || 0)
+  });
+
   } catch (e) {
     return res.status(500).json({ status:'error', message:String(e) })
   }
