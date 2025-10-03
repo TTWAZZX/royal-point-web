@@ -2886,3 +2886,61 @@ body.ready #topbar{width:100%;opacity:0}
   .mini-chip.lastsync{ font-size:.60rem; padding:.10rem .42rem; }
   .btn-refresh i{ font-size: 11px; }
 }
+
+/* ---------- Spacing scale & typography ---------- */
+:root{
+  --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px;
+}
+.rp-profile-card{ padding: var(--sp-6) var(--sp-6) var(--sp-4); }
+.rp-username{ margin: 0 0 var(--sp-2); }
+.rp-point-value{ margin: var(--sp-3) 0 var(--sp-2); font-weight: 800; font-size: clamp(22px, 6vw, 34px); }
+.rp-point-unit{ font-weight: 600; opacity:.9; }
+
+/* ---------- Card shadow / glow (ลด banding มือถือ) ---------- */
+.rp-profile-card{
+  box-shadow: 0 8px 24px rgba(2,6,23,.06), 0 0 0 1px rgba(2,6,23,.04) inset;
+}
+
+/* ---------- Overlay badge บนรูป (อยู่หน้ารูปชัด ๆ) ---------- */
+#tierMedal, .rp-overlay-badge{
+  position:absolute; right:-2px; bottom:-2px; z-index:4;
+  transform: translateZ(0);
+  outline: 2px solid rgba(255,255,255,.65);
+  box-shadow: 0 6px 16px rgba(2,6,23,.14);
+}
+
+/* ---------- Progress bar: เคอร์เซอร์ & ripple ---------- */
+#progressBar{ cursor:pointer; position: relative; overflow: hidden; }
+.rp-xp-ripple{
+  position:absolute; width:12px; height:12px; border-radius:999px;
+  background: rgba(255,255,255,.7);
+  transform: translate(-50%,-50%) scale(1);
+  animation: rpRipple .6s ease-out forwards;
+  pointer-events:none;
+}
+@keyframes rpRipple{
+  to{ opacity:0; transform: translate(-50%,-50%) scale(8); }
+}
+
+/* ---------- Reduced motion (ผู้ใช้ขอไม่ให้เคลื่อนไหว) ---------- */
+@media (prefers-reduced-motion: reduce){
+  .rp-tilt, .bump, .rp-score-floater{ animation: none !important; transition:none !important; }
+}
+
+/* ---------- Dark mode คร่าว ๆ ---------- */
+@media (prefers-color-scheme: dark){
+  body{ background:#0b1220; }
+  .rp-profile-card{ background: #0f172a; color:#e5e7eb; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+  .mini-chip, .btn-refresh--sm::before{ background: rgba(255,255,255,.08); border-color:rgba(255,255,255,.12); }
+  #progressBar{ background: rgba(255,255,255,.08); }
+}
+
+/* ปกติเล็กลง */
+.btn-refresh.btn-icon { width: 30px; height: 30px; }
+.btn-refresh i { font-size: 12px; line-height: 1; }
+
+/* มือถือ mini สุด ๆ */
+@media (max-width: 480px){
+  .btn-refresh.btn-icon { width: 26px; height: 26px; }
+  .btn-refresh i { font-size: 11px; }
+}

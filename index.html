@@ -33,14 +33,13 @@
   <!-- Right: refresh + meta chips -->
 <div class="rp-rightcol">
   <div class="rp-rightrow">
-    <span id="lastSyncChip" class="mini-chip lastsync d-none">
-      <i class="fa-regular fa-clock"></i> อัปเดตแล้ว • —
-    </span>
-
-    <button id="refreshBtn" class="btn btn-refresh btn-refresh--sm" aria-label="รีเฟรช">
-      <i class="fa-solid fa-rotate"></i>
-    </button>
-  </div>
+  <span id="lastSyncChip" class="rp-chip d-none">
+    <i class="fa-regular fa-clock"></i> —
+  </span>
+  <button id="refreshBtn" class="btn btn-outline-secondary btn-icon btn-refresh" title="รีเฟรช">
+    <i class="fa-solid fa-rotate"></i>
+  </button>
+</div>
 </div>
 
   <!-- หัวการ์ด: รูป + ชื่อ + Badge (ซ้าย) -->
@@ -48,9 +47,19 @@
   <!-- ซ้าย: Avatar + mini chips ใต้รูป -->
   <div class="rp-left-col">
     <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
-      <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-      <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
-    </div>
+  <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
+
+  <!-- Overlay badge ลอย "หน้ารูป" -->
+  <div id="tierMedal" class="rp-overlay-badge" title="Level badge">
+    <!-- จะใส่ไอคอนก็ได้ เช่น -->
+    <!-- <i class="fa-solid fa-gem"></i> -->
+  </div>
+
+  <!-- dot เดิม เก็บไว้ได้ -->
+  <span id="tierDot" class="rp-tier-dot" aria-hidden="true">
+    <i class="fa-solid fa-star"></i>
+  </span>
+</div>
 
     <!-- Mini chips (อัปเดตด้วย JS; ซ่อนไว้ก่อน) -->
     <div class="rp-mini-stack" id="leftMiniStack">
@@ -69,12 +78,12 @@
 </div>
 
   <!-- บรรทัดถัดไป: คะแนนสะสม (ตัวใหญ่ / ชิดซ้าย) -->
-  <div class="rp-score-stack mt-2">
-    <div class="rp-score-label">คะแนนสะสม</div>
-    <div class="rp-point-value">
-      <span id="points">0</span><span class="rp-point-unit"> pt</span>
-    </div>
+<div class="rp-score-stack mt-2">
+  <div class="rp-score-label" id="scoreLabel">คะแนนสะสม</div>
+  <div class="rp-point-value" aria-live="polite" aria-atomic="true" aria-describedby="scoreLabel">
+    <span id="points">0</span><span class="rp-point-unit"> pt</span>
   </div>
+</div>
 
   <!-- บรรทัดถัดไป: Progress เต็มกว้าง + ตัวเลขคู่กึ่งกลาง -->
   <div class="rp-progress-area mt-2">

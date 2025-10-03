@@ -749,6 +749,18 @@ function fmtDT(ts){
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function setLastSync(ts, fromCache){
+  const chip = document.getElementById('lastSyncChip');
+  if (!chip) return;
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2,'0');
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  chip.classList.remove('d-none');
+  chip.innerHTML = fromCache
+    ? `<i class="fa-solid fa-cloud"></i> แคช • ${stamp}`
+    : `<i class="fa-regular fa-clock"></i> อัปเดตแล้ว • ${stamp}`;
+}
+
 /* Level Track (ถ้าคุณมี element เหล่านี้ในหน้า ให้กำกับความยาวตามสัดส่วนแต้ม) */
 function updateLevelTrack(score){
   if (!els.levelTrack || !els.trackFill) return;
@@ -1074,5 +1086,64 @@ updateNetChip(); // ครั้งแรก
     navigator.vibrate?.(8);
     setTimeout(()=>btn.classList.remove('spin'), 900);
   });
+})();
+
+/* ---------- A11y: live regions ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  try{
+    els.points?.setAttribute('aria-live','polite');
+    document.getElementById('lastSyncChip')?.setAttribute('aria-live','polite');
+  }catch{}
+});
+
+/* ---------- Reduced motion guard ---------- */
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const maybe = (fn)=> REDUCE_MOTION ? ()=>{} : fn;
+
+// หุ้มเอฟเฟกต์ที่เคลื่อนไหวแรง ๆ
+const _bumpScoreFx = bumpScoreFx;      window.bumpScoreFx      = maybe(_bumpScoreFx);
+const _sparkles    = spawnAvatarSparkles; window.spawnAvatarSparkles = maybe(_sparkles);
+// ถ้ามี tilt
+try{
+  const tiltOn = document.querySelector('.rp-profile-card')?.classList.contains('rp-tilt');
+  if (REDUCE_MOTION && tiltOn) document.querySelector('.rp-profile-card').classList.remove('rp-tilt');
+}catch{}
+
+/* ---------- setLastSync : แยกไอคอน Online/Cache ---------- */
+function setLastSync(ts, fromCache){
+  const chip = document.getElementById('lastSyncChip');
+  if (!chip) return;
+  const d = new Date(ts);
+  const pad = n => String(n).padStart(2,'0');
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  chip.classList.remove('d-none');
+  chip.innerHTML = fromCache
+    ? `<i class="fa-solid fa-cloud"></i> แคช • ${stamp}`
+    : `<i class="fa-regular fa-clock"></i> อัปเดตแล้ว • ${stamp}`;
+}
+
+/* ---------- Progress ripple + tooltip (เติมบน click) ---------- */
+(function enhanceProgress(){
+  const bar = document.getElementById('progressBar');
+  if (!bar) return;
+  bar.addEventListener('click', (e)=>{
+    // ripple
+    const r = bar.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const dot = document.createElement('span');
+    dot.className = 'rp-xp-ripple';
+    dot.style.left = x + 'px'; dot.style.top = y + 'px';
+    bar.appendChild(dot);
+    setTimeout(()=>dot.remove(), 650);
+  }, {passive:true});
+})();
+
+/* ---------- Code-health: ปิดเสียง log จาก rewards ---------- */
+(function calmRewardsLogs(){
+  const oldInfo = console.info;
+  console.info = function(...args){
+    if (String(args[0]||'').startsWith('[rewards]')) return; // กลบเฉพาะบรรทัด rewards
+    oldInfo.apply(console, args);
+  };
 })();
 
