@@ -2944,3 +2944,75 @@ body.ready #topbar{width:100%;opacity:0}
   .btn-refresh.btn-icon { width: 26px; height: 26px; }
   .btn-refresh i { font-size: 11px; }
 }
+
+.btn-icon { position: relative; }
+.btn-icon::after{
+  content:""; position:absolute; inset:-8px; /* ขยายขอบเขตคลิก */
+}
+
+@supports(padding: env(safe-area-inset-bottom)){
+  .mini-cta { position:fixed; left:12px; right:12px; bottom:calc(12px + env(safe-area-inset-bottom)); }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .bump, .spin, .sparkle, .xp-fill { animation: none !important; transition: none !important; }
+}
+
+.rp-point-value span#points{ font-size: clamp(28px, 6vw, 48px); }
+
+.lastsync.loading i{ animation: pulse 1s infinite; }
+@keyframes pulse{ 50%{ opacity:.35 } }
+
+body{ padding-bottom: env(safe-area-inset-bottom); }
+
+.btn-torch.active{
+  color:#111; background:#ffe08a; border-color:#f59e0b;
+  box-shadow: 0 0 0 2px rgba(245,158,11,.15) inset;
+}
+
+/* =============== Hit-slop 20px รอบไอคอนเล็ก =============== */
+.tap-20{ position: relative; }
+.tap-20::before{
+  content:""; position:absolute; top:-10px; right:-10px; bottom:-10px; left:-10px;
+  /* โปร่งใส คลิกได้ โดยยังนับเป็นการคลิกปุ่มเดิม */
+}
+
+/* =============== Offline Banner (บนสุด) =============== */
+.offline-banner{
+  position: sticky; top: 0; z-index: 1200;
+  display:flex; align-items:center; gap:8px;
+  padding:.5rem .75rem;
+  background:#fee2e2; color:#7f1d1d; border-bottom:1px solid #fecaca;
+  font-size:.85rem;
+}
+
+/* =============== Mini sticky CTA (Thumb-zone) =============== */
+.mini-cta{
+  position:fixed; left:12px; right:12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display:flex; gap:10px; justify-content:center;
+  padding:8px 10px;
+  background: rgba(255,255,255,.78);
+  backdrop-filter: blur(10px);
+  border:1px solid rgba(0,0,0,.06);
+  border-radius:14px;
+  box-shadow:0 10px 40px rgba(0,0,0,.12);
+  z-index:1100;
+  transform: translateY(16px);
+  opacity:0; pointer-events:none;
+  transition:.25s ease;
+}
+.mini-cta.show{ transform:none; opacity:1; pointer-events:auto; }
+@media (min-width: 992px){ .mini-cta{ display:none !important; } } /* มือถือเป็นหลัก */
+
+/* =============== ปุ่มไฟฉาย: สถานะเปิด =============== */
+.btn-torch.active{
+  color:#111; background:#ffe08a; border-color:#f59e0b;
+  box-shadow: 0 0 0 2px rgba(245,158,11,.15) inset;
+}
+
+/* =============== Dark mode ปรับสี =============== */
+@media (prefers-color-scheme: dark){
+  .offline-banner{ background:#3f1c1c; color:#fde68a; border-bottom-color:#7f1d1d; }
+  .mini-cta{ background: rgba(17,24,39,.72); border-color: rgba(255,255,255,.08); }
+}

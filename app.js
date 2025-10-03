@@ -161,6 +161,16 @@ function bindUI(){
     els.modal.addEventListener("hidden.bs.modal", () => stopScanner && stopScanner());
   }
 
+const torchBtn = document.getElementById("torchBtn");
+torchBtn && torchBtn.addEventListener("click", async ()=>{
+  try {
+    await toggleTorch(!TORCH_ON);
+    navigator.vibrate?.(8);
+  } catch(e){
+    toastErr("อุปกรณ์นี้ไม่รองรับไฟฉาย");
+  }
+});
+
   // ปุ่มควบคุมกล้องในโมดัล (ถ้ามี)
   const startBtn = document.getElementById("startScanBtn");
   const stopBtn  = document.getElementById("stopScanBtn");
@@ -574,27 +584,21 @@ async function redeemCode(code, type){
 
 async function startScanner(){
   if (!els.qrReader) return;
-  if (SCANNING) return;      // ป้องกันเปิดกล้องซ้อน
+  if (SCANNING) return;
   SCANNING = true;
 
   const onScan = async (decodedText) => {
     const code = String(decodedText || "").trim();
     const now  = Date.now();
-
-    // กันการยิงซ้ำ ๆ จาก callback เดียวกัน
     if (REDEEM_IN_FLIGHT) return;
     if (code && code === LAST_DECODE && (now - LAST_DECODE_AT) < DUP_COOLDOWN) return;
-
-    LAST_DECODE = code;
-    LAST_DECODE_AT = now;
+    LAST_DECODE = code; LAST_DECODE_AT = now;
 
     REDEEM_IN_FLIGHT = true;
     try {
-      // หยุดกล้องทันทีที่เจอโค้ดครั้งแรก เพื่อไม่ให้ยิงซ้ำ
       await stopScanner();
-      await redeemCode(code, "SCAN");   // เรียก API แค่ครั้งเดียว
+      await redeemCode(code, "SCAN");
     } finally {
-      // หน่วงเล็กน้อยกัน callback ที่ยังค้างอยู่
       setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
     }
   };
@@ -602,57 +606,63 @@ async function startScanner(){
   try{
     html5qrcode = new Html5Qrcode(els.qrReader.id);
 
-    // พยายามเปิดกล้องหลังก่อน
-    try {
+    // 1) กล้องหลัง exact
+    try{
       await html5qrcode.start(
         { facingMode: { exact: "environment" } },
         { fps: 10, qrbox: { width: 260, height: 260 } },
         onScan
       );
+      afterCameraStarted();
       return;
-    } catch {}
+    }catch{}
 
-    // กล้องหลังแบบทั่วไป
-    try {
+    // 2) กล้องหลังทั่วไป
+    try{
       await html5qrcode.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 260, height: 260 } },
         onScan
       );
+      afterCameraStarted();
       return;
-    } catch {}
+    }catch{}
 
-    // เลือกจากรายการอุปกรณ์
+    // 3) เลือกจากรายการอุปกรณ์
     const devices = await Html5Qrcode.getCameras();
     if(!devices?.length) throw new Error("No camera devices");
     const re = /(back|rear|environment|wide|main)/i;
     const preferred = devices.find(d=>re.test(d.label)) || devices[devices.length-1];
-
     await html5qrcode.start(
       preferred.id,
       { fps: 10, qrbox: { width: 260, height: 260 } },
       onScan
     );
+    afterCameraStarted();
   }catch(e){
     console.warn("Scanner start failed:", e);
-    SCANNING = false; // reset flag เมื่อเปิดกล้องไม่สำเร็จ
+    SCANNING = false;
     toastErr("ไม่สามารถเปิดกล้องได้");
   }
 }
 
 async function stopScanner(){
   try{
+    try{ if (TORCH_ON) await toggleTorch(false); }catch{}
+    ACTIVE_VIDEO_TRACK = null; TORCH_ON = false;
+
     if (html5qrcode){
       await html5qrcode.stop();
       await html5qrcode.clear();
       html5qrcode = null;
     }
   }catch(e){ console.warn("stopScanner error", e); }
-  finally {
+  finally{
     els.qrReader && (els.qrReader.innerHTML = "");
-    SCANNING = false;   // กล้องหยุดแล้ว
+    SCANNING = false;
   }
 }
+
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
@@ -911,6 +921,43 @@ function getTier(score){
   return TIERS[TIERS.length - 1];
 }
 
+// ==== Torch / Low-light scan ====
+let ACTIVE_VIDEO_TRACK = null;
+let TORCH_ON = false;
+
+function getActiveVideoTrack(){
+  try{
+    const v = document.querySelector('#qr-reader video');
+    return v?.srcObject?.getVideoTracks?.[0] || null;
+  }catch{ return null; }
+}
+function canUseTorch(track){
+  try{ return !!track?.getCapabilities?.().torch; }catch{ return false; }
+}
+async function toggleTorch(on){
+  const track = ACTIVE_VIDEO_TRACK || getActiveVideoTrack();
+  if (!track) throw new Error('no-camera-track');
+  if (!canUseTorch(track)) throw new Error('torch-not-supported');
+
+  await track.applyConstraints({ advanced: [{ torch: !!on }] });
+  TORCH_ON = !!on;
+  const btn = document.getElementById('torchBtn');
+  if (btn){
+    btn.classList.toggle('active', TORCH_ON);
+    btn.innerHTML = TORCH_ON
+      ? '<i class="fa-solid fa-bolt"></i> ไฟฉาย: เปิด'
+      : '<i class="fa-solid fa-bolt"></i> ไฟฉาย';
+  }
+}
+function afterCameraStarted(){
+  ACTIVE_VIDEO_TRACK = getActiveVideoTrack();
+  const btn = document.getElementById('torchBtn');
+  if (!btn) return;
+  const supported = canUseTorch(ACTIVE_VIDEO_TRACK);
+  btn.disabled = !supported;
+  btn.classList.toggle('d-none', !supported); // ไม่รองรับก็ซ่อน
+}
+
 /* ===== Premium helpers ===== */
 
 /** ตั้งธีมให้การ์ดด้วย data-tier (ใช้กับ CSS glow/gradient) */
@@ -1147,3 +1194,28 @@ function setLastSync(ts, fromCache){
   };
 })();
 
+// === Mini CTA (โผล่เมื่อเลื่อนลง) ===
+(function enableMiniCta(){
+  const bar = document.getElementById('miniCta');
+  const miniRefresh = document.getElementById('miniRefresh');
+  if(!bar) return;
+
+  let shown = false;
+  const sync = ()=>{
+    const y = window.scrollY || document.documentElement.scrollTop || 0;
+    const shouldShow = y > 140;
+    if (shouldShow !== shown){
+      shown = shouldShow;
+      bar.classList.toggle('d-none', false);
+      bar.classList.toggle('show', shown);
+    }
+  };
+  window.addEventListener('scroll', sync, { passive:true });
+  window.addEventListener('resize', sync);
+  setTimeout(sync, 0);
+
+  miniRefresh?.addEventListener('click', ()=>{
+    try{ navigator.vibrate?.(10); }catch{}
+    refreshUserScore?.();
+  });
+})();

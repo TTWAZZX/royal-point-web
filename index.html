@@ -22,8 +22,8 @@
 
 <!-- top progress bar -->
 <div id="topbar"></div>
-<div id="offlineBanner" class="rp-offline d-none" role="status" aria-live="polite">
-  <i class="fa-solid fa-wifi-slash me-2"></i> ไม่มีสัญญาณอินเทอร์เน็ต — ข้อมูลล่าสุดจากแคช
+<div id="offlineBanner" class="offline-banner d-none" role="status" aria-live="polite">
+  <i class="fa-solid fa-cloud-slash"></i> ออฟไลน์ — แสดงข้อมูลจากแคช
 </div>
 
 <main class="rp-container container py-3">
@@ -174,9 +174,17 @@
       </div>
       <div class="modal-body text-center">
   <div class="d-flex justify-content-center gap-2 mb-2">
-    <button id="startScanBtn" class="btn btn-success btn-sm"><i class="fa-solid fa-camera"></i> เปิดกล้อง</button>
-    <button id="stopScanBtn"  class="btn btn-outline-danger btn-sm"><i class="fa-solid fa-stop"></i> หยุดกล้อง</button>
-  </div>
+  <button id="startScanBtn" class="btn btn-success btn-sm tap-20">
+    <i class="fa-solid fa-camera"></i> เปิดกล้อง
+  </button>
+  <button id="stopScanBtn" class="btn btn-outline-danger btn-sm tap-20">
+    <i class="fa-solid fa-stop"></i> หยุดกล้อง
+  </button>
+  <!-- NEW: ปุ่มไฟฉาย -->
+  <button id="torchBtn" class="btn btn-outline-warning btn-sm btn-torch tap-20" disabled>
+    <i class="fa-solid fa-bolt"></i> ไฟฉาย
+  </button>
+</div>
   <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
   <hr class="my-4" />
   <div class="form-group" style="max-width:420px;margin:auto;">
@@ -213,7 +221,14 @@
     </div>
   </div>
 </div>
-
+<div id="miniCta" class="mini-cta d-none" aria-live="polite">
+  <button class="btn btn-success btn-sm tap-20" data-bs-toggle="modal" data-bs-target="#scoreModal">
+    <i class="fa-solid fa-qrcode"></i> สแกน
+  </button>
+  <button id="miniRefresh" class="btn btn-outline-secondary btn-sm btn-icon tap-20" aria-label="รีเฟรช">
+    <i class="fa-solid fa-rotate"></i>
+  </button>
+</div>
 
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
