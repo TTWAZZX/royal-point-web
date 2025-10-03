@@ -431,11 +431,11 @@ async function loadRewards() {
       REWARDS_CACHE = data.rewards;
     } else {
       REWARDS_CACHE = [];
-      console.warn('No rewards from API:', data);
+      console.info('[rewards] using fallback'); // เดิมเป็น console.warn(data)
     }
   } catch (err) {
     REWARDS_CACHE = [];
-    console.error('loadRewards error:', err);
+    console.info('[rewards] offline/fallback'); // เดิมเป็น console.error
   }
 }
 
@@ -1039,9 +1039,14 @@ function updateLeftMiniChips({ streakDays, rank }){
 function setLastSync(ts, fromCache){
   const chip = document.getElementById('lastSyncChip');
   if (!chip) return;
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  const today = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   chip.classList.remove('d-none');
-  chip.innerHTML = `<i class="fa-regular fa-clock"></i> ${fromCache ? 'อัปเดตจากแคช' : 'อัปเดตแล้ว'} • ${fmtDT(ts)}`;
+  chip.innerHTML = `<i class="fa-regular fa-clock"></i> ${fromCache ? 'แคช' : 'อัปเดต'} • ${today} ${hh}:${mm}`;
 }
+
 // อัปเดตชิปเครือข่าย (แสดงเฉพาะตอนออฟไลน์)
 function updateNetChip(){
   const chip = document.getElementById('netChip');

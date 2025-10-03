@@ -2780,3 +2780,44 @@ body.ready #topbar{width:100%;opacity:0}
   .btn-refresh--sm{ width:28px; height:28px; border-radius:9px; }
   .btn-refresh i{ font-size:13px; }
 }
+
+/* --- Right header row: chip + tiny refresh button --- */
+.rp-rightcol{ margin-left:auto; }
+.rp-rightrow{ display:flex; align-items:center; gap:6px; }
+
+:root{
+  --rp-chip-h: 28px;            /* ความสูงชิปเวลา */
+  --rp-refresh: 24px;           /* ขนาดปุ่มรีเฟรชให้เล็กกว่าชิปนิดนึง */
+}
+
+/* ชิปเวลา */
+.mini-chip.lastsync{
+  height: var(--rp-chip-h);
+  display: inline-flex; align-items: center;
+  font-size: .66rem; line-height: 1;
+  padding: .14rem .54rem;
+}
+
+/* ปุ่มรีเฟรชขนาดเล็ก */
+.btn-refresh{
+  display:inline-grid; place-items:center;
+  background:rgba(255,255,255,.78);
+  backdrop-filter: blur(8px);
+  border:1px solid rgba(0,0,0,.06);
+  box-shadow:0 6px 16px rgba(2,6,23,.08);
+}
+.btn-refresh--sm{
+  width: var(--rp-refresh);
+  height: var(--rp-refresh);
+  border-radius: 8px;
+}
+.btn-refresh i{ font-size: 12px; }
+.btn-refresh.spin i{ animation: rp-spin .9s linear; }
+@keyframes rp-spin{ to{ transform: rotate(1turn); } }
+
+/* Mobile ย่อลงอีกนิด */
+@media (max-width:420px){
+  :root{ --rp-chip-h: 26px; --rp-refresh: 22px; }
+  .mini-chip.lastsync{ font-size:.62rem; padding:.12rem .48rem; }
+  .btn-refresh i{ font-size:11px; }
+}
