@@ -3156,3 +3156,17 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-score-stack{ gap:.125rem; }
 .rp-score-label{ margin:0; line-height:1.1; }
 .rp-point-value{ margin:0; line-height:1; }
+
+.rp-reward-img { position: relative; overflow: hidden; border-radius: 14px; }
+.rp-reward-badge{
+  position: absolute;
+  top: 8px; right: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(255,255,255,.9);
+  border: 1px solid rgba(0,0,0,.06);
+  border-radius: 999px;
+  box-shadow: 0 6px 14px rgba(0,0,0,.12);
+  backdrop-filter: blur(6px);
+}

@@ -433,84 +433,128 @@ function applyXpThemeByTier(tierKey){
 }
 
 /* ===== Rewards (dynamic) ===== */
-const API_REWARDS = "/api/rewards";          // มีไฟล์แล้วจากแพตช์ 1
-const REWARDS_FALLBACK = [                   // เอาไว้กันหน้าโล่ง
-  { id:"A", name:"Gift A", img:"https://placehold.co/800x600?text=Gift+A", cost:70 },
-  { id:"B", name:"Gift B", img:"https://placehold.co/800x600?text=Gift+B", cost:80 },
-  { id:"C", name:"Gift C", img:"https://placehold.co/800x600?text=Gift+C", cost:100 },
-  { id:"D", name:"Gift D", img:"https://placehold.co/800x600?text=Gift+D", cost:150 },
+const API_REWARDS = "/api/rewards";
+
+/** ลำดับคะแนน 44 ช่อง (ตามที่ระบุ) */
+const COST_ORDER = [
+  40, 50, 60, 70, 80,
+  100,100,100,100,
+  120,120,120,120,
+  150,180,200,150,180,200,200,
+  220,230,250,250,250,250,250,250,
+  350,380,
+  400,400,400,400,400,400,
+  450,500,500,
+  600,700,800,900,1000
 ];
 
+/** สร้าง fallback 44 กล่องจากลำดับคะแนน */
+function buildFallbackRewards(costs){
+  return costs.map((cost, idx)=>({
+    id: `R${String(idx+1).padStart(2,'0')}-${cost}`,
+    name: `Gift ${idx+1}`,
+    img: `https://placehold.co/640x480?text=Gift+${idx+1}`,
+    cost: Number(cost)
+  }));
+}
+
+/** จัดเรียง rewards ให้ตรงตาม COST_ORDER
+ *  - ถ้ามีของใน API ที่ cost ตรง ให้หยิบมาเรียงตามลำดับ
+ *  - ถ้าขาดชิ้นไหน ให้เติม placeholder
+ *  - (ถ้ามีของเกิน/คะแนนไม่อยู่ในลำดับ จะไม่ถูกใช้)
+ */
+function orderRewardsBySequence(list, sequence){
+  const buckets = new Map();
+  list.forEach(r=>{
+    const c = Number(r?.cost || 0);
+    if (!buckets.has(c)) buckets.set(c, []);
+    buckets.get(c).push(r);
+  });
+
+  const out = [];
+  sequence.forEach((cost, i)=>{
+    const b = buckets.get(cost);
+    if (b && b.length){
+      // ใช้ของจริงจาก API ก่อน
+      out.push(b.shift());
+    }else{
+      // เติมการ์ด placeholder
+      out.push({
+        id: `R${String(i+1).padStart(2,'0')}-${cost}`,
+        name: `Gift ${i+1}`,
+        img: `https://placehold.co/640x480?text=Gift+${i+1}`,
+        cost: Number(cost)
+      });
+    }
+  });
+  return out;
+}
+
+/** state & cache */
 let rewardRailBound = false;
 let REWARDS_CACHE = [];
 
+/** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
 async function loadRewards() {
   try {
-    const resp = await fetch(`${API_REWARDS}?include=1`, { headers: { 'Accept': 'application/json' } });
+    const resp = await fetch(`${API_REWARDS}?include=1`, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
     const data = await resp.json();
     if (data && data.status === 'success' && Array.isArray(data.rewards)) {
-      REWARDS_CACHE = data.rewards;
+      // จัดเรียงตาม COST_ORDER + เติมที่ขาด
+      REWARDS_CACHE = orderRewardsBySequence(data.rewards, COST_ORDER);
     } else {
-      REWARDS_CACHE = [];
-      console.info('[rewards] using fallback'); // เดิมเป็น console.warn(data)
+      console.warn('No rewards from API:', data);
+      REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
     }
   } catch (err) {
-    REWARDS_CACHE = [];
-    console.info('[rewards] offline/fallback'); // เดิมเป็น console.error
+    console.error('loadRewards error:', err);
+    REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
   }
 }
 
-// render รางวัล พร้อมกันผูก event คลิกแลก (ผูกครั้งเดียว)
+/** render + click-to-redeem */
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if (!rail) return;
 
-  const data = (REWARDS_CACHE && REWARDS_CACHE.length) ? REWARDS_CACHE : REWARDS_FALLBACK;
+  const data = (REWARDS_CACHE && REWARDS_CACHE.length) ? REWARDS_CACHE : buildFallbackRewards(COST_ORDER);
 
-  rail.innerHTML = data.map(r => {
+  rail.innerHTML = data.map((r, i) => {
     const locked  = Number(currentScore) < Number(r.cost);
-    const id      = escapeHtml(r.id || "");
-    const name    = escapeHtml(r.name || r.id || "");
-    const img     = r.img || "https://placehold.co/640x480?text=Reward";
+    const id      = escapeHtml(r.id || `R${i+1}`);
+    const name    = escapeHtml(r.name || id);
+    const img     = r.img || `https://placehold.co/640x480?text=Gift+${i+1}`;
     const cost    = Number(r.cost || 0);
-    const tagHtml = r.tag ? `<span class="rp-tag">${escapeHtml(r.tag)}</span>` : "";
 
     return `
       <div class="rp-reward-card ${locked ? 'locked' : ''}"
-           data-id="${id}" data-cost="${cost}">
-        ${tagHtml}
+           data-id="${id}" data-cost="${cost}" title="${name}">
         <div class="rp-reward-img">
           <img src="${img}" alt="${name}" loading="lazy">
+          <div class="rp-reward-badge">${cost} pt</div>
         </div>
         <div class="rp-reward-body p-2">
-          <div class="d-flex justify-content-between align-items-center">
-            <div class="fw-bold text-truncate">${name}</div>
-            <span class="rp-reward-cost">${cost} pt</span>
-          </div>
+          <div class="fw-bold text-truncate">${name}</div>
         </div>
-        <button class="rp-redeem-btn" title="แลกรางวัล" aria-label="แลกรางวัล" ${locked ? "disabled" : ""}>
+        <button class="rp-redeem-btn" aria-label="แลก ${name}" ${locked ? "disabled" : ""}>
           <i class="fa-solid fa-gift"></i>
         </button>
       </div>
     `;
   }).join("");
 
-  // ผูกครั้งเดียวพอ กันซ้อน
   if (!rewardRailBound) {
     rail.addEventListener("click", async (ev) => {
       const btn = ev.target.closest(".rp-redeem-btn");
       if (!btn || btn.disabled) return;
-
       const card = btn.closest(".rp-reward-card");
       if (!card) return;
-
       const id   = card.dataset.id;
       const cost = Number(card.dataset.cost);
       if (!id || Number.isNaN(cost)) return;
-
       await redeemReward({ id, cost }, btn);
     });
-    rewardRailBound = true; // ✅ สำคัญ: ตั้งธงหลังผูกแล้ว
+    rewardRailBound = true;
   }
 }
 
