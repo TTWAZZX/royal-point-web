@@ -175,47 +175,40 @@ document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
 document.addEventListener("DOMContentLoaded", initApp);
 
 // ⬇️ วางทับของเดิมทั้งหมด
-async function initApp(){ 
+async function initApp(){
   try{
     await liff.init({ liffId: LIFF_ID });
-    if(!liff.isLoggedIn()){ liff.login(); return; }
+    if (!liff.isLoggedIn()){ liff.login(); return; }
 
     const prof = await liff.getProfile();
     UID = prof.userId;
-    CURRENT_UID = UID;    // <<<< เพิ่มบรรทัดนี้
 
+    // บันทึก UID เผื่อรอบหน้า และให้โค้ดส่วนอื่นมองเห็นแน่ ๆ
+    window.__UID = UID;
+    try { localStorage.setItem('uid', UID); } catch {}
 
     if (els.username)   els.username.textContent = prof.displayName || "—";
     if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
-    enableAvatarPreview();
 
+    enableAvatarPreview();
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
     enableTierTooltip();
-
-    // แอนิเมชันปุ่มหลักครั้งเดียว + haptics เล็กน้อย
-    const pa = document.getElementById("primaryAction");
-    if (pa){
-      pa.classList.add("swing-once");
-      pa.addEventListener("click", ()=> navigator.vibrate?.(10));
-    }
 
     // สถานะ online/offline
     toggleOfflineBanner(!navigator.onLine);
     window.addEventListener("online",  ()=> toggleOfflineBanner(false));
     window.addEventListener("offline", ()=> toggleOfflineBanner(true));
 
-    // ===== โหลดข้อมูลหลัก (เรียกครั้งเดียวพอ) =====
-    await refreshUserScore();    // ดึงคะแนนปัจจุบัน
-    await loadRewards();         // << เรียกครั้งเดียว
+    await refreshUserScore();
+    await loadRewards();
     renderRewards(prevScore || 0);
-
   }catch(e){
     console.error(e);
     toastErr("เริ่มต้นระบบไม่สำเร็จ");
   }finally{
     setAppLoading(false);
-    document.body.classList.remove('loading'); 
+    document.body.classList.remove('loading');
     document.body.classList.add('ready');
     setTimeout(()=>document.body.classList.remove('ready'), 1000);
   }
@@ -270,89 +263,77 @@ function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggl
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
-/* ================= Score / Level / Progress ================= */
-// ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI
-// ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI (เวอร์ชันแก้ ReferenceError + แยก success/offline ชัดเจน)
 // ===== refreshUserScore: ดึงคะแนนให้ครอบจักรวาล + เก็บไว้เทียบก่อน–หลัง =====
-async function refreshUserScore() {
-  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || '';
-  if (!uid) { dlog('refreshUserScore: no UID'); return Number(window.__userBalance ?? 0); }
+// ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload
+async function refreshUserScore(){
+  const uid =
+    UID ||
+    window.__UID ||
+    localStorage.getItem('uid') ||
+    '';
 
-  function pickBalance(obj) {
-    if (!obj || typeof obj !== 'object') return null;
+  if (!uid) {
+    console.warn('[refreshUserScore] missing uid');
+    // โชว์ 0 แบบปลอดภัย
+    els.points && (els.points.textContent = '0');
+    document.getElementById('xpPair')?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
+    return;
+  }
+
+  // helper แยกค่าคะแนนจาก payload หลายทรง
+  const pickScore = (o) => {
+    if (!o || typeof o !== 'object') return null;
+    // รองรับทั้ง {score},{points},{balance},{data:{...}}
     const cands = [
-      obj.balance, obj.points, obj.point, obj.score,
-      obj.total_points, obj.totalPoints,
-      obj?.data?.balance, obj?.data?.points, obj?.data?.point, obj?.data?.score,
-      obj?.user_points?.balance, obj?.up?.balance, obj?.user?.balance,
+      o.score, o.points, o.point, o.balance, o.total,
+      o?.data?.score, o?.data?.points, o?.data?.balance, o?.data?.total
     ];
-    for (const v of cands) {
-      const n = Number(v);
-      if (!Number.isNaN(n)) return n;
-    }
-    const arr = obj?.data || obj?.items || (Array.isArray(obj) ? obj : null);
-    if (Array.isArray(arr) && arr.length) {
-      for (const row of arr) {
-        const n = pickBalance(row);
-        if (n !== null) return n;
-      }
-    }
+    for (const v of cands) if (Number.isFinite(Number(v))) return Number(v);
     return null;
-  }
+  };
 
-  const qs = `uid=${encodeURIComponent(uid)}`;
-  const endpoints = [
-    `/api/score?${qs}`,
-    `/api/user?${qs}`,
-    `/api/profile?${qs}`,
-    `/api/get-score?${qs}`,
-    `/api/user-points?${qs}`,
-  ];
+  let fromCache = false, data = null, lastErr = null;
 
-  let payload;
-  try {
-    payload = await tryEndpoints(endpoints, {}, { scope: 'score' });
-  } catch (e) {
-    dlog('refreshUserScore failed, use cache', e);
-    const cached = Number(localStorage.getItem('userBalance') || window.__userBalance || 0);
-    updateUI(cached);
-    return cached;
-  }
-
-  let balance = pickBalance(payload);
-  if (balance === null) {
-    const maybe = Number(payload);
-    balance = Number.isFinite(maybe) ? maybe : 0;
-  }
-
-  window.__userBalance = Number(balance || 0);
-  localStorage.setItem('userBalance', String(window.__userBalance));
-  updateUI(window.__userBalance);
-  return window.__userBalance;
-
-  function updateUI(val) {
-    const n = Number(val || 0);
-    const ptEl = (window.els && els.points) || document.getElementById('points');
-    if (ptEl) ptEl.textContent = n.toLocaleString();
-
-    const xpPair = document.getElementById('xpPair');
-    const max = Number(window.__tierMax || 0);
-    if (xpPair) {
-      if (max > 0) {
-        xpPair.textContent = `${n.toLocaleString()} / ${max.toLocaleString()} คะแนน`;
-      } else {
-        // ถ้าไม่รู้ max ให้โชว์เฉพาะยอด (กัน 0/0 ดูแปลกตา)
-        xpPair.textContent = `${n.toLocaleString()} คะแนน`;
-      }
-    }
-
-    const fill = document.getElementById('progressFill');
-    if (fill) {
-      const denom = max > 0 ? max : Math.max(n, 1);
-      const pct = Math.max(0, Math.min(100, (n / denom) * 100));
-      fill.style.width = `${pct}%`;
+  try{
+    // เรียก endpoint เดียวที่มีจริง
+    const res = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
+    const json = await res.json();
+    if (!res.ok || json?.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
+    data = json;
+  }catch(e){
+    lastErr = e;
+    console.warn('[refreshUserScore] fetch failed, try cache', e);
+    // ลองดึงจาก cache ในหน่วยความจำ/ที่เราเก็บไว้
+    if (Number.isFinite(Number(window.__userBalance))) {
+      data = { score: Number(window.__userBalance) };
+      fromCache = true;
     }
   }
+
+  if (!data) throw lastErr || new Error('no_data');
+
+  const newScore = pickScore(data) ?? 0;
+  const oldScore = Number(prevScore || 0);
+  const delta    = newScore - oldScore;
+
+  // เก็บ state ล่าสุดให้ฟังก์ชันอื่นใช้
+  window.__userBalance = newScore;
+  prevScore = newScore;
+
+  // อัปเดต UI
+  if (els.points) els.points.textContent = String(newScore);
+  bumpScoreFx();           // เด้งนุ่ม ๆ
+  showScoreDelta(delta);   // โชว์ +/-
+
+  // แถบ progress/ข้อความ
+  const need = Number(data?.need || data?.next_need || 0);
+  const cur  = Number(data?.current || newScore);
+  const max  = Number(data?.max || need || 0);
+  const pair = document.getElementById('xpPair');
+  pair && (pair.textContent = `${cur} / ${max} คะแนน`);
+
+  // ตราปั๊มเวลาอัปเดต (หรือบอกว่าเป็นแคช)
+  setLastUpdated(fromCache);
 }
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
@@ -921,64 +902,71 @@ async function stopScanner(){
 
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
-/* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
-async function openHistory() {
-  const wrap   = document.getElementById('historyListWrap');
-  const listEl = document.getElementById('historyList');
+async function openHistory(){
+  const uid =
+    UID || window.__UID || localStorage.getItem('uid') || '';
+  if (!uid) return toastErr('ไม่มี UID');
 
-  const uid = UID || CURRENT_UID || window.__UID || '';
-  listEl.innerHTML = '';
+  const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+  const list  = document.getElementById('historyList');
+  const nameEl= document.getElementById('historyUser');
 
-  try {
-    // รองรับทั้ง u= และ uid=
-    const qs_uid = `uid=${encodeURIComponent(uid)}&limit=50`;
-    const qs_u   = `u=${encodeURIComponent(uid)}&limit=50`;
+  list.innerHTML = `<div class="skel skel-line my-2"></div>
+                    <div class="skel skel-line my-2"></div>
+                    <div class="skel skel-line my-2"></div>`;
 
-    const { items } = await tryEndpoints(
-      [
-        `/api/score-history?${qs_u}`,         // บางแบ็กเอนด์ใช้ u=
-        `/api/score-history?${qs_uid}`,       // อีกแบบใช้ uid=
-        `/api/history?${qs_uid}`,
-        `/api/history?${qs_u}`,
-        `/api/point-transactions?${qs_uid}`,
-        `/api/point-transactions?${qs_u}`
-      ],
-      {},
-      { scope: 'page', skeletonOf: wrap }
-    );
+  nameEl.textContent = els.username?.textContent || '—';
 
-    const sorted = items.slice().sort(
-      (a, b) => new Date(b.created_at || b.ts || 0) - new Date(a.created_at || a.ts || 0)
-    );
-
-    listEl.innerHTML = sorted.length
-      ? sorted.map(i => {
-          const ts   = new Date(i.created_at || i.ts || Date.now());
-          const amt  = Number(i.amount ?? i.point ?? i.delta ?? 0);
-          const sign = amt >= 0 ? '+' : '';
-          const col  = amt >= 0 ? '#16a34a' : '#dc2626';
-          const type = i.type || '—';
-          const code = i.code || i.text || '';
-          return `
-            <div class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <div class="fw-bold">${h(type)}</div>
-                <div class="small text-muted">${h(code)}</div>
-              </div>
-              <div class="text-end">
-                <div style="color:${col};font-weight:800">${sign}${amt}</div>
-                <div class="small text-muted">${ts.toLocaleString()}</div>
-              </div>
-            </div>`;
-        }).join('')
-      : `<div class="text-center text-muted py-4">ไม่มีรายการ</div>`;
-  } catch (e) {
-    console.error('openHistory error:', e);
-    listEl.innerHTML = `<div class="text-center text-danger py-4">โหลดไม่สำเร็จ</div>`;
+  // ดึง history: บังคับใช้ ?uid=
+  let resp;
+  try{
+    resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' });
+  }catch(e){
+    console.error(e);
   }
 
-  const m = document.getElementById('historyModal');
-  if (m && window.bootstrap) new bootstrap.Modal(m).show();
+  if (!resp || !resp.ok){
+    list.innerHTML = `<div class="text-danger">โหลดไม่สำเร็จ</div>`;
+    return modal.show();
+  }
+
+  const json = await resp.json();
+
+  // รองรับหลายรูปทรง: {items:[]}, {data:[]}, []
+  const items = Array.isArray(json) ? json
+              : Array.isArray(json.items) ? json.items
+              : Array.isArray(json.data)  ? json.data
+              : [];
+
+  // จัดเรียงใหม่ให้ล่าสุดอยู่บน (created_at desc, ถ้าเท่ากันใช้ id/uuid เป็นตัวกันชน)
+  items.sort((a,b)=>{
+    const ta = new Date(a.created_at || a.time || 0).getTime();
+    const tb = new Date(b.created_at || b.time || 0).getTime();
+    if (tb !== ta) return tb - ta;
+    const ka = String(a.id || a.uuid || '');
+    const kb = String(b.id || b.uuid || '');
+    return kb.localeCompare(ka);
+  });
+
+  // เรนเดอร์
+  list.innerHTML = items.map(it=>{
+    const amt = Number(it.amount || it.point || it.points || 0);
+    const sign = amt > 0 ? '+' : '';
+    const when = it.created_at || it.time || '';
+    const code = it.code || it.type || '';
+    const by   = it.created_by || it.actor || '—';
+    return `
+      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <div>
+          <div class="fw-bold">${h(code)}</div>
+          <div class="small text-muted">${h(by)}</div>
+        </div>
+        <div class="${amt>=0 ? 'text-success':'text-danger'} fw-bold">${sign}${amt}</div>
+        <div class="small text-muted ms-3">${h(when)}</div>
+      </a>`;
+  }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
+
+  modal.show();
 }
 
 /* ================= Utils ================= */
