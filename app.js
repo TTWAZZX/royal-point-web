@@ -7,7 +7,7 @@ const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
 
 // ===== Helpers: pick UID + try multiple endpoints + render safe =====
-const CURRENT_UID =
+let CURRENT_UID =
   window.__UID ||
   localStorage.getItem('uid') ||
   document.querySelector('[data-uid]')?.dataset.uid ||
@@ -154,6 +154,8 @@ async function initApp(){
 
     const prof = await liff.getProfile();
     UID = prof.userId;
+    CURRENT_UID = UID;    // <<<< เพิ่มบรรทัดนี้
+
 
     if (els.username)   els.username.textContent = prof.displayName || "—";
     if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
@@ -577,6 +579,10 @@ function orderRewardsBySequence(list, sequence){
 let REWARDS_CACHE = [];
 let rewardRailBound = false;
 
+function hideRewardSkeletons(){
+  document.querySelectorAll('.reward-skeleton').forEach(el => el.style.display = 'none');
+}
+
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
 async function loadRewards() {
   const rail = document.getElementById('rewardRail');
@@ -584,16 +590,11 @@ async function loadRewards() {
 
   try {
     const { items } = await tryEndpoints(
-      [
-        '/api/rewards',            // ตัวอย่างของผม
-        '/api/list-rewards',       // สำรอง
-        '/api/reward-list'         // สำรอง
-      ],
+      ['/api/rewards', '/api/list-rewards', '/api/reward-list'],
       {},
       { scope: 'page', skeletonOf: section }
     );
 
-    // เดาชื่อฟิลด์อย่างทนทาน
     rail.innerHTML = items.length
       ? items.map(r => {
           const title = r.name || r.title || r.reward_name || 'Reward';
@@ -601,28 +602,27 @@ async function loadRewards() {
           const img   = r.image || r.image_url || r.thumbnail || '';
           const cost  = r.cost ?? r.point_cost ?? r.points ?? '?';
           const rid   = r.id ?? r.reward_id ?? '';
-
           return `
             <div class="card my-2">
               <div class="card-body d-flex gap-3 align-items-center">
-                ${img ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">` : `
-                  <div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
+                ${img ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">`
+                      : `<div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
                 <div class="flex-grow-1">
                   <div class="fw-bold">${h(title)}</div>
                   <div class="text-muted small">${h(desc)}</div>
                 </div>
                 <button class="btn btn-primary" data-reward="${h(rid)}">แลก ${h(cost)} pt</button>
               </div>
-            </div>
-          `;
+            </div>`;
         }).join('')
       : `<div class="text-center text-muted py-3">ยังไม่มีของรางวัล</div>`;
   } catch (e) {
     console.error('loadRewards error:', e);
     rail.innerHTML = `<div class="alert alert-danger">โหลดของรางวัลไม่สำเร็จ</div>`;
+  } finally {
+    hideRewardSkeletons();  // <<<< ซ่อนแถบดำ
   }
 }
-
 
 /** render + click-to-redeem */
 function renderRewards(currentScore){
@@ -838,39 +838,42 @@ async function stopScanner(){
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory() {
-  const wrap  = document.getElementById('historyListWrap');
+  const wrap   = document.getElementById('historyListWrap');
   const listEl = document.getElementById('historyList');
-  const uid = CURRENT_UID;
 
+  const uid = UID || CURRENT_UID || window.__UID || '';
   listEl.innerHTML = '';
 
   try {
-    const qs = `uid=${encodeURIComponent(uid)}&limit=50`;
+    // รองรับทั้ง u= และ uid=
+    const qs_uid = `uid=${encodeURIComponent(uid)}&limit=50`;
+    const qs_u   = `u=${encodeURIComponent(uid)}&limit=50`;
 
     const { items } = await tryEndpoints(
       [
-        `/api/score-history?${qs}`,         // ตัวอย่างของผม
-        `/api/history?${qs}`,               // สำรอง
-        `/api/point-transactions?${qs}`     // สำรอง (บางแบ็กเอนด์ตั้งชื่อนี้)
+        `/api/score-history?${qs_u}`,         // บางแบ็กเอนด์ใช้ u=
+        `/api/score-history?${qs_uid}`,       // อีกแบบใช้ uid=
+        `/api/history?${qs_uid}`,
+        `/api/history?${qs_u}`,
+        `/api/point-transactions?${qs_uid}`,
+        `/api/point-transactions?${qs_u}`
       ],
       {},
       { scope: 'page', skeletonOf: wrap }
     );
 
-    // เรียง “ล่าสุดก่อน”
     const sorted = items.slice().sort(
-      (a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts)
+      (a, b) => new Date(b.created_at || b.ts || 0) - new Date(a.created_at || a.ts || 0)
     );
 
     listEl.innerHTML = sorted.length
       ? sorted.map(i => {
-          const ts  = new Date(i.created_at || i.ts || Date.now());
-          const amt = Number(i.amount ?? i.point ?? i.delta ?? 0);
-          const sign  = amt >= 0 ? '+' : '';
-          const color = amt >= 0 ? '#16a34a' : '#dc2626';
-          const type  = i.type || '—';
-          const code  = i.code || i.text || '';
-
+          const ts   = new Date(i.created_at || i.ts || Date.now());
+          const amt  = Number(i.amount ?? i.point ?? i.delta ?? 0);
+          const sign = amt >= 0 ? '+' : '';
+          const col  = amt >= 0 ? '#16a34a' : '#dc2626';
+          const type = i.type || '—';
+          const code = i.code || i.text || '';
           return `
             <div class="list-group-item d-flex justify-content-between align-items-center">
               <div>
@@ -878,11 +881,10 @@ async function openHistory() {
                 <div class="small text-muted">${h(code)}</div>
               </div>
               <div class="text-end">
-                <div style="color:${color};font-weight:800">${sign}${amt}</div>
+                <div style="color:${col};font-weight:800">${sign}${amt}</div>
                 <div class="small text-muted">${ts.toLocaleString()}</div>
               </div>
-            </div>
-          `;
+            </div>`;
         }).join('')
       : `<div class="text-center text-muted py-4">ไม่มีรายการ</div>`;
   } catch (e) {
