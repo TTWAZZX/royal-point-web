@@ -2,17 +2,15 @@ const { supabaseAdmin } = require('../lib/supabase')
 
 module.exports = async (req, res) => {
   try {
-    if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
+    if (req.method !== 'GET') return res.status(405).json({ status:'error', message:'Method not allowed' })
 
-    // ดึง users + คะแนน (left join)
-    const { data: users, error } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
       .from('users')
       .select('uid,name,room,dob,passport,tel, user_points(balance)')
-      .order('uid', { ascending: true })
+      .order('uid', { ascending:true })
+    if (error) return res.status(500).json({ status:'error', message:'db_error' })
 
-    if (error) return res.status(500).json({ error: 'db_error' })
-
-    const rows = (users || []).map(u => ({
+    const rows = (data||[]).map(u => ({
       uid: u.uid,
       name: u.name || '',
       room: u.room || '',
@@ -22,8 +20,8 @@ module.exports = async (req, res) => {
       score: u.user_points?.balance ?? 0
     }))
 
-    res.status(200).json({ status: 'success', data: rows })
+    res.status(200).json({ status:'success', data: rows })
   } catch (e) {
-    res.status(500).json({ status: 'error', message: String(e) })
+    res.status(500).json({ status:'error', message:String(e) })
   }
 }
