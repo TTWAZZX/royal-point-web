@@ -32,10 +32,10 @@ module.exports = async (req, res) => {
     // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
     const { data, error } = await supabase
   .from('point_transactions')
-  .select('amount, code, type, created_by, created_at')
+  .select('id, amount, code, type, created_by, created_at')
   .eq('user_id', user.id)
-  .order('created_at', { ascending: false })  // เรียงตามวันเวลา ล่าสุดก่อน
-  .range(offset, offset + limit - 1);
+  .order('created_at', { ascending: false }) // = order by t.created_at desc
+  .order('id',         { ascending: false }); // = order by t.id desc
 
     if (error) {
       return res.status(200).json({ status: 'error', message: 'db_error' });
