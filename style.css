@@ -2728,3 +2728,27 @@ body.ready #topbar{width:100%;opacity:0}
 @media (max-width:420px){
   .mini-chip{ font-size:.62rem; padding:.16rem .44rem; }
 }
+
+/* right column (no impact left) */
+.rp-topline{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.rp-rightcol{ margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+
+/* refresh button */
+.btn-refresh{
+  width:36px; height:36px; border-radius:12px;
+  background:rgba(255,255,255,.75); backdrop-filter:blur(8px);
+  border:1px solid rgba(0,0,0,.06); box-shadow:0 6px 16px rgba(2,6,23,.08);
+}
+.btn-refresh i{ font-size:14px; }
+.btn-refresh.spin i{ animation:rp-spin .9s linear; }
+@keyframes rp-spin{ to{ transform:rotate(1turn); } }
+
+/* right meta chips */
+.rp-right-meta{ display:flex; flex-direction:column; gap:6px; }
+.mini-chip i{ margin-right:.35rem; }
+
+/* mobile tweak */
+@media (max-width:420px){
+  .btn-refresh{ width:32px; height:32px; border-radius:10px; }
+  .rp-right-meta{ gap:4px; }
+}

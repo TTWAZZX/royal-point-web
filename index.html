@@ -27,10 +27,20 @@
 
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-  <!-- ปุ่มรีเฟรชเล็กมุมขวาบน -->
-  <button id="refreshBtn" class="btn btn-light btn-icon rp-card-refresh" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+  <!-- Right: refresh + meta chips -->
+<div class="rp-rightcol">
+  <button id="refreshBtn" class="btn btn-refresh" aria-label="รีเฟรช">
     <i class="fa-solid fa-rotate"></i>
   </button>
+  <div class="rp-right-meta">
+    <span id="lastSyncChip" class="mini-chip d-none">
+      <i class="fa-regular fa-clock"></i> อัปเดตแล้ว
+    </span>
+    <span id="netChip" class="mini-chip d-none">
+      <i class="fa-solid fa-wifi-slash"></i> ออฟไลน์
+    </span>
+  </div>
+</div>
 
   <!-- หัวการ์ด: รูป + ชื่อ + Badge (ซ้าย) -->
   <div class="rp-left">

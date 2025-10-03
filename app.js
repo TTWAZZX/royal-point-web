@@ -191,19 +191,15 @@ function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg 
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
 /* ================= Score / Level / Progress ================= */
-function getTier(score){
-  for(const t of TIERS){ if(score >= t.min && score < t.next) return t; }
-  return TIERS[TIERS.length-1];
-}
-
 // ดึงคะแนนจาก API แล้วอัปเดตทั้ง UI
 async function refreshUserScore(){
-  if(!UID) return;
+  if (!UID) return;
+
   // แสดง overlay ถ้าช้าเกิน 300ms เพื่อลดการกะพริบ
-  const timer = setTimeout(()=>UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
+  const timer = setTimeout(() => UiOverlay.show('กำลังรีเฟรชคะแนน…'), 300);
 
   try{
-    const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache:"no-store" });
+    const r = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
     const j = await safeJson(r);
 
     if (j.status === "success" && j.data){
@@ -216,17 +212,22 @@ async function refreshUserScore(){
       // อัปเดต UI หลัก
       setPoints(sc);
 
-      // อัปเดตชิปสรุปด้านใต้ชื่อ
+      // อัปเดตชิปสรุปและชิปเล็กฝั่งซ้าย (ถ้ามี)
       updateStatChips({
         tierName: getTier(sc).name,
         points: sc,
         streakDays: window.USER_STREAK,
         uid: UID
       });
+      if (typeof updateLeftMiniChips === "function"){
+        updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
+      }
 
-      // แคชคะแนนล่าสุด + ปิดแบนเนอร์ออฟไลน์ (ถือว่าออนไลน์)
+      // แคชคะแนนล่าสุด + สถานะเน็ต/เวลาอัปเดต
       localStorage.setItem("lastScore", String(sc));
       toggleOfflineBanner(false);
+      if (typeof setLastSync === "function") setLastSync(Date.now(), false);
+      if (typeof updateNetChip === "function") updateNetChip();
 
     } else {
       // โหมดแคช/ออฟไลน์
@@ -238,7 +239,12 @@ async function refreshUserScore(){
         streakDays: window.USER_STREAK,
         uid: UID
       });
+      if (typeof updateLeftMiniChips === "function"){
+        updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
+      }
       toggleOfflineBanner(!navigator.onLine);
+      if (typeof setLastSync === "function") setLastSync(Date.now(), true);
+      if (typeof updateNetChip === "function") updateNetChip();
     }
 
   }catch(e){
@@ -253,14 +259,18 @@ async function refreshUserScore(){
       streakDays: window.USER_STREAK,
       uid: UID
     });
+    if (typeof updateLeftMiniChips === "function"){
+      updateLeftMiniChips({ streakDays: window.USER_STREAK, rank: window.USER_RANK });
+    }
     toggleOfflineBanner(!navigator.onLine);
+    if (typeof setLastSync === "function") setLastSync(Date.now(), true);
+    if (typeof updateNetChip === "function") updateNetChip();
 
   }finally{
     clearTimeout(timer);
     UiOverlay.hide();
   }
 }
-
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
 function setPoints(score){
@@ -1014,3 +1024,40 @@ function updateLeftMiniChips({ streakDays, rank }){
     } else elRk.classList.add('d-none');
   }
 }
+
+// แสดงเวลาอัปเดตล่าสุดที่ชิปขวา
+function setLastSync(ts, fromCache){
+  const chip = document.getElementById('lastSyncChip');
+  if (!chip) return;
+  chip.classList.remove('d-none');
+  chip.innerHTML = `<i class="fa-regular fa-clock"></i> ${fromCache ? 'อัปเดตจากแคช' : 'อัปเดตแล้ว'} • ${fmtDT(ts)}`;
+}
+// อัปเดตชิปเครือข่าย (แสดงเฉพาะตอนออฟไลน์)
+function updateNetChip(){
+  const chip = document.getElementById('netChip');
+  if (!chip) return;
+  if (navigator.onLine){
+    chip.classList.add('d-none');
+  } else {
+    chip.classList.remove('d-none');
+    chip.innerHTML = `<i class="fa-solid fa-wifi-slash"></i> ออฟไลน์`;
+  }
+}
+
+// ผูกให้รีเฟรชชิปสถานะอัตโนมัติ
+window.addEventListener('online',  updateNetChip);
+window.addEventListener('offline', updateNetChip);
+updateNetChip(); // ครั้งแรก
+
+// ปุ่มรีเฟรช: ใช้ตัวเดิม (หมุน) — ถ้ามีแล้วข้ามได้
+(function wireRefreshFx(){
+  const btn = document.getElementById('refreshBtn');
+  if (!btn || btn.dataset._spinwired) return;
+  btn.dataset._spinwired = 1;
+  btn.addEventListener('click', ()=>{
+    btn.classList.add('spin');
+    navigator.vibrate?.(8);
+    setTimeout(()=>btn.classList.remove('spin'), 900);
+  });
+})();
+
