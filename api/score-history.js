@@ -1,43 +1,27 @@
-// /api/score-history.js
-// Proxy ไป Google Apps Script: doGet?action=history
-// ใช้ env: APPS_SCRIPT_ENDPOINT, API_SECRET
+const { supabaseAdmin } = require('../lib/supabase')
 
-export default async function handler(req, res) {
-  // CORS
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-  if (req.method === "OPTIONS") return res.status(200).end();
-
-  if (req.method !== "GET") {
-    return res.status(405).json({ status: "error", message: "Method not allowed" });
-  }
-
-  const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-  const secret   = process.env.API_SECRET;
-  if (!endpoint || !secret) {
-    return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET env" });
-  }
-
-  const uid = (req.query.uid || "").toString().trim();
-  if (!uid) {
-    return res.status(400).json({ status: "error", message: "Missing uid" });
-  }
-
+module.exports = async (req, res) => {
   try {
-    const url = `${endpoint}?action=history&secret=${encodeURIComponent(secret)}&uid=${encodeURIComponent(uid)}`;
-    const r = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
-    const text = await r.text();
+    if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
+    const uid = (req.query.uid || '').trim()
+    const limit = Math.min(parseInt(req.query.limit || '25', 10), 100)
+    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0)
+    if (!uid) return res.status(400).json({ error: 'uid required' })
 
-    res.setHeader("Cache-Control", "no-store");
-    try {
-      const json = JSON.parse(text);
-      return res.status(200).json(json);
-    } catch {
-      return res.status(r.ok ? 200 : 502).send(text);
-    }
-  } catch (err) {
-    console.error("score-history proxy error:", err);
-    return res.status(502).json({ status: "error", message: String(err) });
+    const { data: user, error: e1 } = await supabaseAdmin
+      .from('users').select('id').eq('uid', uid).single()
+    if (e1 || !user) return res.status(404).json({ error: 'user_not_found' })
+
+    const { data, error } = await supabaseAdmin
+      .from('point_transactions')
+      .select('amount,code,type,created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) return res.status(500).json({ error: 'db_error' })
+    res.status(200).json({ items: data ?? [], nextOffset: offset + (data?.length || 0) })
+  } catch (e) {
+    res.status(500).json({ error: 'server_error', detail: String(e) })
   }
 }

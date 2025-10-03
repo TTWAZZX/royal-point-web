@@ -1,21 +1,29 @@
-export default async function handler(req, res) {
-  const GAS = process.env.APPS_SCRIPT_ENDPOINT || process.env.GAS_WEBAPP_URL;
-  const SECRET = process.env.API_SECRET;
-  if (!GAS || !SECRET) {
-    return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET env" });
-  }
-  try {
-    const uid = req.query.uid || req.query.adminUid || req.query.alias || "";
-    const u = new URL(GAS);
-    u.searchParams.set("action", "all-scores");
-    u.searchParams.set("uid", uid);
-    u.searchParams.set("secret", SECRET);
+const { supabaseAdmin } = require('../lib/supabase')
 
-    const r = await fetch(u.toString());
-    const t = await r.text();
-    let j; try { j = JSON.parse(t); } catch { j = { status: r.ok ? "success" : "error", message: t }; }
-    return res.status(200).json(j);
+module.exports = async (req, res) => {
+  try {
+    if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
+
+    // ดึง users + คะแนน (left join)
+    const { data: users, error } = await supabaseAdmin
+      .from('users')
+      .select('uid,name,room,dob,passport,tel, user_points(balance)')
+      .order('uid', { ascending: true })
+
+    if (error) return res.status(500).json({ error: 'db_error' })
+
+    const rows = (users || []).map(u => ({
+      uid: u.uid,
+      name: u.name || '',
+      room: u.room || '',
+      dob: u.dob || '',
+      passport: u.passport || '',
+      tel: u.tel || '',
+      score: u.user_points?.balance ?? 0
+    }))
+
+    res.status(200).json({ status: 'success', data: rows })
   } catch (e) {
-    return res.status(500).json({ status: "error", message: String(e) });
+    res.status(500).json({ status: 'error', message: String(e) })
   }
 }

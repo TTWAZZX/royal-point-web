@@ -1,85 +1,48 @@
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ status: "error", message: "Method Not Allowed" });
-  }
+const { supabaseAdmin } = require('../lib/supabase')
+const { getRedis } = require('../lib/supabase')
+const redis = getRedis()
 
+module.exports = async (req, res) => {
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-    const secret = process.env.API_SECRET;
-    if (!endpoint || !secret) {
-      return res
-        .status(500)
-        .json({ status: "error", message: "Missing server env config" });
+    if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
+    const { uid, code, points } = req.body || {}
+    if (!uid || (!code && typeof points !== 'number')) {
+      return res.status(400).json({ error: 'uid and (code or points) required' })
     }
 
-    const bodyObj = await readBodyAsObject(req);
-    // ควรมี { uid, code, type } จาก client
-    const form = new URLSearchParams({ ...bodyObj, secret });
+    const { data: user, error: e1 } = await supabaseAdmin
+      .from('users').select('id,uid').eq('uid', uid).single()
+    if (e1 || !user) return res.status(404).json({ error: 'user_not_found' })
 
-    const r = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
+    let add = 0
+    if (code) {
+      // โค้ดคูปอง
+      const { data: coupon } = await supabaseAdmin.from('coupons').select('*').eq('code', code).single()
+      if (!coupon) return res.status(404).json({ error: 'invalid_code' })
+      if (coupon.status === 'Used') return res.status(400).json({ error: 'already_used' })
 
-    const data = await safeJson(r);
-    return res.status(r.ok ? 200 : r.status).json(data);
-  } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ status: "error", message: String(err || "Internal Error") });
-  }
-}
+      const { error: e3 } = await supabaseAdmin
+        .from('coupons').update({ status: 'Used', claimer: uid, used_at: new Date().toISOString() })
+        .eq('code', code)
+      if (e3) return res.status(500).json({ error: 'mark_used_failed' })
 
-async function readBodyAsObject(req) {
-  const ct = (req.headers["content-type"] || "").toLowerCase();
-
-  if (ct.includes("application/json")) {
-    if (typeof req.body === "object" && req.body !== null) return req.body;
-    const raw = await getRaw(req);
-    try {
-      return JSON.parse(raw || "{}");
-    } catch {
-      return {};
+      add = coupon.point
+      const { error: e4 } = await supabaseAdmin.rpc('apply_points', {
+        p_user: user.id, p_amount: add, p_code: code, p_type: 'COUPON_REDEEM', p_actor: uid
+      })
+      if (e4) return res.status(500).json({ error: 'apply_points_failed' })
+    } else {
+      // กำหนดแต้มตรงๆ (เช่น กิจกรรมพิเศษ)
+      add = Number(points) || 0
+      const { error } = await supabaseAdmin.rpc('apply_points', {
+        p_user: user.id, p_amount: add, p_code: 'direct', p_type: 'POINT_ADD', p_actor: uid
+      })
+      if (error) return res.status(500).json({ error: 'apply_points_failed' })
     }
-  }
 
-  if (ct.includes("application/x-www-form-urlencoded")) {
-    const raw = await getRaw(req);
-    const params = new URLSearchParams(raw);
-    const obj = {};
-    for (const [k, v] of params.entries()) obj[k] = v;
-    return obj;
-  }
-
-  const raw = await getRaw(req);
-  try {
-    const params = new URLSearchParams(raw);
-    const obj = {};
-    for (const [k, v] of params.entries()) obj[k] = v;
-    return obj;
-  } catch {
-    return {};
-  }
-}
-
-function getRaw(req) {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (c) => (data += c));
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
-}
-
-async function safeJson(resp) {
-  const text = await resp.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { status: resp.ok ? "success" : "error", message: text };
+    if (redis) { try { await redis.del(`score:${uid}`) } catch {} }
+    res.status(200).json({ ok: true, added: add })
+  } catch (e) {
+    res.status(500).json({ error: 'server_error', detail: String(e) })
   }
 }

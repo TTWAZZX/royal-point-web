@@ -1,36 +1,29 @@
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ status: "error", message: "Method not allowed" });
-  }
+const { supabaseAdmin } = require('../lib/supabase')
+const { getRedis } = require('../lib/supabase')
+const redis = getRedis()
+
+module.exports = async (req, res) => {
   try {
-    const endpoint = process.env.APPS_SCRIPT_ENDPOINT;
-    const secret   = process.env.API_SECRET;
-    if (!endpoint || !secret) {
-      return res.status(500).json({ status: "error", message: "Missing APPS_SCRIPT_ENDPOINT or API_SECRET" });
+    if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
+    const { adminUid, targetUid, delta, note } = req.body || {}
+    if (!adminUid || !targetUid || typeof delta !== 'number') {
+      return res.status(400).json({ error: 'Missing adminUid/targetUid/delta' })
     }
+    const { data: user } = await supabaseAdmin.from('users').select('id').eq('uid', targetUid).single()
+    if (!user) return res.status(404).json({ error: 'user_not_found' })
 
-    const { adminUid, targetUid, delta, note } = req.body || {};
-    if (!adminUid || !targetUid || typeof delta !== "number") {
-      return res.status(200).json({ status: "error", message: "Missing adminUid/targetUid/delta" });
-    }
+    const { error } = await supabaseAdmin.rpc('apply_points', {
+      p_user: user.id,
+      p_amount: delta,
+      p_code: note || 'admin-adjust',
+      p_type: delta >= 0 ? 'ADMIN_ADJUST_ADD' : 'ADMIN_ADJUST_SUB',
+      p_actor: adminUid
+    })
+    if (error) return res.status(500).json({ error: 'apply_points_failed' })
 
-    const gsRes = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        action: "adjust-score",
-        apiSecret: secret,
-        adminUid,
-        targetUid,
-        delta: String(delta),
-        note: String(note || "")
-      })
-    });
-
-    const data = await gsRes.json();
-    return res.status(200).json(data);
-
+    if (redis) { try { await redis.del(`score:${targetUid}`) } catch {} }
+    res.status(200).json({ ok: true })
   } catch (e) {
-    return res.status(200).json({ status: "error", message: String(e) });
+    res.status(500).json({ error: 'server_error', detail: String(e) })
   }
 }
