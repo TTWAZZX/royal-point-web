@@ -31,12 +31,11 @@
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
   <!-- Right: refresh + meta chips -->
-<div class="rp-rightcol">
-  <div class="rp-rightrow">
-  <span id="lastSyncChip" class="rp-chip d-none">
-    <i class="fa-regular fa-clock"></i> —
+<div class="d-flex align-items-center justify-content-end rp-updated-row">
+  <span id="updatedPill" class="rp-updated-pill">
+    <i class="fa-regular fa-clock"></i> อัปเดตแล้ว • <span id="updatedAt">2025-10-03 14:32</span>
   </span>
-  <button id="refreshBtn" class="btn btn-outline-secondary btn-icon btn-refresh" title="รีเฟรช">
+  <button id="refreshBtn" class="btn btn-outline-secondary btn-icon tap-20 ms-1" aria-label="รีเฟรช">
     <i class="fa-solid fa-rotate"></i>
   </button>
 </div>
@@ -101,6 +100,19 @@
     <span id="tierStatus" class="small text-secondary">—</span>
     <span id="next-tier" class="visually-hidden"></span>
   </div>
+</section>
+
+<!-- Actions (scan + history) -->
+<section id="rpActions" class="rp-actions-wide d-grid gap-2 mb-3">
+  <button id="primaryAction"
+          class="btn rp-primary act-btn tap-20"
+          data-bs-toggle="modal" data-bs-target="#scoreModal">
+    <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
+  </button>
+
+  <button id="historyBtn" class="btn btn-outline-secondary act-btn tap-20">
+    <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
+  </button>
 </section>
 
   <!-- ===== Ads Carousel ===== -->
