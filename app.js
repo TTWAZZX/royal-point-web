@@ -6,6 +6,43 @@ const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
 
+// ===== Helpers: pick UID + try multiple endpoints + render safe =====
+const CURRENT_UID =
+  window.__UID ||
+  localStorage.getItem('uid') ||
+  document.querySelector('[data-uid]')?.dataset.uid ||
+  '';
+
+function getArrFromResponse(res) {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.items)) return res.items;
+  if (res && Array.isArray(res.data))  return res.data;
+  return null;
+}
+
+async function tryEndpoints(endpoints, fetchOpts, loadingOpts) {
+  for (const url of endpoints) {
+    try {
+      const res = await Loading.apiFetch(url, fetchOpts, loadingOpts);
+      const items = getArrFromResponse(res);
+      if (items) {
+        console.log('[OK] endpoint:', url, 'sample:', items[0], 'raw:', res);
+        return { items, used: url, raw: res };
+      }
+      console.warn('[No array in payload]', url, res);
+    } catch (e) {
+      console.warn('[Fetch failed]', url, e);
+    }
+  }
+  throw new Error('all_endpoints_failed');
+}
+
+function h(str) {
+  return String(str ?? '').replace(/[&<>"']/g, s => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[s]));
+}
+
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
 
@@ -109,7 +146,8 @@ function setAppLoading(on){
 document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
 document.addEventListener("DOMContentLoaded", initApp);
 
-async function initApp(){
+// ⬇️ วางทับของเดิมทั้งหมด
+async function initApp(){ 
   try{
     await liff.init({ liffId: LIFF_ID });
     if(!liff.isLoggedIn()){ liff.login(); return; }
@@ -119,33 +157,34 @@ async function initApp(){
 
     if (els.username)   els.username.textContent = prof.displayName || "—";
     if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
-    enableAvatarPreview(); // NEW: กดขยายรูปได้
+    enableAvatarPreview();
 
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
     enableTierTooltip();
 
     // แอนิเมชันปุ่มหลักครั้งเดียว + haptics เล็กน้อย
-const pa = document.getElementById("primaryAction");
-if (pa){
-  pa.classList.add("swing-once");
-  pa.addEventListener("click", ()=> navigator.vibrate?.(10));
-}
+    const pa = document.getElementById("primaryAction");
+    if (pa){
+      pa.classList.add("swing-once");
+      pa.addEventListener("click", ()=> navigator.vibrate?.(10));
+    }
 
-// สถานะ online/offline
-toggleOfflineBanner(!navigator.onLine);
-window.addEventListener("online",  ()=> toggleOfflineBanner(false));
-window.addEventListener("offline", ()=> toggleOfflineBanner(true));
+    // สถานะ online/offline
+    toggleOfflineBanner(!navigator.onLine);
+    window.addEventListener("online",  ()=> toggleOfflineBanner(false));
+    window.addEventListener("offline", ()=> toggleOfflineBanner(true));
 
-    await refreshUserScore();
-    await loadRewards();
-    renderRewards(prevScore || 0); // render ตามรางวัลที่โหลดมา
+    // ===== โหลดข้อมูลหลัก (เรียกครั้งเดียวพอ) =====
+    await refreshUserScore();    // ดึงคะแนนปัจจุบัน
+    await loadRewards();         // << เรียกครั้งเดียว
+    renderRewards(prevScore || 0);
+
   }catch(e){
     console.error(e);
     toastErr("เริ่มต้นระบบไม่สำเร็จ");
   }finally{
     setAppLoading(false);
-    // วิ่งแถบ topbar ให้จบสวย ๆ
     document.body.classList.remove('loading'); 
     document.body.classList.add('ready');
     setTimeout(()=>document.body.classList.remove('ready'), 1000);
@@ -153,32 +192,33 @@ window.addEventListener("offline", ()=> toggleOfflineBanner(true));
 }
 
 function bindUI(){
+  // ปุ่มรีเฟรชคะแนน
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
+
+  // ปุ่มประวัติ — ผูกที่เดียวพอ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  if (els.modal){
-    els.modal.addEventListener("shown.bs.modal", () => startScanner && startScanner());
-    els.modal.addEventListener("hidden.bs.modal", () => stopScanner && stopScanner());
-  }
-
-const torchBtn = document.getElementById("torchBtn");
-torchBtn && torchBtn.addEventListener("click", async ()=>{
-  try {
-    await toggleTorch(!TORCH_ON);
-    navigator.vibrate?.(8);
-  } catch(e){
-    toastErr("อุปกรณ์นี้ไม่รองรับไฟฉาย");
-  }
-});
-
-  // ปุ่มควบคุมกล้องในโมดัล (ถ้ามี)
+  // ควบคุมกล้องในโมดัล (ถ้ามี)
   const startBtn = document.getElementById("startScanBtn");
   const stopBtn  = document.getElementById("stopScanBtn");
   startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
   stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
 
+  // ปุ่มไฟฉาย
+  const torchBtn = document.getElementById("torchBtn");
+  if (torchBtn){
+    torchBtn.addEventListener("click", async ()=>{
+      try {
+        await toggleTorch(!TORCH_ON);
+        navigator.vibrate?.(8);
+      } catch(e){
+        toastErr("อุปกรณ์นี้ไม่รองรับไฟฉาย");
+      }
+    });
+  }
+
   // ยืนยันรหัสลับ (กรณีกรอกมือ)
-  els.submitBtn && els.submitBtn.addEventListener("click", async()=>{
+  els.submitBtn && els.submitBtn.addEventListener("click", async ()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
     if (REDEEM_IN_FLIGHT) return;
@@ -539,30 +579,47 @@ let rewardRailBound = false;
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
 async function loadRewards() {
-  const wrap = document.getElementById('rewardsSection');
-  try {
-    const j = await Loading.apiFetch('/api/rewards', {}, {
-      scope: 'page',
-      skeletonOf: wrap
-    });
+  const rail = document.getElementById('rewardRail');
+  const section = document.getElementById('rewardsSection');
 
-    const items = Array.isArray(j.items) ? j.items : (Array.isArray(j.data) ? j.data : []);
-    wrap.innerHTML = items.length
-      ? items.map(r => `
-          <div class="card my-2">
-            <div class="card-body d-flex gap-3 align-items-center">
-              <img src="${r.image || ''}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">
-              <div class="flex-grow-1">
-                <div class="fw-bold">${escapeHtml(r.name || '')}</div>
-                <div class="text-muted small">${escapeHtml(r.desc || '')}</div>
+  try {
+    const { items } = await tryEndpoints(
+      [
+        '/api/rewards',            // ตัวอย่างของผม
+        '/api/list-rewards',       // สำรอง
+        '/api/reward-list'         // สำรอง
+      ],
+      {},
+      { scope: 'page', skeletonOf: section }
+    );
+
+    // เดาชื่อฟิลด์อย่างทนทาน
+    rail.innerHTML = items.length
+      ? items.map(r => {
+          const title = r.name || r.title || r.reward_name || 'Reward';
+          const desc  = r.desc || r.description || '';
+          const img   = r.image || r.image_url || r.thumbnail || '';
+          const cost  = r.cost ?? r.point_cost ?? r.points ?? '?';
+          const rid   = r.id ?? r.reward_id ?? '';
+
+          return `
+            <div class="card my-2">
+              <div class="card-body d-flex gap-3 align-items-center">
+                ${img ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">` : `
+                  <div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
+                <div class="flex-grow-1">
+                  <div class="fw-bold">${h(title)}</div>
+                  <div class="text-muted small">${h(desc)}</div>
+                </div>
+                <button class="btn btn-primary" data-reward="${h(rid)}">แลก ${h(cost)} pt</button>
               </div>
-              <button class="btn btn-primary" data-reward="${r.id}">แลก ${r.cost} pt</button>
             </div>
-          </div>
-        `).join('')
-      : `<div class="text-center text-muted py-4">ยังไม่มีของรางวัล</div>`;
+          `;
+        }).join('')
+      : `<div class="text-center text-muted py-3">ยังไม่มีของรางวัล</div>`;
   } catch (e) {
-    wrap.innerHTML = `<div class="alert alert-danger">โหลดรายการไม่สำเร็จ</div>`;
+    console.error('loadRewards error:', e);
+    rail.innerHTML = `<div class="alert alert-danger">โหลดของรางวัลไม่สำเร็จ</div>`;
   }
 }
 
@@ -781,55 +838,60 @@ async function stopScanner(){
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory() {
-  const bodyWrap = document.getElementById('historyListWrap');
-  const listEl   = document.getElementById('historyList');
+  const wrap  = document.getElementById('historyListWrap');
+  const listEl = document.getElementById('historyList');
+  const uid = CURRENT_UID;
 
-  // เดา uid ปัจจุบันจากหลายแหล่ง (ปรับได้ตามของคุณ)
-  const uid = (window.__UID) ||
-              (document.querySelector('[data-uid]')?.dataset.uid) ||
-              localStorage.getItem('uid') || '';
-
-  listEl.innerHTML = ''; // เคลียร์ก่อน
+  listEl.innerHTML = '';
 
   try {
-    const j = await Loading.apiFetch(`/api/score-history?uid=${encodeURIComponent(uid)}&limit=50`, {}, {
-      scope: 'page',
-      skeletonOf: bodyWrap
-    });
+    const qs = `uid=${encodeURIComponent(uid)}&limit=50`;
 
-    const list = Array.isArray(j.items) ? j.items : (Array.isArray(j.data) ? j.data : []);
+    const { items } = await tryEndpoints(
+      [
+        `/api/score-history?${qs}`,         // ตัวอย่างของผม
+        `/api/history?${qs}`,               // สำรอง
+        `/api/point-transactions?${qs}`     // สำรอง (บางแบ็กเอนด์ตั้งชื่อนี้)
+      ],
+      {},
+      { scope: 'page', skeletonOf: wrap }
+    );
 
-    // เรียง “ล่าสุดก่อน” (ใช้ created_at อย่างเดียวพอ ถ้าคุณมี id ก็เพิ่ม tie-break ได้)
-    list.sort((a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts));
+    // เรียง “ล่าสุดก่อน”
+    const sorted = items.slice().sort(
+      (a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts)
+    );
 
-    listEl.innerHTML = list.length ? list.map(i => {
-      const ts = new Date(i.created_at || i.ts);
-      const p  = Number(i.amount ?? i.point ?? 0);
-      const sign  = p >= 0 ? '+' : '';
-      const color = p >= 0 ? '#16a34a' : '#dc2626';
-      const type  = i.type || '—';
-      const code  = i.code || '';
+    listEl.innerHTML = sorted.length
+      ? sorted.map(i => {
+          const ts  = new Date(i.created_at || i.ts || Date.now());
+          const amt = Number(i.amount ?? i.point ?? i.delta ?? 0);
+          const sign  = amt >= 0 ? '+' : '';
+          const color = amt >= 0 ? '#16a34a' : '#dc2626';
+          const type  = i.type || '—';
+          const code  = i.code || i.text || '';
 
-      return `<div class="list-group-item d-flex justify-content-between align-items-center">
-                <div>
-                  <div class="fw-bold">${escapeHtml(type)}</div>
-                  <div class="small text-muted">${escapeHtml(code)}</div>
-                </div>
-                <div class="text-end">
-                  <div style="color:${color};font-weight:800">${sign}${p}</div>
-                  <div class="small text-muted">${ts.toLocaleString()}</div>
-                </div>
-              </div>`;
-    }).join('') : `<div class="text-center text-muted py-4">ไม่มีรายการ</div>`;
+          return `
+            <div class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <div class="fw-bold">${h(type)}</div>
+                <div class="small text-muted">${h(code)}</div>
+              </div>
+              <div class="text-end">
+                <div style="color:${color};font-weight:800">${sign}${amt}</div>
+                <div class="small text-muted">${ts.toLocaleString()}</div>
+              </div>
+            </div>
+          `;
+        }).join('')
+      : `<div class="text-center text-muted py-4">ไม่มีรายการ</div>`;
   } catch (e) {
+    console.error('openHistory error:', e);
     listEl.innerHTML = `<div class="text-center text-danger py-4">โหลดไม่สำเร็จ</div>`;
   }
 
-  // เปิดโมดัลตามระบบเดิมของคุณ (ถ้าใช้ Bootstrap 5)
   const m = document.getElementById('historyModal');
-  if (m && window.bootstrap) {
-    new bootstrap.Modal(m).show();
-  }
+  if (m && window.bootstrap) new bootstrap.Modal(m).show();
 }
 
 /* ================= Utils ================= */
