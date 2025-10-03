@@ -270,7 +270,19 @@ function setPoints(score){
   const tier = getTier(score);
 
   applyPremiumTheme(tier.key);  // ← ย้อมธีมการ์ดตามระดับ
-  spawnAvatarSparkles();       // ให้ประกายลอยเล็ก ๆ รอบโปรไฟล์
+  setAvatarArc(score);         // ← วาดวงแหวนรอบรูป
+  let _sparkledOnce = false;
+  function spawnAvatarSparklesOnce(){
+    if (_sparkledOnce) return;
+    _sparkledOnce = true;
+  spawnAvatarSparkles();
+  }
+  // ใน setPoints():
+  // - ตอนโหลดครั้งแรก
+  spawnAvatarSparklesOnce();
+  // - และ/หรือ ตอนเลเวลเปลี่ยน
+  if (prevLevel && prevLevel !== tier.key){ spawnAvatarSparkles(); }
+
   bumpScoreFx();                // ← เด้งตัวเลขทุกครั้ง
 
   // ฟองคะแนนลอยขึ้น
@@ -706,19 +718,6 @@ function updateStatChips({ tierName, points, streakDays } = {}){
   box.innerHTML = chips.join("");
 }
 
-function toggleOfflineBanner(on){
-  const el = document.getElementById("offlineBanner");
-  if (el) el.classList.toggle("d-none", !on);
-}
-
-function bumpXpFill(){
-  const xpFill = document.getElementById("xpFill");
-  if (!xpFill) return;
-  xpFill.classList.remove("bump");
-  void xpFill.offsetWidth; // รีเฟรชเพื่อให้ animation เล่นซ้ำได้
-  xpFill.classList.add("bump");
-}
-
 function setTierMedal(tier){
   const avatar = document.getElementById("rpAvatar");
   const medal  = document.getElementById("tierMedal");
@@ -770,20 +769,6 @@ function updatePremiumBar(score){
     const need = end - score;
     xpLabel.textContent = `ระดับ ${t.name} • ขาดอีก ${need.toLocaleString()} คะแนน`;
   }
-}
-
-function updateStatChips({ tierName, points, streakDays, uid } = {}){
-  const box = document.getElementById("statChips");
-  if(!box) return;
-
-  const chips = [];
-  if (tierName) chips.push(`<span class="chip"><i class="fa-solid fa-medal"></i> ${tierName}</span>`);
-  if (typeof points === "number") chips.push(`<span class="chip"><i class="fa-solid fa-star"></i> ${points.toLocaleString()} pt</span>`);
-  if (typeof streakDays === "number") chips.push(`<span class="chip"><i class="fa-solid fa-fire"></i> ${streakDays} วันติด</span>`);
-  // (ออปชัน) แสดง UID สั้น
-  if (uid) chips.push(`<span class="chip"><i class="fa-solid fa-user"></i> ${uid.slice(-4).padStart(uid.length,"•")}</span>`);
-
-  box.innerHTML = chips.join("") || `<span class="chip"><i class="fa-regular fa-circle-question"></i> กำลังโหลด…</span>`;
 }
 
 function toggleOfflineBanner(on){
@@ -935,13 +920,6 @@ function showScoreDelta(delta){
 })();
 
 /* ===== Premium Plus – JS helpers ===== */
-
-/** ย้อมธีมการ์ดตาม tier (มีใน pack ก่อนหน้าแล้วก็โอเค) */
-function applyPremiumTheme(tierKey){
-  const card = document.querySelector('.rp-profile-card');
-  if (card) card.setAttribute('data-tier', tierKey);
-}
-
 /** 3D tilt บนเดสก์ท็อป */
 (function enableCardTilt(){
   const card = document.querySelector('.rp-profile-card');
@@ -1011,3 +989,28 @@ function spawnAvatarSparkles(){
     show(`${pct}% • ขาดอีก ${need.toLocaleString()} คะแนน`);
   });
 })();
+
+/* วงแหวนรอบรูป: ตั้งค่า 0..1 ตาม % ความคืบหน้าสู่ระดับถัดไป */
+function setAvatarArc(score){
+  const av = document.getElementById('rpAvatar');
+  if (!av) return;
+  const t = getTier(score);
+  const pct = (t.next === Infinity) ? 1 : Math.max(0, Math.min(1, (score - t.min) / (t.next - t.min)));
+  av.style.setProperty('--arc', pct.toFixed(4));
+}
+
+/* อัปเดต mini-chips ใต้รูป (streak / rank) */
+function updateLeftMiniChips({ streakDays, rank }){
+  const elSt = document.getElementById('miniStreak');
+  const elRk = document.getElementById('miniRank');
+  if (elSt){
+    if (Number.isFinite(streakDays) && streakDays > 0){
+      elSt.textContent = `🔥 ${streakDays} วันติด`; elSt.classList.remove('d-none');
+    } else elSt.classList.add('d-none');
+  }
+  if (elRk){
+    if (Number.isFinite(rank) && rank > 0){
+      elRk.textContent = `🏆 อันดับ ${rank}`; elRk.classList.remove('d-none');
+    } else elRk.classList.add('d-none');
+  }
+}

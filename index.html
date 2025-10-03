@@ -33,21 +33,29 @@
   </button>
 
   <!-- หัวการ์ด: รูป + ชื่อ + Badge (ซ้าย) -->
-  <div class="rp-topline">
-    <div class="rp-left">
-      <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
-        <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-        <!-- overlay badge ต้องลอย “หน้ารูป” -->
-        <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
-      </div>
-      <div class="rp-title">
-        <h1 id="username" class="rp-username">—</h1>
-        <span id="tierPill" class="rp-tier-pill rp-tier-silver">
-          <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
-        </span>
-      </div>
+  <div class="rp-left">
+  <!-- ซ้าย: Avatar + mini chips ใต้รูป -->
+  <div class="rp-left-col">
+    <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
+      <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
+      <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
+    </div>
+
+    <!-- Mini chips (อัปเดตด้วย JS; ซ่อนไว้ก่อน) -->
+    <div class="rp-mini-stack" id="leftMiniStack">
+      <span id="miniStreak" class="mini-chip d-none">🔥 0 วันติด</span>
+      <span id="miniRank"   class="mini-chip d-none">🏆 อันดับ —</span>
     </div>
   </div>
+
+  <!-- ขวา: ชื่อ + Pill ระดับ (โครงเดิมของคุณ) -->
+  <div class="rp-title">
+    <h1 id="username" class="rp-username">—</h1>
+    <span id="tierPill" class="rp-tier-pill rp-tier-silver">
+      <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
+    </span>
+  </div>
+</div>
 
   <!-- บรรทัดถัดไป: คะแนนสะสม (ตัวใหญ่ / ชิดซ้าย) -->
   <div class="rp-score-stack mt-2">

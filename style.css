@@ -2678,3 +2678,53 @@ body.ready #topbar{width:100%;opacity:0}
 @media (prefers-reduced-motion:reduce){
   .rp-tier-dot::after, .rp-tier-pill::after, .rp-progress-fill::after{ animation:none !important; }
 }
+
+/* ----- Left column layout ----- */
+.rp-left{ align-items:flex-start; gap:12px; }
+.rp-left-col{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+
+/* Mini chips ใต้รูป */
+.rp-mini-stack{ display:flex; flex-direction:column; gap:6px; }
+.mini-chip{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.18rem .5rem; border-radius:999px; line-height:1;
+  font-weight:800; font-size:.7rem; color:#0f172a;
+  background:linear-gradient(180deg,#fff,#f6f9ff);
+  border:1px solid rgba(148,163,184,.35);
+  box-shadow:0 6px 14px rgba(2,6,23,.06), inset 0 1px 0 rgba(255,255,255,.6);
+}
+
+/* ----- Arc รอบรูป (คืบหน้าสู่ระดับถัดไป) ----- */
+/* สีตาม tier (ใช้ data-tier จาก applyPremiumTheme ที่เรามีอยู่แล้ว) */
+.rp-profile-card{ --c1:#ffd166; --c2:#f59e0b; --arc:0; } /* --arc = 0..1 */
+.rp-profile-card[data-tier="silver"]   { --c1:#cbd5e1; --c2:#94a3b8; }
+.rp-profile-card[data-tier="gold"]     { --c1:#ffd166; --c2:#f59e0b; }
+.rp-profile-card[data-tier="platinum"] { --c1:#60a5fa; --c2:#38bdf8; }
+
+/* ทำ donut ring ด้วย conic-gradient + mask ให้หนาเป็นวง */
+.rp-avatar-wrap{ position:relative; overflow:visible !important; isolation:isolate; }
+.rp-avatar-wrap::after{
+  content:""; position:absolute; inset:-6px; border-radius:50%; z-index:0;
+  background:
+    conic-gradient(var(--c1) calc(var(--arc)*1turn), rgba(0,0,0,0) 0);
+  /* เจาะรูตรงกลางให้เป็นวงแหวน */
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 60%, #000 61%);
+          mask: radial-gradient(circle at 50% 50%, transparent 60%, #000 61%);
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,.12));
+  opacity:.9;
+}
+
+/* เหรียญให้อยู่ “หน้ารูป” ชัด ๆ */
+.rp-avatar-circle{ position:relative; z-index:1; }
+.rp-tier-dot{
+  position:absolute; right:-8px; bottom:-6px; z-index:3;
+  width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
+  color:#7c4a00; background:radial-gradient(closest-side,#ffe08a,#ffcd57);
+  border:1px solid rgba(245,158,11,.65); outline:2px solid #fff;
+  box-shadow: 0 10px 20px rgba(0,0,0,.18), inset 0 2px 0 rgba(255,255,255,.85), inset 0 -3px 8px rgba(124,74,0,.18);
+}
+
+/* จอเล็กย่อ chip ลง */
+@media (max-width:420px){
+  .mini-chip{ font-size:.62rem; padding:.16rem .44rem; }
+}
