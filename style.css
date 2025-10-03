@@ -2159,3 +2159,96 @@ body.ready #topbar{width:100%;opacity:0}
   .rp-card-refresh{ width:26px; height:26px; top:8px; right:8px; }
   .rp-progress-line{ height:12px; }
 }
+
+/* Card + รีเฟรชมุมขวาบน */
+.rp-profile-card{ position:relative; }
+.rp-card-refresh{
+  position:absolute; top:10px; right:10px;
+  width:28px; height:28px; border-radius:8px;
+  display:grid; place-items:center; z-index:5;
+  box-shadow:0 8px 18px rgba(0,0,0,.12);
+}
+
+/* หัวการ์ด */
+.rp-topline{ display:flex; align-items:center; justify-content:flex-start; }
+.rp-left{ display:flex; align-items:center; gap:12px; min-width:0; }
+.rp-title{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.rp-username{
+  font-size: clamp(1.1rem, 4.6vw, 1.6rem);
+  font-weight:800; margin:0; line-height:1.15;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Avatar + overlay badge “อยู่หน้ารูป” แน่นอน */
+.rp-avatar-wrap{
+  position:relative; width:60px; height:60px; border-radius:50%;
+  overflow:hidden; isolation:isolate; flex:0 0 auto;
+}
+.rp-avatar-circle{
+  width:100%; height:100%; border-radius:50%;
+  object-fit:cover; object-position:50% 34%;
+  position:relative; z-index:1; display:block;
+}
+.rp-tier-dot{
+  position:absolute; right:2px; bottom:2px; z-index:2; /* <- ลอยหน้า */
+  width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+  font-size:.8rem;
+  background: radial-gradient(closest-side,#ffe08a,#ffcd57); /* gold default */
+  border:1px solid rgba(245,158,11,.55); color:#7c4a00;
+  box-shadow:0 6px 16px rgba(0,0,0,.16), inset 0 0 0 1px rgba(255,255,255,.35);
+}
+/* สี dot ตามระดับ (ตัวเลือก) */
+.rp-avatar-wrap.rp-tier-silver .rp-tier-dot{
+  color:#374151; background:radial-gradient(closest-side,#e7ecef,#cfd8dc); border-color:rgba(148,163,184,.45);
+}
+.rp-avatar-wrap.rp-tier-platinum .rp-tier-dot{
+  color:#0b3c5d; background:radial-gradient(closest-side,#d9f3ff,#bfe7ff); border-color:rgba(59,130,246,.45);
+}
+
+/* Pill ระดับข้างชื่อ */
+.rp-tier-pill{
+  padding:.22rem .54rem; border-radius:999px; font-weight:800; font-size:.8rem;
+  display:inline-flex; align-items:center; gap:.4rem;
+  background:linear-gradient(180deg,#fff,#f6faf8); border:1px solid rgba(148,163,184,.35);
+}
+
+/* คะแนนสะสม */
+.rp-score-stack{ display:flex; flex-direction:column; gap:.25rem; }
+.rp-score-label{ font-size:.82rem; font-weight:700; color:#64748b; letter-spacing:.02em; }
+.rp-point-value{ font-weight:900; font-size: clamp(34px, 7.2vw, 52px); line-height:1; letter-spacing:-.01em; }
+.rp-point-unit{ font-weight:800; color:#475569; margin-left:.25rem; }
+/* ถ้ามีไฮไลต์ฟุ้งใต้คะแนนจากรอบก่อน ให้ปิด */
+.rp-profile-card .rp-point-value::after{ content:none !important; background:none !important; }
+
+/* Progress เต็มกว้าง + ตัวเลขคู่กึ่งกลาง */
+.rp-progress-area{ display:flex; flex-direction:column; gap:.35rem; }
+.rp-progress-line{
+  width:100%; height:14px; border-radius:999px; background:#eff2f6;
+  position:relative; overflow:hidden; border:1px solid rgba(148,163,184,.25);
+}
+.rp-progress-fill{
+  position:absolute; inset:0 auto 0 0; width:0;
+  background:linear-gradient(90deg,#ffcd57,#f59e0b); /* gold default */
+}
+.prog-silver   .rp-progress-fill{ background:linear-gradient(90deg,#94a3b8,#cbd5e1); }
+.prog-gold     .rp-progress-fill{ background:linear-gradient(90deg,#ffcd57,#f59e0b); }
+.prog-platinum .rp-progress-fill{ background:linear-gradient(90deg,#60a5fa,#38bdf8); }
+.rp-xp-pair{ color:#475569; }
+.rp-xp-pair #xpPair{ font-variant-numeric: tabular-nums; }
+
+/* สถานะ/แท็ก (กึ่งกลาง) */
+.rp-status-center{ display:flex; justify-content:center; align-items:center; gap:.5rem; text-align:center; }
+.rp-tag{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.2rem .55rem; border-radius:999px; font-weight:700; font-size:.75rem;
+  background:linear-gradient(180deg,rgba(255,255,255,.85),rgba(255,255,255,.55));
+  border:1px solid rgba(148,163,184,.35); color:#0f172a;
+}
+.rp-tag.d-none{ display:none !important; }
+
+/* จอเล็ก */
+@media (max-width:390px){
+  .rp-avatar-wrap{ width:56px; height:56px; }
+  .rp-card-refresh{ width:26px; height:26px; top:8px; right:8px; }
+  .rp-progress-line{ height:12px; }
+}

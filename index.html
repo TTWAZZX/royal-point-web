@@ -27,17 +27,17 @@
 
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-  <!-- ปุ่มรีเฟรชมุมขวาบน -->
+  <!-- ปุ่มรีเฟรชเล็กมุมขวาบน -->
   <button id="refreshBtn" class="btn btn-light btn-icon rp-card-refresh" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
     <i class="fa-solid fa-rotate"></i>
   </button>
 
-  <!-- แถวบน: Avatar + ชื่อ + Badge (ซ้าย) -->
+  <!-- หัวการ์ด: รูป + ชื่อ + Badge (ซ้าย) -->
   <div class="rp-topline">
     <div class="rp-left">
       <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
         <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-        <!-- overlay badge (ลอยหน้ารูป) -->
+        <!-- overlay badge ลอยอยู่หน้ารูป -->
         <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-star"></i></span>
       </div>
       <div class="rp-title">
@@ -49,7 +49,7 @@
     </div>
   </div>
 
-  <!-- คะแนนสะสม (ตัวใหญ่) -->
+  <!-- บรรทัดถัดไป: คะแนนสะสม (ตัวใหญ่ / ชิดซ้าย) -->
   <div class="rp-score-stack mt-2">
     <div class="rp-score-label">คะแนนสะสม</div>
     <div class="rp-point-value">
@@ -57,7 +57,7 @@
     </div>
   </div>
 
-  <!-- Progress bar เต็มกว้าง + ตัวเลขคู่กึ่งกลาง -->
+  <!-- บรรทัดถัดไป: Progress เต็มกว้าง + ตัวเลขคู่กึ่งกลาง -->
   <div class="rp-progress-area mt-2">
     <div id="progressBar" class="rp-progress-line prog-silver">
       <div id="progressFill" class="rp-progress-fill"></div>
@@ -67,15 +67,14 @@
     </div>
   </div>
 
-  <!-- สถานะ (กึ่งกลาง) -->
+  <!-- บรรทัดถัดไป: สถานะ/แท็ก (กึ่งกลาง) -->
   <div class="rp-status-center mt-1">
     <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
     <span id="tierStatus" class="small text-secondary">—</span>
-    <!-- เผื่อโค้ดเก่ายังอ้างถึง -->
+    <!-- เผื่อโค้ดเดิมอ้างถึง -->
     <span id="next-tier" class="visually-hidden"></span>
   </div>
 </section>
-
 
   <!-- ===== Ads Carousel ===== -->
   <section class="rp-glass rp-card p-0 mb-3 hover-lift">

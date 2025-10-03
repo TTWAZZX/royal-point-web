@@ -828,19 +828,19 @@ function updateXpLabels(score){
 
 // อัปเดต pill/dot/สถานะ ตามระดับ
 function setTierUI(tier, score){
-  const pill     = document.getElementById('tierPill');
-  const pillName = document.getElementById('tierName');
-  const avatar   = document.getElementById('rpAvatar');
-  const dot      = document.getElementById('tierDot');
-  const status   = document.getElementById('tierStatus');
-  const tag      = document.getElementById('tierTag');
+  const pill = document.getElementById('tierPill');
+  const name = document.getElementById('tierName');
+  const av   = document.getElementById('rpAvatar');
+  const dot  = document.getElementById('tierDot');
+  const st   = document.getElementById('tierStatus');
+  const tag  = document.getElementById('tierTag');
 
   pill?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   pill?.classList.add(`rp-tier-${tier.key}`);
-  if (pillName) pillName.textContent = tier.name;
+  if (name) name.textContent = tier.name;
 
-  avatar?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
-  avatar?.classList.add(`rp-tier-${tier.key}`);
+  av?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
+  av?.classList.add(`rp-tier-${tier.key}`);
 
   if (dot){
     const icon = tier.key === 'platinum' ? 'fa-gem' : (tier.key === 'gold' ? 'fa-star' : 'fa-circle');
@@ -849,21 +849,20 @@ function setTierUI(tier, score){
 
   if (tier.next === Infinity){
     tag?.classList.remove('d-none');
-    if (status) status.textContent = 'ถึงระดับสูงสุดแล้ว';
+    if (st) st.textContent = 'ถึงระดับสูงสุดแล้ว';
   } else {
     const need = Math.max(0, tier.next - Number(score||0));
     tag?.classList.add('d-none');
-    if (status) status.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
+    if (st) st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
   }
 }
 
-// อัปเดต “ปัจจุบัน / เป้าหมาย คะแนน” ใต้บาร์
 function setXpPair(score){
-  const pair = document.getElementById('xpPair');
-  if (!pair) return;
+  const el = document.getElementById('xpPair');
+  if (!el) return;
   const tier = getTier(score);
   const goal = (tier.next === Infinity) ? Number(score||0) : tier.next;
-  pair.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
+  el.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
 }
 
 // เปิด tooltip ของ Bootstrap (info icon)
