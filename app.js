@@ -798,10 +798,9 @@ list.forEach(i => {
 });
 
 // เรียง: เวลาใหม่ก่อน -> id มากก่อน
-list.sort((a, b) => {
-  if (b._createdMs !== a._createdMs) return b._createdMs - a._createdMs;
-  return b._idNum - a._idNum;
-});
+list.sort((a, b) =>
+  new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts)
+);
 
 // เรียงล่าสุดก่อน + ผูกอันดับด้วย uuid (ถ้ามี)
 list.sort((a, b) => {
