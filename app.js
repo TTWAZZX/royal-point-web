@@ -123,6 +123,7 @@ async function initApp(){
 
     showAdminEntry(ADMIN_UIDS.includes(UID));
     bindUI();
+    enableTierTooltip();
 
     // แอนิเมชันปุ่มหลักครั้งเดียว + haptics เล็กน้อย
 const pa = document.getElementById("primaryAction");
@@ -265,26 +266,22 @@ async function refreshUserScore(){
 function setPoints(score){
   score = Number(score || 0);
 
+  // ---- Tier + Next tier ----
   const tier = getTier(score);
-  setTierMedal(tier);   // ← NEW: อัปเดตป้ายรางวัลบน avatar
   const idx  = TIERS.findIndex(t => t.key === tier.key);
   const nextTierObj = TIERS[idx + 1] || null;
 
-  // 1) ตัวเลขแต้มเด้งขึ้น
+  // ---- คะแนนเด้งขึ้น ----
   if (els.points){
-    const from = prevScore || Number(els.points.textContent || 0);
+    const from = prevScore ?? Number(els.points.textContent || 0);
     animateCount(els.points, from, score, 600);
   }
 
-  // 2) Badge + ข้อความเลเวล
-  if (els.levelBadge){
-    els.levelBadge.textContent = tier.name;
-    els.levelBadge.classList.remove("rp-level-silver","rp-level-gold","rp-level-platinum","sparkle");
-    els.levelBadge.classList.add(tier.class);
-  }
+  // ---- UI ระดับ (pill/dot/tag) + ข้อความระดับปัจจุบัน ----
+  if (typeof setTierUI === "function") setTierUI(tier, score);  // NEW
   if (els.currentLevelText) els.currentLevelText.textContent = tier.name;
 
-  // 3) เส้น progress (เก่า)
+  // ---- Progress bar (สี + ความกว้าง) ----
   if (els.progressBar){
     els.progressBar.classList.remove("prog-silver","prog-gold","prog-platinum");
     els.progressBar.classList.add(tier.progClass);
@@ -294,20 +291,23 @@ function setPoints(score){
     els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
   }
 
-  // 4) Track ใหม่ (ถ้ามี)
-  applyXpThemeByTier(tier.key);   // ถ้ามี xp theme (มีอยู่แล้ว)
-  updateXpLabels(score);          // อัปเดตตัวเลข 500 / 1200
-  updateLevelTrack(score);
-  updatePremiumBar(score);  // (เดิมมีอยู่แล้ว)
-  bumpXpFill();             // NEW: เด้งแถบ XP เมื่อแต้มเปลี่ยน
-  updateStatChips({         // NEW: อัปเดตชิปสรุปทุกครั้งที่ UI เปลี่ยนแต้ม
-    tierName: getTier(score).name,
-    points: score,
-    streakDays: window.USER_STREAK,
-    uid: UID
-  });
+  // ---- แถบ/ธีม/ตัวเลขคู่ของ XP + motion ----
+  if (typeof applyXpThemeByTier === "function") applyXpThemeByTier(tier.key);
+  if (typeof updateLevelTrack   === "function") updateLevelTrack(score);
+  if (typeof updatePremiumBar   === "function") updatePremiumBar(score);
+  if (typeof setXpPair          === "function") setXpPair(score);      // NEW 1209 / 1200 คะแนน
+  if (typeof bumpXpFill         === "function") bumpXpFill();          // เด้งแถบทุกครั้งที่แต้มเปลี่ยน
 
-  // 5) ข้อความเลเวลถัดไป
+  // ---- Chips สรุปย่อใต้ชื่อ (มี/ไม่มีก็ไม่พัง) ----
+  if (typeof updateStatChips === "function"){
+    updateStatChips({
+      tierName: tier.name,
+      points: score,
+      streakDays: window.USER_STREAK
+    });
+  }
+
+  // ---- ข้อความเลเวลถัดไป ----
   if (els.nextTier){
     if (!nextTierObj){
       els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
@@ -317,51 +317,31 @@ function setPoints(score){
     }
   }
 
-  // 6) Render rewards ตามแต้มล่าสุด
-  renderRewards(score);
-
-  // 7) เอฟเฟกต์เมื่อเลเวลเปลี่ยน
+  // ---- รางวัล & เอฟเฟกต์เปลี่ยนเลเวล ----
+  if (typeof renderRewards === "function") renderRewards(score);
   if (prevLevel && prevLevel !== tier.key){
-    els.levelBadge?.classList.add("sparkle");
-    setTimeout(()=> els.levelBadge?.classList.remove("sparkle"), 1300);
-    launchConfetti();
+    try{ launchConfetti(); }catch{}
   }
 
-  // Level Meter
+  // ---- Level meter (ถ้ามีเวอร์ชันเก่า) ----
   const lmFill  = document.getElementById("lm-fill");
   const lmLabel = document.getElementById("lm-label");
   if (lmFill && lmLabel){
-    // ช่วง: [0,500), [500,1200), >=1200
-    const t = getTier(score);
-    const total = 1200; // ใช้ 1200 เป็น max bar
+    const total = 1200;
     const widthPct = Math.max(0, Math.min(100, (score/total)*100));
     lmFill.style.width = widthPct + "%";
-
-    if (t.next === Infinity){
-      lmLabel.textContent = `ระดับ ${t.name} สูงสุดแล้ว ✨ คะแนนรวม ${score.toLocaleString()}`;
+    if (tier.next === Infinity){
+      lmLabel.textContent = `ระดับ ${tier.name} สูงสุดแล้ว ✨ คะแนนรวม ${score.toLocaleString()}`;
     } else {
-      const need = t.next - score;
-      lmLabel.textContent = `อยู่ระดับ ${t.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`;
+      const need = tier.next - score;
+      lmLabel.textContent = `อยู่ระดับ ${tier.name} • ขาดอีก ${need} คะแนนเพื่อไป ${TIERS.find(x=>x.min===tier.next)?.name || 'ระดับถัดไป'}`;
     }
   }
-  // อัปเดตป้ายอันดับ + วงแหวนตาม tier (NEW)
-  setRankBadge(window.USER_RANK, tier.key);
 
-  // ตั้งธีมสีของ XP bar ให้ตรงกับ tier (ไม่ต้องพึ่ง sibling selector)
-const xpWrap = document.querySelector('.xp-wrap');
-if (xpWrap){
-  const colors = {
-    silver:   ['#cfd8dc','#eceff1'],
-    gold:     ['#ffd166','#ffb703'],
-    platinum: ['#b3e5fc','#e0f7fa']
-  };
-  const [a,b] = colors[tier.key] || colors.silver;
-  xpWrap.style.setProperty('--ring-a', a);
-  xpWrap.style.setProperty('--ring-b', b);
-}
+  // ---- ป้ายอันดับ (ถ้ามีฟังก์ชัน) ----
+  if (typeof setRankBadge === "function") setRankBadge(window.USER_RANK, tier.key);
 
-applyXpThemeByTier(tier.key);
-
+  // ---- commit state ----
   prevLevel = tier.key;
   prevScore = score;
 }
@@ -844,4 +824,55 @@ function updateXpLabels(score){
   const xpEnd   = document.getElementById('xpEnd');
   if (xpStart) xpStart.textContent = String(start);
   if (xpEnd)   xpEnd.textContent   = String(end);
+}
+
+function setTierUI(tier, score){
+  const pill    = document.getElementById('tierPill');
+  const pillName= document.getElementById('tierName');
+  const avatar  = document.getElementById('rpAvatar');
+  const dot     = document.getElementById('tierDot');
+  const status  = document.getElementById('tierStatus');
+  const tag     = document.getElementById('tierTag');
+
+  if (pill){
+    pill.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
+    pill.classList.add(`rp-tier-${tier.key}`);
+  }
+  if (pillName){ pillName.textContent = tier.name; }
+
+  if (avatar){
+    avatar.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
+    avatar.classList.add(`rp-tier-${tier.key}`);
+  }
+  if (dot){
+    const icon = tier.key === 'platinum' ? 'fa-gem' : (tier.key === 'gold' ? 'fa-star' : 'fa-circle');
+    dot.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+  }
+
+  // สถานะ: Max Level เป็น Tag สั้น ๆ, ไม่งั้นเป็น "สะสมอีก N → Next"
+  if (tier.next === Infinity){
+    if (tag)   tag.classList.remove('d-none');
+    if (status) status.textContent = 'ถึงระดับสูงสุดแล้ว';
+  } else {
+    const need = Math.max(0, tier.next - Number(score||0));
+    if (tag)   tag.classList.add('d-none');
+    if (status) status.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
+  }
+}
+
+function setXpPair(score){
+  const pair = document.getElementById('xpPair');
+  if (!pair) return;
+  const tier = getTier(score);
+  const goal = (tier.next === Infinity) ? score : tier.next;
+  pair.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
+}
+
+// เปิด tooltip ของ Bootstrap (info icon)
+function enableTierTooltip(){
+  try{
+    const el = document.getElementById('levelInfo');
+    if(!el) return;
+    new bootstrap.Tooltip(el);
+  }catch{}
 }

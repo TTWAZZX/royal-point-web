@@ -27,48 +27,61 @@
 
 <!-- ===== Profile Card (polished) ===== -->
 <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
+
+  <!-- ปุ่มรีเฟรชมุมขวาบน -->
+  <button id="refreshBtn" class="btn btn-light btn-icon rp-card-refresh" title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
+    <i class="fa-solid fa-rotate"></i>
+  </button>
+
+  <!-- แถวหัว: รูป + ชื่อ + Badge -->
   <div class="rp-head d-flex align-items-center gap-3">
-    <!-- Avatar (วงกลม + ป้ายระดับ) -->
+    <!-- รูปโปรไฟล์ + overlay badge -->
     <div class="rp-avatar-wrap" id="rpAvatar" aria-label="User avatar">
       <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-      <span id="levelBadge" class="rp-level-badge rp-level-silver">Silver</span>
+      <span id="tierDot" class="rp-tier-dot" aria-hidden="true"><i class="fa-solid fa-gem"></i></span>
     </div>
 
-    <!-- ชื่อ + สถานะระดับ -->
     <div class="rp-info flex-grow-1">
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <h1 id="username" class="rp-username mb-0">—</h1>
+        <!-- Badge ระดับ (ที่เดียว) -->
+        <span id="tierPill" class="rp-tier-pill rp-tier-silver">
+          <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
+        </span>
+        <i id="levelInfo" class="fa-regular fa-circle-question text-secondary small"
+           data-bs-toggle="tooltip"
+           title="เกณฑ์ระดับ: Silver 0–499 • Gold 500–1199 • Platinum ≥1200"></i>
       </div>
-      <div class="small text-secondary mt-1">
-        ระดับปัจจุบัน: <span id="currentLevelText">Silver</span>
+
+      <!-- Tag สถานะสั้น ๆ (จะสลับข้อความด้วย JS) -->
+      <div class="mt-1">
+        <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+        <span id="tierStatus" class="small text-secondary">—</span>
       </div>
-      <div id="next-tier" class="small text-secondary mt-1">—</div>
     </div>
   </div>
 
-  <!-- คะแนนรวม (มาอยู่ใต้โปรไฟล์) -->
-  <div class="rp-point-row mt-3">
-    <div class="rp-point-value">
-      <span id="points">0</span> <span class="rp-point-unit">pt</span>
+  <!-- คะแนนรวม + Progress (กลุ่มเดียวกัน) -->
+  <div class="rp-score-block mt-3">
+    <div class="d-flex align-items-end justify-content-between">
+      <div>
+        <div class="rp-score-label">คะแนนสะสม</div>
+        <div class="rp-point-value">
+          <span id="points">0</span><span class="rp-point-unit"> pt</span>
+        </div>
+      </div>
     </div>
-  </div>
 
-<!-- แถว Progress + ปุ่มรีเฟรชชิดขวา -->
-<div class="xp-row d-flex align-items-center">
-  <div class="xp-group">
-    <div id="progressBar" class="rp-progress-line prog-silver">
-      <div id="progressFill" class="rp-progress-fill"></div>
-    </div>
-    <div class="xp-scale d-flex justify-content-between small">
-      <span id="xpStart">0</span>
-      <span id="xpEnd">1200</span>
+    <div class="xp-wrap mt-2">
+      <div id="progressBar" class="rp-progress-line prog-silver">
+        <div id="progressFill" class="rp-progress-fill"></div>
+      </div>
+      <div class="d-flex justify-content-between small rp-xp-pair">
+        <!-- แสดงแบบ 1209 / 1200 คะแนน -->
+        <span id="xpPair">0 / 0 คะแนน</span>
+      </div>
     </div>
   </div>
-  <button id="refreshBtn" class="btn btn-outline-secondary btn-icon"
-          title="รีเฟรชคะแนน" aria-label="รีเฟรชคะแนน">
-    <i class="fa-solid fa-rotate"></i>
-  </button>
-</div>
 </section>
 
   <!-- Actions (icons only, compact & centered) -->
