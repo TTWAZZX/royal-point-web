@@ -1,4 +1,4 @@
-// /api/score-history.js
+// /api/score-history.js — minimal & safe ordering (no id/uuid needed)
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -18,20 +18,23 @@ module.exports = async (req, res) => {
     const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
     if (!uid) return res.status(400).json({ status: 'error', message: 'uid required' });
 
+    // map uid -> user_id
     const { data: user, error: uerr } = await supabase
       .from('users')
       .select('id')
       .eq('uid', uid)
       .single();
-    if (uerr || !user) return res.status(404).json({ status: 'error', message: 'user_not_found' });
 
-    // เลือก uuid มาด้วย และเรียง created_at DESC แล้วผูกอันดับด้วย uuid DESC
+    if (uerr || !user) {
+      return res.status(404).json({ status: 'error', message: 'user_not_found' });
+    }
+
+    // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
     const { data, error } = await supabase
       .from('point_transactions')
-      .select('uuid, amount, code, type, created_by, created_at')  // << include uuid
+      .select('amount, code, type, created_by, created_at')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false }) // ล่าสุดก่อน
-      .order('uuid',       { ascending: false }) // tie-break ให้เสถียร
+      .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) {
