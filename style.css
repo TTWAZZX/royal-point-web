@@ -3133,3 +3133,26 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-score-stack{ gap:.125rem; }
 .rp-score-label{ margin:0; line-height:1.1; }
 .rp-point-value{ margin:0; line-height:1; }
+
+/* การ์ดต้อง relative เพื่ออ้างอิงตำแหน่งมุมขวาบน */
+.rp-profile-card{ position:relative; }
+
+/* มุมขวาบน: ปุ่มรีเฟรชอย่างเดียว */
+.rp-top-right{
+  position:absolute; top:10px; right:12px;
+  display:flex; align-items:center; gap:8px;
+  z-index:5;
+}
+
+/* ปุ่มรีเฟรชจิ๋ว */
+.btn-icon.mini{ width:30px; height:30px; padding:0; border-radius:10px; }
+
+/* มือถือ: ย่อให้มินิสุด ๆ */
+@media (max-width:480px){
+  .btn-icon.mini{ width:26px; height:26px; border-radius:9px; }
+}
+
+/* จูนระยะ “คะแนนสะสม” ↔ ตัวเลขให้ชิดขึ้น (ถ้ายังไม่ได้ใส่) */
+.rp-score-stack{ gap:.125rem; }
+.rp-score-label{ margin:0; line-height:1.1; }
+.rp-point-value{ margin:0; line-height:1; }
