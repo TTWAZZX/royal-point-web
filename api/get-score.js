@@ -1,31 +1,57 @@
-const { supabaseAdmin } = require('../lib/supabase')
-const { getRedis } = require('../lib/supabase')
+// /api/get-score.js  (Supabase version; shape compatible with frontend)
+const { createClient } = require('@supabase/supabase-js')
+let redis = null
+try {
+  const { Redis } = require('@upstash/redis')
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    redis = Redis.fromEnv()
+  }
+} catch {}
 
-const redis = getRedis()
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { persistSession: false } }
+)
 
 module.exports = async (req, res) => {
   try {
-    if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
-    const uid = (req.query.uid || '').trim()
-    if (!uid) return res.status(400).json({ error: 'uid required' })
+    if (req.method !== 'GET') {
+      return res.status(405).json({ status: 'error', message: 'Method Not Allowed' })
+    }
+    const uid = String(req.query.uid || '').trim()
+    if (!uid) return res.status(400).json({ status:'error', message:'uid required' })
 
-    const key = `score:${uid}`
+    const cacheKey = `score:${uid}`
     if (redis) {
-      try { const cached = await redis.get(key); if (cached) return res.status(200).json(cached) } catch {}
+      try {
+        const cached = await redis.get(cacheKey)
+        if (cached) return res.status(200).json({ status:'success', data:{
+          user: cached.user, score: cached.balance ?? 0, updated_at: cached.updated_at ?? null
+        }})
+      } catch {}
     }
 
-    const { data: user, error: e1 } = await supabaseAdmin
+    const { data: user, error: e1 } = await supabase
       .from('users').select('id,uid,name,room,dob,passport,tel')
       .eq('uid', uid).single()
-    if (e1 || !user) return res.status(404).json({ error: 'user_not_found' })
+    if (e1 || !user) return res.status(404).json({ status:'error', message:'user_not_found' })
 
-    const { data: up } = await supabaseAdmin
-      .from('user_points').select('balance, updated_at').eq('user_id', user.id).single()
+    const { data: point } = await supabase
+      .from('user_points').select('balance, updated_at')
+      .eq('user_id', user.id).single()
 
-    const result = { user, balance: up?.balance ?? 0, updated_at: up?.updated_at ?? null }
-    if (redis) { try { await redis.setex(key, 30, result) } catch {} }
-    res.status(200).json(result)
+    const result = { user, balance: point?.balance ?? 0, updated_at: point?.updated_at ?? null }
+
+    // cache 30 วิ (ถ้าตั้งค่า Upstash)
+    if (redis) { try { await redis.setex(cacheKey, 30, result) } catch {} }
+
+    // IMPORTANT: shape ให้เหมือนเดิมกับ frontend เดิม
+    return res.status(200).json({
+      status: 'success',
+      data: { user, score: result.balance, updated_at: result.updated_at }
+    })
   } catch (err) {
-    res.status(500).json({ error: 'server_error', detail: String(err) })
+    return res.status(500).json({ status: 'error', message: String(err || 'Internal Error') })
   }
 }
