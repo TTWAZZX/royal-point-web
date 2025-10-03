@@ -889,6 +889,16 @@ function enableTierTooltip(){
   }catch{}
 }
 
+// ==== Tier helpers (ต้องอยู่นอกฟังก์ชัน อาศัยได้ทั้งไฟล์) ====
+function getTier(score){
+  score = Number(score || 0);
+  for (let i = 0; i < TIERS.length; i++){
+    const t = TIERS[i];
+    if (score >= t.min && score < t.next) return t;
+  }
+  return TIERS[TIERS.length - 1];
+}
+
 /* ===== Premium helpers ===== */
 
 /** ตั้งธีมให้การ์ดด้วย data-tier (ใช้กับ CSS glow/gradient) */
