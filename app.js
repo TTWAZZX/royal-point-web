@@ -843,6 +843,7 @@ function setTierUI(tier, score){
   const st   = document.getElementById('tierStatus');
   const tag  = document.getElementById('tierTag');
 
+  // Pill / Avatar theme
   pill?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   pill?.classList.add(`rp-tier-${tier.key}`);
   if (name) name.textContent = tier.name;
@@ -850,40 +851,37 @@ function setTierUI(tier, score){
   av?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   av?.classList.add(`rp-tier-${tier.key}`);
 
+  // เหรียญ: icon ตามระดับ
   if (dot){
     const icon = tier.key === 'platinum' ? 'fa-gem' : (tier.key === 'gold' ? 'fa-star' : 'fa-circle');
     dot.innerHTML = `<i class="fa-solid ${icon}"></i>`;
   }
 
+  // ชิปสถานะ/แท็ก
   if (tier.next === Infinity){
     tag?.classList.remove('d-none');
-    if (st) st.textContent = 'ถึงระดับสูงสุดแล้ว';
+    tag && (tag.textContent = '✨ Max Level');
+    if (st){ st.textContent = ''; st.setAttribute('data-ico',''); }
   } else {
-    const need = Math.max(0, tier.next - Number(score||0));
     tag?.classList.add('d-none');
-    if (st) st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
+    const need = Math.max(0, tier.next - Number(score||0));
+    if (st){
+      st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
+      st.setAttribute('data-ico','↗️');  // ใช้กับ ::before
+    }
   }
+
+  // ย้อมธีมการ์ด (progress/ambient) ตามระดับ
+  applyPremiumTheme?.(tier.key);
 }
 
 function setXpPair(score){
-  const t = getTier(score);
-  const target = t.next === Infinity ? score : t.next;     // max ของช่วงนี้
-  const xpPairEl = document.getElementById('xpPair');
-  if (xpPairEl){
-    xpPairEl.textContent = `${score.toLocaleString()} / ${target.toLocaleString()} คะแนน`;
-  }
-  // สถานะกึ่งกลาง (tag/ข้อความใต้บาร์)
-  const tag = document.getElementById('tierTag');
-  const st  = document.getElementById('tierStatus');
-  if (t.next === Infinity){
-    tag?.classList.remove('d-none');
-    tag && (tag.textContent = '✨ Max Level');
-    st && (st.textContent = '');
-  }else{
-    tag?.classList.add('d-none');
-    const need = Math.max(0, t.next - score);
-    st && (st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(x=>x.min===t.next)?.name || 'ระดับถัดไป'}`);
-  }
+  const pair = document.getElementById('xpPair');
+  if (!pair) return;
+  const tier = getTier(score);
+  const goal = (tier.next === Infinity) ? Number(score||0) : tier.next;
+  pair.textContent = `${Number(score||0).toLocaleString()} / ${goal.toLocaleString()} คะแนน`;
+  pair.setAttribute('data-ico','🎯'); // ไอคอนชิปตัวเลขคู่
 }
 
 // เปิด tooltip ของ Bootstrap (info icon)

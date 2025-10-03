@@ -2543,3 +2543,90 @@ body.ready #topbar{width:100%;opacity:0}
   background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0));
   pointer-events:none;
 }
+
+/* ===== Premium Microchips + Medal + Avatar Fix ===== */
+
+/* 1) ทำไมโครชิป (ตัวเลขคู่/สถานะ) ให้พรีเมียมและเล็กลงบนมือถือ */
+.rp-xp-pair, .rp-status-center{ justify-content:center; }
+.rp-xp-pair span,
+.rp-status-center #tierStatus{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.22rem .6rem; border-radius:999px; line-height:1;
+  border:1px solid rgba(148,163,184,.35);
+  box-shadow:0 6px 14px rgba(2,6,23,.06), inset 0 1px 0 rgba(255,255,255,.65);
+  color:#334155; font-weight:700; letter-spacing:.01em;
+  font-variant-numeric: tabular-nums;
+  font-size:clamp(12px,2.4vw,13px); /* เดสก์ท็อปเล็กลงทันที */
+}
+/* แยกโทนเล็กน้อย: ตัวเลขคู่เย็นฟ้า, สถานะเย็นเขียว */
+.rp-xp-pair span{ background:linear-gradient(180deg,#ffffff,#f6f9ff); }
+.rp-status-center #tierStatus{ background:linear-gradient(180deg,#ffffff,#f8fff6); }
+
+/* ใช้ data-ico เป็นไอคอนนำหน้า (กำหนดจาก JS) */
+.rp-xp-pair span::before,
+.rp-status-center #tierStatus::before{
+  content: attr(data-ico);
+  font-size:.9em;
+}
+/* Hover ripple เบา ๆ (เดสก์ท็อป) */
+@media (hover:hover){
+  .rp-xp-pair span:hover,
+  .rp-status-center #tierStatus:hover{ filter:brightness(1.04) saturate(1.02); transform:translateY(-.5px); transition:.18s; }
+}
+
+/* จอมือถือ: เล็กลง ~50% */
+@media (max-width:480px){
+  .rp-xp-pair span,
+  .rp-status-center #tierStatus{
+    font-size:.62rem !important;
+    padding:.18rem .44rem;
+  }
+}
+
+/* 2) Badge เหรียญหน้ารูป – ให้ “ลอยหน้าสุด” และเด่น */
+.rp-avatar-wrap{ overflow:visible !important; isolation:isolate; } /* ภาพยังกลมจาก border-radius ของ img */
+.rp-avatar-circle{ position:relative; z-index:1; }
+.rp-tier-dot{
+  position:absolute; right:-6px; bottom:-6px; z-index:3;  /* ← ออกมานอกกรอบและอยู่หน้าสุด */
+  width:28px; height:28px; border-radius:50%;
+  display:grid; place-items:center; font-size:.95rem; pointer-events:none;
+  color:#7c4a00; /* gold icon */
+  background:radial-gradient(closest-side,#ffe08a,#ffcd57);
+  border:1px solid rgba(245,158,11,.65);
+  outline:2px solid #fff; /* ตัดขอบกับรูปให้ชัด */
+  box-shadow:
+    0 10px 20px rgba(0,0,0,.18),
+    inset 0 2px 0 rgba(255,255,255,.85),
+    inset 0 -3px 8px rgba(124,74,0,.18);
+}
+/* วงแหวน/เงาและ sheen เคลื่อนไหวเบา ๆ */
+.rp-tier-dot::before{
+  content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
+  background:conic-gradient(from 210deg, rgba(255,255,255,.75), transparent 40%, rgba(0,0,0,.1) 60%, transparent 85%, rgba(255,255,255,.75));
+  opacity:.45;
+}
+@keyframes dotSheen{ from{ transform:translateX(-120%) } to{ transform:translateX(120%) } }
+.rp-tier-dot::after{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background:linear-gradient(120deg,transparent 0, rgba(255,255,255,.9) 16%, transparent 28%);
+  transform:translateX(-120%); animation:dotSheen 3.6s ease-in-out infinite; opacity:.45;
+}
+/* สีเหรียญตามระดับ */
+.rp-avatar-wrap.rp-tier-silver .rp-tier-dot{
+  color:#374151; background:radial-gradient(closest-side,#eef2f7,#d7dee6); border-color:rgba(148,163,184,.55);
+}
+.rp-avatar-wrap.rp-tier-platinum .rp-tier-dot{
+  color:#0b3c5d; background:radial-gradient(closest-side,#e6f7ff,#cdefff); border-color:rgba(59,130,246,.55);
+}
+
+/* 3) Progress ใช้ธีมสีจาก data-tier (มีอยู่แล้ว) + gloss */
+.rp-profile-card{ --c1:#ffd166; --c2:#f59e0b; }
+.rp-profile-card[data-tier="silver"]   { --c1:#cbd5e1; --c2:#94a3b8; }
+.rp-profile-card[data-tier="gold"]     { --c1:#ffd166; --c2:#f59e0b; }
+.rp-profile-card[data-tier="platinum"] { --c1:#60a5fa; --c2:#38bdf8; }
+.rp-progress-fill{ background-image:linear-gradient(90deg,var(--c1),var(--c2)); }
+.rp-progress-line::after{
+  content:""; position:absolute; inset:1px; border-radius:999px;
+  background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0));
+  pointer-events:none;
+}
