@@ -221,6 +221,13 @@ async function refreshUserScore(){
 
       // อัปเดต UI หลัก
       setPoints(sc);
+      // หลัง setPoints(sc) แล้ว
+      const up = document.getElementById('updatedAt');
+      if (up) {
+        const d = new Date();
+        const two = n => String(n).padStart(2,'0');
+        up.textContent = `${d.getFullYear()}-${two(d.getMonth()+1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
+      }
 
       // อัปเดตชิปสรุปและชิปเล็กฝั่งซ้าย (ถ้ามี)
       updateStatChips({
