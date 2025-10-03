@@ -539,20 +539,33 @@ let rewardRailBound = false;
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
 async function loadRewards() {
+  const wrap = document.getElementById('rewardsSection');
   try {
-    const resp = await fetch(`${API_REWARDS}?include=1`, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
-    const data = await resp.json();
-    if (data && data.status === 'success' && Array.isArray(data.rewards)) {
-      REWARDS_CACHE = orderRewardsBySequence(data.rewards, COST_ORDER);
-    } else {
-      console.warn('No rewards from API:', data);
-      REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
-    }
-  } catch (err) {
-    console.error('loadRewards error:', err);
-    REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
+    const j = await Loading.apiFetch('/api/rewards', {}, {
+      scope: 'page',
+      skeletonOf: wrap
+    });
+
+    const items = Array.isArray(j.items) ? j.items : (Array.isArray(j.data) ? j.data : []);
+    wrap.innerHTML = items.length
+      ? items.map(r => `
+          <div class="card my-2">
+            <div class="card-body d-flex gap-3 align-items-center">
+              <img src="${r.image || ''}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">
+              <div class="flex-grow-1">
+                <div class="fw-bold">${escapeHtml(r.name || '')}</div>
+                <div class="text-muted small">${escapeHtml(r.desc || '')}</div>
+              </div>
+              <button class="btn btn-primary" data-reward="${r.id}">แลก ${r.cost} pt</button>
+            </div>
+          </div>
+        `).join('')
+      : `<div class="text-center text-muted py-4">ยังไม่มีของรางวัล</div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="alert alert-danger">โหลดรายการไม่สำเร็จ</div>`;
   }
 }
+
 
 /** render + click-to-redeem */
 function renderRewards(currentScore){
@@ -767,62 +780,36 @@ async function stopScanner(){
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
-async function openHistory(){
-  if (!UID) return;
+async function openHistory() {
+  const bodyWrap = document.getElementById('historyListWrap');
+  const listEl   = document.getElementById('historyList');
 
-  if (els.historyList) {
-    els.historyList.innerHTML = `<div class="list-group-item text-center text-muted">กำลังโหลด…</div>`;
-  }
-  if (els.historyUser) els.historyUser.textContent = els.username?.textContent || "—";
-  new bootstrap.Modal(els.historyModal).show();
+  // เดา uid ปัจจุบันจากหลายแหล่ง (ปรับได้ตามของคุณ)
+  const uid = (window.__UID) ||
+              (document.querySelector('[data-uid]')?.dataset.uid) ||
+              localStorage.getItem('uid') || '';
 
-  UiOverlay.show('กำลังโหลดประวัติ…');
-  try{
-    const r = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(UID)}`, { cache: "no-store" });
-    const j = await safeJson(r);
-    UiOverlay.hide();
+  listEl.innerHTML = ''; // เคลียร์ก่อน
 
-    if (j.status !== "success") {
-      els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
-      return;
-    }
+  try {
+    const j = await Loading.apiFetch(`/api/score-history?uid=${encodeURIComponent(uid)}&limit=50`, {}, {
+      scope: 'page',
+      skeletonOf: bodyWrap
+    });
 
-    // API ตัวใหม่ส่ง items (ไม่ใช่ data) — รองรับสองแบบเพื่อความเข้ากันได้
-    const list = Array.isArray(j.items) ? j.items :
-             (Array.isArray(j.data)  ? j.data  : []);
+    const list = Array.isArray(j.items) ? j.items : (Array.isArray(j.data) ? j.data : []);
 
-// แปลงเป็นตัวเลขเพื่อเรียงแน่นอน
-list.forEach(i => {
-  i._ms  = Date.parse(i.created_at || i.ts) || 0;
-  i._idn = Number(i.id ?? 0);
-});
-list.sort((a, b) => (b._ms - a._ms) || (b._idn - a._idn));
+    // เรียง “ล่าสุดก่อน” (ใช้ created_at อย่างเดียวพอ ถ้าคุณมี id ก็เพิ่ม tie-break ได้)
+    list.sort((a, b) => new Date(b.created_at || b.ts) - new Date(a.created_at || a.ts));
 
-// เรียง: เวลาใหม่ก่อน -> id มากก่อน
-list.sort((a, b) => {
-  if (b._ms !== a._ms) return b._ms - a._ms;
-  return b._idn - a._idn;
-});
+    listEl.innerHTML = list.length ? list.map(i => {
+      const ts = new Date(i.created_at || i.ts);
+      const p  = Number(i.amount ?? i.point ?? 0);
+      const sign  = p >= 0 ? '+' : '';
+      const color = p >= 0 ? '#16a34a' : '#dc2626';
+      const type  = i.type || '—';
+      const code  = i.code || '';
 
-// เรียงล่าสุดก่อน + ผูกอันดับด้วย uuid (ถ้ามี)
-list.sort((a, b) => {
-  const tb = new Date(b.created_at || b.ts).getTime() || 0;
-  const ta = new Date(a.created_at || a.ts).getTime() || 0;
-  if (tb !== ta) return tb - ta;
-  // tie-break ด้วย id ถ้ามี
-  const ib = Number(b.id ?? 0);
-  const ia = Number(a.id ?? 0);
-  return ib - ia;
-});
-
-els.historyList.innerHTML = list.length
-  ? list.map(i => {
-      const ts = fmtDT(i.created_at || i.ts);
-      const p  = Number((i.amount ?? i.point) || 0);
-      const sign  = p >= 0 ? "+" : "";
-      const color = p >= 0 ? "#16a34a" : "#dc2626";
-      const type  = i.type || "—";
-      const code  = i.code || "";
       return `<div class="list-group-item d-flex justify-content-between align-items-center">
                 <div>
                   <div class="fw-bold">${escapeHtml(type)}</div>
@@ -830,15 +817,18 @@ els.historyList.innerHTML = list.length
                 </div>
                 <div class="text-end">
                   <div style="color:${color};font-weight:800">${sign}${p}</div>
-                  <div class="small text-muted">${ts}</div>
+                  <div class="small text-muted">${ts.toLocaleString()}</div>
                 </div>
               </div>`;
-    }).join("")
-  : `<div class="list-group-item text-center text-muted">ไม่มีรายการ</div>`;
-  }catch(e){
-    console.error(e);
-    UiOverlay.hide();
-    els.historyList.innerHTML = `<div class="list-group-item text-center text-danger">โหลดไม่สำเร็จ</div>`;
+    }).join('') : `<div class="text-center text-muted py-4">ไม่มีรายการ</div>`;
+  } catch (e) {
+    listEl.innerHTML = `<div class="text-center text-danger py-4">โหลดไม่สำเร็จ</div>`;
+  }
+
+  // เปิดโมดัลตามระบบเดิมของคุณ (ถ้าใช้ Bootstrap 5)
+  const m = document.getElementById('historyModal');
+  if (m && window.bootstrap) {
+    new bootstrap.Modal(m).show();
   }
 }
 

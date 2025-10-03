@@ -20,102 +20,97 @@
 </head>
 <body>
 
-<!-- top progress bar -->
-<div id="topbar"></div>
+<!-- Top progress bar (統一) -->
+<div id="topProgress" class="top-progress" aria-hidden="true">
+  <div class="top-progress__bar" id="topProgressBar"></div>
+</div>
+
+<!-- ออฟไลน์แบนเนอร์ (ของเดิม) -->
 <div id="offlineBanner" class="offline-banner d-none" role="status" aria-live="polite">
   <i class="fa-solid fa-cloud-slash"></i> ออฟไลน์ — แสดงข้อมูลจากแคช
 </div>
 
 <main class="rp-container container py-3">
 
-<!-- ===== Profile Card (polished) ===== -->
-<section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
-<!-- มุมขวาบนของการ์ด -->
-<div class="rp-top-right">
-  <button id="refreshBtn"
-          class="btn btn-outline-secondary btn-icon mini"
-          aria-label="รีเฟรช"
-          data-bs-toggle="tooltip"
-          data-bs-placement="left"
-          title="อัปเดตล่าสุด: —">
-    <i class="fa-solid fa-rotate"></i>
-  </button>
-</div>
-</div>
-
-  <!-- หัวการ์ด: รูป + ชื่อ + Badge (ซ้าย) -->
-  <div class="rp-left">
-  <!-- ซ้าย: Avatar + mini chips ใต้รูป -->
-  <div class="rp-left-col">
-    <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
-  <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
-
-  <!-- Overlay badge ลอย "หน้ารูป" -->
-  <div id="tierMedal" class="rp-overlay-badge" title="Level badge">
-    <!-- จะใส่ไอคอนก็ได้ เช่น -->
-    <!-- <i class="fa-solid fa-gem"></i> -->
-  </div>
-
-  <!-- dot เดิม เก็บไว้ได้ -->
-  <span id="tierDot" class="rp-tier-dot" aria-hidden="true">
-    <i class="fa-solid fa-star"></i>
-  </span>
-</div>
-
-    <!-- Mini chips (อัปเดตด้วย JS; ซ่อนไว้ก่อน) -->
-    <div class="rp-mini-stack" id="leftMiniStack">
-      <span id="miniStreak" class="mini-chip d-none">🔥 0 วันติด</span>
-      <span id="miniRank"   class="mini-chip d-none">🏆 อันดับ —</span>
+  <!-- ===== Profile Card ===== -->
+  <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
+    <!-- มุมขวาบนของการ์ด -->
+    <div class="rp-top-right">
+      <button id="refreshBtn"
+              class="btn btn-outline-secondary btn-icon mini"
+              aria-label="รีเฟรช"
+              data-bs-toggle="tooltip"
+              data-bs-placement="left"
+              title="อัปเดตล่าสุด: —">
+        <i class="fa-solid fa-rotate"></i>
+      </button>
     </div>
-  </div>
 
-  <!-- ขวา: ชื่อ + Pill ระดับ (โครงเดิมของคุณ) -->
-  <div class="rp-title">
-    <h1 id="username" class="rp-username">—</h1>
-    <span id="tierPill" class="rp-tier-pill rp-tier-silver">
-      <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
-    </span>
-  </div>
-</div>
+    <!-- หัวการ์ด: รูป + ชื่อ + Badge -->
+    <div class="rp-left">
+      <!-- ซ้าย: Avatar + mini chips ใต้รูป -->
+      <div class="rp-left-col">
+        <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
+          <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
+          <div id="tierMedal" class="rp-overlay-badge"></div>
+          <span id="tierDot" class="rp-tier-dot" aria-hidden="true">
+            <i class="fa-solid fa-star"></i>
+          </span>
+        </div>
 
-  <!-- บรรทัดถัดไป: คะแนนสะสม (ตัวใหญ่ / ชิดซ้าย) -->
-<div class="rp-score-stack mt-2">
-  <div class="rp-score-label">คะแนนสะสม</div>
-  <div class="rp-point-value">
-    <span id="points">0</span><span class="rp-point-unit"> pt</span>
-  </div>
-</div>
+        <div class="rp-mini-stack" id="leftMiniStack">
+          <span id="miniStreak" class="mini-chip d-none">🔥 0 วันติด</span>
+          <span id="miniRank"   class="mini-chip d-none">🏆 อันดับ —</span>
+        </div>
+      </div>
 
-  <!-- บรรทัดถัดไป: Progress เต็มกว้าง + ตัวเลขคู่กึ่งกลาง -->
-  <div class="rp-progress-area mt-2">
-    <div id="progressBar" class="rp-progress-line prog-silver">
-      <div id="progressFill" class="rp-progress-fill"></div>
+      <!-- ขวา: ชื่อ + ระดับ -->
+      <div class="rp-title">
+        <h1 id="username" class="rp-username">—</h1>
+        <span id="tierPill" class="rp-tier-pill rp-tier-silver">
+          <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
+        </span>
+      </div>
     </div>
-    <div class="text-center small rp-xp-pair">
-      <span id="xpPair">0 / 0 คะแนน</span>
+
+    <!-- คะแนนสะสม -->
+    <div class="rp-score-stack mt-2">
+      <div class="rp-score-label">คะแนนสะสม</div>
+      <div class="rp-point-value">
+        <span id="points">0</span><span class="rp-point-unit"> pt</span>
+      </div>
     </div>
-  </div>
 
-  <!-- บรรทัดถัดไป: สถานะ/แท็ก (กึ่งกลาง) -->
-  <div class="rp-status-center mt-1">
-    <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
-    <span id="tierStatus" class="small text-secondary">—</span>
-    <span id="next-tier" class="visually-hidden"></span>
-  </div>
-</section>
+    <!-- Progress -->
+    <div class="rp-progress-area mt-2">
+      <div id="progressBar" class="rp-progress-line prog-silver">
+        <div id="progressFill" class="rp-progress-fill"></div>
+      </div>
+      <div class="text-center small rp-xp-pair">
+        <span id="xpPair">0 / 0 คะแนน</span>
+      </div>
+    </div>
 
-<!-- Actions (scan + history) -->
-<section id="rpActions" class="rp-actions-wide d-grid gap-2 mb-3">
-  <button id="primaryAction"
-          class="btn rp-primary act-btn tap-20"
-          data-bs-toggle="modal" data-bs-target="#scoreModal">
-    <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
-  </button>
+    <!-- สถานะ -->
+    <div class="rp-status-center mt-1">
+      <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+      <span id="tierStatus" class="small text-secondary">—</span>
+      <span id="next-tier" class="visually-hidden"></span>
+    </div>
+  </section>
 
-  <button id="historyBtn" class="btn btn-outline-secondary act-btn tap-20">
-    <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
-  </button>
-</section>
+  <!-- Actions -->
+  <section id="rpActions" class="rp-actions-wide d-grid gap-2 mb-3">
+    <button id="primaryAction"
+            class="btn rp-primary act-btn tap-20"
+            data-bs-toggle="modal" data-bs-target="#scoreModal">
+      <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
+    </button>
+
+    <button id="historyBtn" class="btn btn-outline-secondary act-btn tap-20">
+      <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
+    </button>
+  </section>
 
   <!-- ===== Ads Carousel ===== -->
   <section class="rp-glass rp-card p-0 mb-3 hover-lift">
@@ -151,7 +146,7 @@
     </div>
   </section>
 
-  <!-- Skeleton while loading -->
+  <!-- Skeleton card (หน้าแรก) -->
   <section id="appSkeleton" class="rp-card p-4 mb-3" style="display:none">
     <div class="d-flex align-items-center gap-3">
       <div class="skel" style="width:80px;height:80px;border-radius:50%"></div>
@@ -163,17 +158,43 @@
     </div>
   </section>
 
-  <!-- ===== Popular Rewards ===== -->
+  <!-- ===== Rewards ===== -->
   <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
     <h5 class="mb-2">ของรางวัล</h5>
-    <!-- Horizontal reward rail -->
-    <div id="rewardRail" class="rp-reward-rail">
-      <!-- JS จะ render การ์ดให้ -->
+
+    <!-- ครอบด้วย rewardsSection เพื่อสลับ skeleton -->
+    <div id="rewardsSection" class="skeleton-hide-when-loading">
+      <!-- reward rail ที่คุณเรนเดอร์รายการจริง -->
+      <div id="rewardRail" class="rp-reward-rail">
+        <!-- JS จะ render การ์ดให้ -->
+      </div>
+    </div>
+
+    <!-- Skeleton สำหรับโซนของรางวัล -->
+    <div class="card my-2 reward-skeleton">
+      <div class="card-body d-flex gap-3">
+        <div class="skeleton skel-thumb"></div>
+        <div class="flex-grow-1">
+          <div class="skeleton skel-16" style="width:60%"></div>
+          <div class="skeleton skel-line" style="width:90%"></div>
+          <div class="skeleton skel-line" style="width:70%"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card my-2 reward-skeleton">
+      <div class="card-body d-flex gap-3">
+        <div class="skeleton skel-thumb"></div>
+        <div class="flex-grow-1">
+          <div class="skeleton skel-16" style="width:50%"></div>
+          <div class="skeleton skel-line" style="width:80%"></div>
+          <div class="skeleton skel-line" style="width:65%"></div>
+        </div>
+      </div>
     </div>
   </section>
 </main>
 
-<!-- Admin FAB (show only for admin via app.js) -->
+<!-- Admin FAB -->
 <a id="btnAdmin" href="/admin.html" class="btn admin-entry d-none" aria-label="Admin">
   <i class="fa-solid fa-shield-halved"></i>
 </a>
@@ -187,29 +208,29 @@
         <button class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
       </div>
       <div class="modal-body text-center">
-  <div class="d-flex justify-content-center gap-2 mb-2">
-  <button id="startScanBtn" class="btn btn-success btn-sm tap-20">
-    <i class="fa-solid fa-camera"></i> เปิดกล้อง
-  </button>
-  <button id="stopScanBtn" class="btn btn-outline-danger btn-sm tap-20">
-    <i class="fa-solid fa-stop"></i> หยุดกล้อง
-  </button>
-  <!-- NEW: ปุ่มไฟฉาย -->
-  <button id="torchBtn" class="btn btn-outline-warning btn-sm btn-torch tap-20" disabled>
-    <i class="fa-solid fa-bolt"></i> ไฟฉาย
-  </button>
-</div>
-  <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
-  <hr class="my-4" />
-  <div class="form-group" style="max-width:420px;margin:auto;">
-    <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
-    <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
-  </div>
-</div>
+        <div class="d-flex justify-content-center gap-2 mb-2">
+          <button id="startScanBtn" class="btn btn-success btn-sm tap-20">
+            <i class="fa-solid fa-camera"></i> เปิดกล้อง
+          </button>
+          <button id="stopScanBtn" class="btn btn-outline-danger btn-sm tap-20">
+            <i class="fa-solid fa-stop"></i> หยุดกล้อง
+          </button>
+          <button id="torchBtn" class="btn btn-outline-warning btn-sm btn-torch tap-20" disabled>
+            <i class="fa-solid fa-bolt"></i> ไฟฉาย
+          </button>
+        </div>
+        <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
+        <hr class="my-4" />
+        <div class="form-group" style="max-width:420px;margin:auto;">
+          <input type="text" id="secretCode" class="form-control" placeholder="กรอกรหัสลับ" />
+          <button id="submitCodeBtn" class="btn btn-primary w-100 mt-3">ยืนยันรับคะแนน</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- History Modal -->
 <div class="modal fade" id="historyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-lg">
     <div class="modal-content">
@@ -217,15 +238,27 @@
         <h5 class="modal-title"><i class="fa-regular fa-clock me-2"></i>ประวัติพ้อยท์ — <span class="text-primary" id="historyUser">—</span></h5>
         <button class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body pt-0">
+
+      <!-- ครอบ body ด้วย historyListWrap เพื่อสลับ skeleton -->
+      <div id="historyListWrap" class="modal-body pt-0 skeleton-hide-when-loading">
         <div id="historyList" class="list-group list-group-flush"></div>
       </div>
+
+      <!-- Skeleton ของโมดัลประวัติ -->
+      <div class="modal-body history-skeleton pt-0">
+        <div class="skeleton skel-line" style="width:80%"></div>
+        <div class="skeleton skel-line" style="width:60%"></div>
+        <div class="skeleton skel-line" style="width:70%"></div>
+        <div class="skeleton skel-line" style="width:50%"></div>
+      </div>
+
       <div class="modal-footer border-0">
         <button class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
       </div>
     </div>
   </div>
 </div>
+
 <!-- Avatar Preview Modal -->
 <div class="modal fade" id="avatarModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -235,6 +268,8 @@
     </div>
   </div>
 </div>
+
+<!-- Mini CTA -->
 <div id="miniCta" class="mini-cta d-none" aria-live="polite">
   <button class="btn btn-success btn-sm tap-20" data-bs-toggle="modal" data-bs-target="#scoreModal">
     <i class="fa-solid fa-qrcode"></i> สแกน
@@ -244,19 +279,27 @@
   </button>
 </div>
 
+<!-- ===== Blocking Overlay (統一) ===== -->
+<div id="appOverlay" class="loading-overlay" role="alert" aria-live="assertive" aria-busy="true">
+  <div class="box">
+    <div class="loading-spinner"></div>
+    <div id="overlayMsg">กำลังดำเนินการ...</div>
+  </div>
+</div>
+
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- จำเป็นสำหรับ app.js (ใส่ครั้งเดียวพอ) -->
+<!-- จำเป็นสำหรับ app.js -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
-
-<!-- เสริมสำหรับ confetti level up -->
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
 <!-- App -->
 <script src="/app.js"></script>
+<!-- Unified loader manager (ต้องมี) -->
+<script src="/loader.js"></script>
 
 </body>
 </html>

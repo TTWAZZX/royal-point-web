@@ -3184,3 +3184,57 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 @media (max-width:480px){
   .rp-reward-img img{ height:140px; }
 }
+
+/* ===== Unified Loading Styles ===== */
+
+/* Top progress bar */
+.top-progress {
+  position: fixed; left: 0; top: 0; height: 3px; width: 100%;
+  background: rgba(0,0,0,0.06); z-index: 2000; pointer-events: none;
+}
+.top-progress__bar {
+  height: 100%; width: 100%; transform: scaleX(0);
+  transform-origin: 0 0; background: linear-gradient(90deg,#22c55e,#3b82f6);
+  transition: transform .2s ease-out;
+}
+
+/* Fullscreen overlay */
+.loading-overlay {
+  position: fixed; inset: 0; background: rgba(255,255,255,.6); backdrop-filter: blur(2px);
+  display: none; align-items: center; justify-content: center; z-index: 2000;
+}
+.loading-overlay.active { display: flex; }
+.loading-overlay .box {
+  background: #fff; border-radius: 16px; padding: 20px 24px; box-shadow: 0 10px 30px rgba(0,0,0,.08);
+  display: flex; align-items: center; gap: 12px; font-weight: 600;
+}
+.loading-spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid #e5e7eb; border-top-color: #3b82f6; animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Skeleton + shimmer */
+.skeleton { position: relative; background: #eee; border-radius: 8px; overflow: hidden; }
+.skeleton::after {
+  content: ""; position: absolute; inset: 0 -150% 0 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.6), transparent);
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer { 0%{ transform: translateX(-100%);} 100%{ transform: translateX(100%);} }
+
+/* Utilities for skeleton layout */
+.skel-line { height: 12px; margin: 6px 0; }
+.skel-16 { height: 16px; }
+.skel-thumb { width: 80px; height: 80px; border-radius: 12px; }
+
+/* Button loading */
+.btn-loading { position: relative; pointer-events: none; opacity: .8; }
+.btn-loading::after {
+  content: ""; position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.6); border-top-color: #fff;
+  border-radius: 50%; animation: spin .8s linear infinite;
+}
+
+/* Helper: ซ่อนจริงตอนโหลด/แสดงหลังโหลด */
+.skeleton-hide-when-loading { visibility: visible; }
