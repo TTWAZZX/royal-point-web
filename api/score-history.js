@@ -31,12 +31,12 @@ module.exports = async (req, res) => {
 
     // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
     const { data, error } = await supabase
-      .from('point_transactions')
-      .select('id, amount, code, type, created_by, created_at')  // << เพิ่ม id
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false }) // ล่าสุดก่อน
-      .order('id',         { ascending: false }) // tie-break ให้เสถียร
-      .range(offset, offset + limit - 1);
+  .from('point_transactions')
+  .select('id, amount, code, type, created_by, created_at')  // << เพิ่ม id
+  .eq('user_id', user.id)
+  .order('created_at', { ascending: false }) // ล่าสุดก่อน
+  .order('id',         { ascending: false }) // tie-break ให้เสถียร
+  .range(offset, offset + limit - 1);
 
     if (error) {
       return res.status(200).json({ status: 'error', message: 'db_error' });

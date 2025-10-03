@@ -791,6 +791,18 @@ async function openHistory(){
     const list = Array.isArray(j.items) ? j.items :
              (Array.isArray(j.data)  ? j.data  : []);
 
+// แปลงเป็นตัวเลขเพื่อเรียงได้แน่นอน
+list.forEach(i => {
+  i._createdMs = Date.parse(i.created_at || i.ts) || 0; // ถ้า parse ไม่ได้ => 0
+  i._idNum = Number(i.id ?? 0);
+});
+
+// เรียง: เวลาใหม่ก่อน -> id มากก่อน
+list.sort((a, b) => {
+  if (b._createdMs !== a._createdMs) return b._createdMs - a._createdMs;
+  return b._idNum - a._idNum;
+});
+
 // เรียงล่าสุดก่อน + ผูกอันดับด้วย uuid (ถ้ามี)
 list.sort((a, b) => {
   const tb = new Date(b.created_at || b.ts).getTime() || 0;
