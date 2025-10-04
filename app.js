@@ -426,6 +426,39 @@ async function refreshUserScore(){
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
+// แสดงข้อความ: อีกกี่คะแนนถึงระดับถัดไป
+function updateTierStatus(score){
+  const el = document.getElementById('tierStatus');
+  if (!el) return;
+
+  try {
+    // คาดหวังว่ามี getTier(score) คืน { name/label, min, next, nextName? }
+    const tier = (typeof getTier === 'function') ? getTier(score) : null;
+
+    // ถ้า tier.next เป็นเลขและมากกว่าคะแนนปัจจุบัน → ยังมีระดับถัดไป
+    if (tier && Number.isFinite(tier.next) && tier.next > score) {
+      const remain = Math.max(0, tier.next - Number(score || 0));
+      // ชื่อระดับถัดไป (ถ้ามี) ไม่มีก็ใช้ข้อความกลาง
+      const nextName =
+        tier.nextName || tier.next_label ||
+        (typeof getTier === 'function' ? (getTier(tier.next)?.name || getTier(tier.next)?.label) : '') ||
+        'ระดับถัดไป';
+
+      el.textContent = `ต้องการอีก ${remain.toLocaleString('th-TH')} คะแนนเพื่อเลื่อนเป็น ${nextName}`;
+      el.classList.remove('hidden');
+      return;
+    }
+
+    // อยู่ระดับสูงสุด / ไม่มีข้อมูล tier → ซ่อนบรรทัด
+    el.textContent = '';
+    el.classList.add('hidden');
+  } catch (e) {
+    // ผิดพลาดใด ๆ → ซ่อน
+    el.textContent = '';
+    el.classList.add('hidden');
+  }
+}
+
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
 function setPoints(score){
   score = Number(score || 0);
@@ -980,70 +1013,57 @@ async function stopScanner(){
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
-  const uid =
-    UID || window.__UID || localStorage.getItem('uid') || '';
-  if (!uid) return toastErr('ไม่มี UID');
+  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
+  if (!uid) return toastErr("ไม่พบผู้ใช้");
 
-  const modal = new bootstrap.Modal(document.getElementById('historyModal'));
   const list  = document.getElementById('historyList');
-  const nameEl= document.getElementById('historyUser');
+  const modal = new bootstrap.Modal(document.getElementById('historyModal'));
 
-  list.innerHTML = `<div class="skel skel-line my-2"></div>
-                    <div class="skel skel-line my-2"></div>
-                    <div class="skel skel-line my-2"></div>`;
-
-  nameEl.textContent = els.username?.textContent || '—';
-
-  // ดึง history: บังคับใช้ ?uid=
-  let resp;
+  UiOverlay.show('กำลังโหลดประวัติ…');
   try{
-    resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' });
-  }catch(e){
+    const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
+    const json = await safeJson(resp);
+
+    // รองรับหลายทรง payload: {items:[]}, {data:[]}, []
+    const items = Array.isArray(json) ? json
+                : Array.isArray(json.items) ? json.items
+                : Array.isArray(json.data)  ? json.data
+                : [];
+
+    // เรียงล่าสุดก่อน
+    items.sort((a,b)=>{
+      const ta = new Date(a.created_at || a.time || 0).getTime();
+      const tb = new Date(b.created_at || b.time || 0).getTime();
+      if (tb !== ta) return tb - ta;
+      return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
+    });
+
+    // เรนเดอร์: แสดงบรรทัดรองเฉพาะเมื่อมีค่า
+    list.innerHTML = items.map(it=>{
+      const amt  = Number(it.amount || it.point || it.points || 0);
+      const sign = amt > 0 ? '+' : '';
+      const when = it.created_at || it.time || '';
+      const code = it.code || it.type || '';
+      const by   = it.created_by || it.actor || it.admin || '';   // ← ไม่มีค่า = ไม่ใส่บรรทัดรอง
+      const byLine = by ? `<div class="small text-muted">${h(by)}</div>` : '';
+      return `
+        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-bold">${h(code)}</div>
+            ${byLine}
+          </div>
+          <div class="${amt>=0 ? 'text-success':'text-danger'} fw-bold">${sign}${amt}</div>
+          <div class="small text-muted ms-3">${h(when)}</div>
+        </a>`;
+    }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
+
+    modal.show();
+  } catch (e){
     console.error(e);
+    toastErr("โหลดประวัติไม่สำเร็จ");
+  } finally {
+    UiOverlay.hide();
   }
-
-  if (!resp || !resp.ok){
-    list.innerHTML = `<div class="text-danger">โหลดไม่สำเร็จ</div>`;
-    return modal.show();
-  }
-
-  const json = await resp.json();
-
-  // รองรับหลายรูปทรง: {items:[]}, {data:[]}, []
-  const items = Array.isArray(json) ? json
-              : Array.isArray(json.items) ? json.items
-              : Array.isArray(json.data)  ? json.data
-              : [];
-
-  // จัดเรียงใหม่ให้ล่าสุดอยู่บน (created_at desc, ถ้าเท่ากันใช้ id/uuid เป็นตัวกันชน)
-  items.sort((a,b)=>{
-    const ta = new Date(a.created_at || a.time || 0).getTime();
-    const tb = new Date(b.created_at || b.time || 0).getTime();
-    if (tb !== ta) return tb - ta;
-    const ka = String(a.id || a.uuid || '');
-    const kb = String(b.id || b.uuid || '');
-    return kb.localeCompare(ka);
-  });
-
-  // เรนเดอร์
-  list.innerHTML = items.map(it=>{
-    const amt = Number(it.amount || it.point || it.points || 0);
-    const sign = amt > 0 ? '+' : '';
-    const when = it.created_at || it.time || '';
-    const code = it.code || it.type || '';
-    const by   = it.created_by || it.actor || '—';
-    return `
-      <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-        <div>
-          <div class="fw-bold">${h(code)}</div>
-          <div class="small text-muted">${h(by)}</div>
-        </div>
-        <div class="${amt>=0 ? 'text-success':'text-danger'} fw-bold">${sign}${amt}</div>
-        <div class="small text-muted ms-3">${h(when)}</div>
-      </a>`;
-  }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
-
-  modal.show();
 }
 
 // คัดลอก-วางแทนของเดิม
