@@ -369,6 +369,28 @@ window.openSheet   = openSheet;
 
 /* =====================  COUPONS – ADMIN (tabs + live tracking)  ===================== */
 (() => {
+  
+  // ===== helper สรุปสถานะใช้แล้วให้ชัวร์ =====
+function isUsed(row) {
+  const s = String(row.status || '').toLowerCase();
+  if (s === 'used' || s === 'redeemed') return true;
+  if (row.used === true || row.is_used === true || row.redeemed === true) return true;
+  if (row.used_at) return true;
+  if (row.claimer && String(row.claimer).trim() !== '') return true;
+  return false;
+}
+
+function updateCouponCounters(rows){
+  const all    = rows.length;
+  const used   = rows.filter(isUsed).length;
+  const unused = all - used;
+
+  document.getElementById('countAll')   ?.textContent = all;
+  document.getElementById('countUsed')  ?.textContent = used;
+  document.getElementById('countUnused')?.textContent = unused;
+}
+
+
   // รองรับหลาย endpoint เผื่อ API อยู่คนละ path
   const ENDPOINT_LIST = [
     '/api/admin-coupons',
@@ -459,73 +481,81 @@ window.openSheet   = openSheet;
     throw lastErr || new Error('all_endpoints_failed');
   }
 
-  function render(allRows) {
-    if (!els.list) return;
+  function render(rows = []) {
+  if (!els.list) return;
 
-    // นับยอด
-    const total = allRows.length;
-    const unused = allRows.filter(r => !usedFlag(r)).length;
-    const used   = total - unused;
-    if (els.badgeAll)    els.badgeAll.textContent    = total;
-    if (els.badgeUnused) els.badgeUnused.textContent = unused;
-    if (els.badgeUsed)   els.badgeUsed.textContent   = used;
+  // --- ถ้าคุณมีตัวแปร currentFilter ('all'|'unused'|'used') ให้กรองตรงนี้ ---
+  const filtered = (window.currentFilter ? rows.filter(r => {
+    const u = isUsed(r);
+    if (window.currentFilter === 'used')   return u;
+    if (window.currentFilter === 'unused') return !u;
+    return true;
+  }) : rows);
 
-    // กรองตามแท็บ
-    let rows = allRows;
-    if (COUPON_FILTER === 'unused') rows = allRows.filter(r => !usedFlag(r));
-    if (COUPON_FILTER === 'used')   rows = allRows.filter(r =>  usedFlag(r));
+  // --- จัดเรียงล่าสุดก่อน ถ้ามี created_at/createdAt ---
+  const sorted = filtered.slice().sort((a,b) => {
+    const ta = new Date(a.created_at || a.createdAt || 0).getTime();
+    const tb = new Date(b.created_at || b.createdAt || 0).getTime();
+    return (tb||0) - (ta||0);
+  });
 
-    if (!rows.length) {
-      els.list.innerHTML = '';
-      els.empty?.classList.remove('d-none');
-      return;
-    }
-    els.empty?.classList.add('d-none');
-
-    els.list.innerHTML = rows.map(r => {
-      const code   = r.code || r.coupon || r.coupon_code || r.id || '';
-      const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
-      const used   = usedFlag(r);
-      const badge  = used
-        ? `<span class="badge text-bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
-        : `<span class="badge text-bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
-      return `
-        <div class="card mb-2 shadow-sm">
-          <div class="card-body d-flex align-items-center gap-3">
-            <div class="flex-grow-1">
-              <div class="fw-semibold">${esc(code)}</div>
-              <div class="text-muted small">+${points} คะแนน</div>
-            </div>
-            <div class="me-2">${badge}</div>
-            <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}" title="คัดลอกรหัส">
-              <i class="fa-regular fa-copy"></i>
-            </button>
-            <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}" title="แสดง QR">
-              <i class="fa-solid fa-qrcode"></i>
-            </button>
-          </div>
-        </div>`;
-    }).join('');
+  if (!sorted.length) {
+    els.list.innerHTML = '';
+    els.empty?.classList.remove('d-none');
+    return;
   }
+  els.empty?.classList.add('d-none');
+
+  els.list.innerHTML = sorted.map(r => {
+    const code   = r.code || r.coupon || r.coupon_code || r.id || '';
+    const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
+    const used   = isUsed(r);
+    const badge  = used
+      ? `<span class="badge rp-badge-used"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
+      : `<span class="badge rp-badge-unused"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
+    return `
+      <div class="card mb-2">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="flex-grow-1">
+            <div class="fw-semibold">${esc(code)}</div>
+            <div class="small text-muted">+${points} คะแนน</div>
+          </div>
+          <div class="me-2">${badge}</div>
+          <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}">
+            <i class="fa-regular fa-copy"></i>
+          </button>
+          <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}">
+            <i class="fa-solid fa-qrcode"></i>
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
 
   async function loadCoupons() {
-    if (!els.list) return;
-    els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
-    try {
-      const adminUid = getAdminUid();
-      const resp = await tryMany(
-        ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
-        { cache: 'no-store' }
-      );
-      COUPON_ROWS = sortNewestFirst(pickRows(resp.data));
-      render(COUPON_ROWS);
-    } catch (e) {
-      console.error('loadCoupons error', e);
-      els.list.innerHTML = '';
-      els.empty?.classList.remove('d-none');
-      if (window.Swal) Swal.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
-    }
+  if (!els.list) return;
+  els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
+  try {
+    const adminUid = getAdminUid();
+    const resp = await tryMany(
+      ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
+      { cache: 'no-store' }
+    );
+    const rows = pickRows(resp.data) || [];
+
+    // อัปเดตตัวนับแท็บ — ใส่ตรงนี้!
+    updateCouponCounters(rows);
+
+    // วาดรายการ (ด้านใน render จะกรองตามแท็บและจัดเรียงล่าสุดก่อน)
+    render(rows);
+
+  } catch (e) {
+    console.error('loadCoupons error', e);
+    els.list.innerHTML = '';
+    els.empty?.classList.remove('d-none');
+    Swal?.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
   }
+}
 
   async function generateCoupons() {
     const adminUid = getAdminUid();

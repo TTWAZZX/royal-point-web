@@ -949,6 +949,8 @@ async function redeemReward(reward, btn){
 // แก้ทั้งฟังก์ชัน redeemCode ให้แนบ uid เสมอ
 // ใช้แค่ /api/redeem ที่เดียว และส่งฟิลด์ให้ครบ
 // แลกคูปอง + แจ้งจำนวนคะแนนที่ได้รับ (รองรับ manual และ SCAN)
+// แลกคูปอง: robust ต่อ status code + json.code และ auto-resume กล้องเมื่อคูปองใช้แล้ว
+// ===== Redeem code (unified) — Overlay เฉพาะ SCAN + จัดการทุกเคสครบ =====
 async function redeemCode(input, source = 'manual') {
   const code = String(
     (input ?? document.getElementById('couponInput')?.value ?? '')
@@ -961,7 +963,11 @@ async function redeemCode(input, source = 'manual') {
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
 
-  // เก็บยอดก่อนแลกไว้เทียบ (fallback ถ้า API ไม่บอก amount)
+  // ใช้ overlay เฉพาะโฟลว์สแกน
+  const usingScan = String(source || '').toUpperCase() === 'SCAN';
+  if (usingScan) UiOverlay.show('กำลังยืนยันรหัส…');
+
+  // เก็บยอดก่อนหน้าไว้เทียบ หาก backend ไม่ส่ง amount
   try { await refreshUserScore(); } catch {}
   const before = Number(window.__userBalance || 0);
 
@@ -969,28 +975,31 @@ async function redeemCode(input, source = 'manual') {
 
   let res, json;
   try {
-    res  = await fetch('/api/redeem', {
+    res  = await fetch((typeof API_REDEEM !== 'undefined' ? API_REDEEM : '/api/redeem'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
-    json = await res.json().catch(() => ({}));
+    json = await safeJson(res);
   } catch (e) {
+    if (usingScan) UiOverlay.hide();
     console.error('[redeem] network error', e);
-    return toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
+    toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
+    resumeScanIfNeeded(source);
+    return;
   }
 
+  // เคสผิดพลาดจากเซิร์ฟเวอร์
   if (!res.ok || json?.status === 'error') {
-    const msg = (json?.message || '').toLowerCase();
-    if (msg.includes('used') || msg.includes('already')) return toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-    if (msg.includes('not found')) return toastErr('ไม่พบรหัสคูปอง');
-    if (msg.includes('uid') || msg.includes('required')) return toastErr('คำขอไม่ถูกต้อง: กรุณารีเฟรช/เข้าสู่ระบบอีกครั้ง');
-    console.warn('[redeem] server rejected ->', json);
-    return toastErr('แลกคูปองไม่สำเร็จ');
+    if (usingScan) UiOverlay.hide();
+    const { userMsg } = mapRedeemError(res, json);
+    toastErr(userMsg);
+    resumeScanIfNeeded(source);
+    return;
   }
 
-  // ดึง "คะแนนที่ได้" จาก response ถ้ามี, ไม่มีก็หาจากส่วนต่างก่อน-หลัง
+  // ===== สำเร็จ: คำนวณแต้มที่ได้ (fallback เป็นส่วนต่าง before/after) =====
   const pickAmount = (o) => {
     if (!o || typeof o !== 'object') return null;
     const keys = [
@@ -1004,11 +1013,13 @@ async function redeemCode(input, source = 'manual') {
     }
     return null;
   };
-  let added = pickAmount(json);
 
+  let added = pickAmount(json);
   try { await refreshUserScore(); } catch {}
   const after = Number(window.__userBalance || before);
   if (added === null) added = after - before;
+
+  if (usingScan) UiOverlay.hide();
 
   if (added > 0) {
     toastOk(`รับ +${added} คะแนน`);
@@ -1017,10 +1028,41 @@ async function redeemCode(input, source = 'manual') {
     toastOk('แลกคูปองสำเร็จ');
   }
 
-  // เคลียร์ช่องกรอกเมื่อเป็นการกรอกเอง
-  if (!input && document.getElementById('couponInput')) {
-    document.getElementById('couponInput').value = '';
+  // เคลียร์ช่องกรอกเมื่อเป็นโฟลว์กรอกมือ
+  if (String(source || '').toUpperCase() === 'MANUAL') {
+    const inp = document.getElementById('couponInput') || els?.secretInput;
+    if (inp) { inp.value = ''; inp.focus?.(); }
   }
+}
+
+// แปลง res/json → ข้อความสำหรับผู้ใช้ และประเภท error ที่สนใจ
+function mapRedeemError(res, json) {
+  const code = String(json?.code || '').toUpperCase();
+  const msg  = String(json?.message || '');
+
+  if (res.status === 409 || code === 'COUPON_USED' || /used|already/i.test(msg)) {
+    return { userMsg: 'คูปองนี้ถูกใช้ไปแล้ว', type: 'USED' };
+  }
+  if (res.status === 404 || code === 'COUPON_NOT_FOUND' || /not.*found/i.test(msg)) {
+    return { userMsg: 'ไม่พบรหัสคูปอง', type: 'NOT_FOUND' };
+  }
+  if (res.status === 400 || code === 'BAD_REQUEST' || /uid|code|required/i.test(msg)) {
+    return { userMsg: 'คำขอไม่ถูกต้อง: กรุณารีเฟรช/เข้าสู่ระบบอีกครั้ง', type: 'BAD_REQ' };
+  }
+  return { userMsg: json?.message || `แลกคูปองไม่สำเร็จ (HTTP ${res.status})`, type: 'OTHER' };
+}
+
+function resumeScanIfNeeded(source){
+  const scanOpen = !!document.getElementById('scanModal')?.classList.contains('show');
+  if (source === 'SCAN' && scanOpen) {
+    setTimeout(() => { try { startScanner?.(); } catch {} }, 400);
+  }
+}
+
+// เดิมคุณอาจมี redeemCoupon แยก: ให้เรียกผ่าน redeemCode เพื่อรวม logic เดียวกัน
+async function redeemCoupon(code, uid) {
+  // uid ไม่จำเป็นต้องส่งเข้ามาแล้ว เพราะ redeemCode จะดึง UID เอง
+  return redeemCode(code, 'MANUAL');
 }
 
 async function stopScanner(){
@@ -1098,6 +1140,7 @@ async function openHistory(){
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
   setHistoryUserName(); // <-- ใส่บรรทัดนี้setHistoryUserName(); // <-- ใส่บรรทัดนี้
+  setHistoryUserName(); // <-- ใส่บรรทัดนี้
 
   const listEl  = document.getElementById('historyList');
   const modalEl = document.getElementById('historyModal');
@@ -1268,18 +1311,6 @@ function setRefreshTooltip(ts = new Date(), offline = false){
   } else {
     tip.update(); // 5.0–5.2
   }
-}
-
-function setLastSync(ts, fromCache){
-  const chip = document.getElementById('lastSyncChip');
-  if (!chip) return;
-  const d = new Date(ts);
-  const pad = n => String(n).padStart(2,'0');
-  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  chip.classList.remove('d-none');
-  chip.innerHTML = fromCache
-    ? `<i class="fa-solid fa-cloud"></i> แคช • ${stamp}`
-    : `<i class="fa-regular fa-clock"></i> อัปเดตแล้ว • ${stamp}`;
 }
 
 /* Level Track (ถ้าคุณมี element เหล่านี้ในหน้า ให้กำกับความยาวตามสัดส่วนแต้ม) */
@@ -1606,7 +1637,7 @@ function updateLeftMiniChips({ streakDays, rank }){
 }
 
 // แสดงเวลาอัปเดตล่าสุดที่ชิปขวา
-function setLastSync(ts, fromCache){
+function setLastSync(ts = Date.now(), fromCache = false){
   const chip = document.getElementById('lastSyncChip');
   if (!chip) return;
   const d = new Date(ts);
