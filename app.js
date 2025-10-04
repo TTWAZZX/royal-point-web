@@ -5,7 +5,9 @@ const API_GET_SCORE = "/api/get-score";
 const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
-
+/** state & cache (ต้องอยู่ตอนบนของไฟล์) */
+let REWARDS_CACHE = [];
+let rewardRailBound = false;
 // ===== Helpers: pick UID + try multiple endpoints + render safe =====
 let CURRENT_UID =
   window.__UID ||
@@ -16,30 +18,6 @@ let CURRENT_UID =
 // ========== DEBUG UTIL ==========
 const DEBUG = true;
 const dlog = (...a) => { if (DEBUG) console.log('[RP]', ...a); };
-
-// เรียกหลาย endpoint ไล่ไปเรื่อย ๆ ใครตอบ 2xx ก่อนใช้ตัวนั้น
-async function tryEndpoints(urls, fetchInit = {}, { scope = '' } = {}) {
-  let lastErr;
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, fetchInit);
-      const text = await res.text();
-      if (!res.ok) {
-        dlog(`fetch failed ${scope}`, url, res.status, text);
-        lastErr = new Error(text || `HTTP ${res.status}`);
-        continue;
-      }
-      let json;
-      try { json = JSON.parse(text); } catch { json = text; }
-      dlog(`fetch ok ${scope}`, url, json);
-      return json;
-    } catch (e) {
-      dlog(`fetch error ${scope}`, url, e);
-      lastErr = e;
-    }
-  }
-  throw lastErr || new Error('all_endpoints_failed');
-}
 
 function getArrFromResponse(res) {
   if (Array.isArray(res)) return res;
@@ -363,64 +341,43 @@ function bindUI(){
       setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
     }
   });
+  // === ปิดท้าย bindUI: ค่อย export เป็น global ตรงนี้ ===
+window.startScanner = startScanner;
+window.stopScanner  = stopScanner;
 }
-window.startScanner = startScanner;   // export ออกไปเป็น global
-window.stopScanner = stopScanner;
 
-// === Last updated helper (global) ===
-function setLastUpdated(time, cached = false) {
-  const el = document.querySelector('#lastUpdated, [data-last-updated]');
-  if (!el) return;
-
-  // ไม่มีเวลา → ซ่อน
-  if (!time) {
-    el.textContent = '';
-    el.classList.add('hidden');
-    return;
+// === Last updated (หนึ่งเดียว ใช้ได้ทั้งปุ่มรีเฟรช และ #lastUpdated) ===
+function setLastUpdated(ts = Date.now(), fromCache = false){
+  // 1) อัปเดต tooltip ของปุ่มรีเฟรช
+  const btn = document.getElementById('refreshBtn');
+  if (btn){
+    const d = new Date(ts);
+    const text = `${fromCache ? 'อัปเดตจากแคช' : 'อัปเดตล่าสุด'}: ` +
+      d.toLocaleString('th-TH', {
+        year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+      });
+    btn.setAttribute('title', text);
+    btn.setAttribute('data-bs-original-title', text);
+    try {
+      let tip = bootstrap.Tooltip.getInstance(btn);
+      if (!tip) tip = new bootstrap.Tooltip(btn);
+      if (typeof tip.setContent === 'function') tip.setContent({ '.tooltip-inner': text });
+      else tip.update();
+    } catch {}
   }
 
-  const d = typeof time === 'number' ? new Date(time) : new Date(time);
-  el.classList.remove('hidden');
-  el.textContent =
-    `${cached ? '(แคช) ' : ''}อัปเดตล่าสุด ${d.toLocaleString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false})}`;
+  // 2) ถ้ามี #lastUpdated หรือ [data-last-updated] → อัปเดตข้อความด้วย
+  const el = document.querySelector('#lastUpdated, [data-last-updated]');
+  if (el){
+    const d = new Date(ts);
+    el.classList.remove('hidden');
+    el.textContent = `${fromCache ? '(แคช) ' : ''}อัปเดตล่าสุด ` +
+      d.toLocaleString('th-TH', { hour:'2-digit', minute:'2-digit', hour12:false });
+  }
 }
 window.setLastUpdated = setLastUpdated;
 
-// ---------- helper: อัปเดตข้อความ "อัปเดตล่าสุด" บนปุ่มรีเฟรช ----------
-function setLastUpdated(fromCache = false){
-  // หา element ปุ่มรีเฟรช (คุณมี id="refreshBtn" ใน index.html แล้ว)
-  const el = document.getElementById('refreshBtn');
-  if (!el) return;
-
-  const now = new Date();
-  const label = fromCache ? 'อัปเดตจากแคช' : 'อัปเดตล่าสุด';
-  const text  = `${label}: ${now.toLocaleString('th-TH', {
-    year:'numeric', month:'2-digit', day:'2-digit',
-    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-  })}`;
-
-  // อัปเดต title (fallback ถ้าไม่มี tooltip)
-  el.setAttribute('title', text);
-
-  // ถ้าใช้ Bootstrap tooltip ให้รีเฟรชข้อความใน tooltip ด้วย
-  try {
-    if (window.bootstrap?.Tooltip) {
-      let tip = bootstrap.Tooltip.getInstance(el);
-      if (!tip) tip = new bootstrap.Tooltip(el);
-      // รองรับทั้ง BS5.3 (setContent) และวิธีเดิม (update)
-      if (typeof tip.setContent === 'function') {
-        tip.setContent({ '.tooltip-inner': text });
-      } else {
-        // บางเวอร์ชันต้องแก้ data attribute ด้วย
-        el.setAttribute('data-bs-original-title', text);
-        tip.update();
-      }
-    }
-  } catch (e) {
-    // เงียบ ๆ พอ ไม่ให้พัง
-    console.warn('tooltip update skipped', e);
-  }
-}
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
@@ -811,10 +768,6 @@ function orderRewardsBySequence(list, sequence){
   });
   return out;
 }
-
-/** state & cache */
-let REWARDS_CACHE = [];
-let rewardRailBound = false;
 
 function hideRewardSkeletons(){
   document.querySelectorAll('.reward-skeleton').forEach(el => el.style.display = 'none');
@@ -1681,19 +1634,6 @@ try{
   const tiltOn = document.querySelector('.rp-profile-card')?.classList.contains('rp-tilt');
   if (REDUCE_MOTION && tiltOn) document.querySelector('.rp-profile-card').classList.remove('rp-tilt');
 }catch{}
-
-/* ---------- setLastSync : แยกไอคอน Online/Cache ---------- */
-function setLastSync(ts, fromCache){
-  const chip = document.getElementById('lastSyncChip');
-  if (!chip) return;
-  const d = new Date(ts);
-  const pad = n => String(n).padStart(2,'0');
-  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  chip.classList.remove('d-none');
-  chip.innerHTML = fromCache
-    ? `<i class="fa-solid fa-cloud"></i> แคช • ${stamp}`
-    : `<i class="fa-regular fa-clock"></i> อัปเดตแล้ว • ${stamp}`;
-}
 
 /* ---------- Progress ripple + tooltip (เติมบน click) ---------- */
 (function enhanceProgress(){
