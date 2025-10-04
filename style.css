@@ -3265,3 +3265,10 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   .hc-amt{ font-size:1rem; }
   #historyModal .modal-dialog{ margin:.5rem; }
 }
+
+.legend-dot,.dot-green,.dot-red{
+  display:inline-block;width:10px;height:10px;border-radius:50%;
+  vertical-align:middle;margin-right:.35rem
+}
+.dot-green{background:#16a34a}
+.dot-red{background:#ef4444}

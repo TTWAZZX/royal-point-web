@@ -193,6 +193,97 @@
         </div>
       </div>
     </div>
+    <!-- ========== Coupon Admin ========== -->
+<section class="container my-4" id="couponAdmin">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <h5 class="mb-0 me-auto">จัดการคูปอง</h5>
+        <div class="d-flex gap-2">
+          <select id="couponFilter" class="form-select form-select-sm" style="width:140px">
+            <option value="all">ทั้งหมด</option>
+            <option value="unused">ยังไม่ใช้</option>
+            <option value="used">ใช้แล้ว</option>
+          </select>
+          <input id="couponSearch" class="form-control form-control-sm" placeholder="ค้นหารหัส... (พิมพ์แล้ว Enter)">
+          <button id="btnReloadCoupons" class="btn btn-outline-secondary btn-sm">
+            <i class="fa-solid fa-rotate"></i> รีเฟรช
+          </button>
+          <button id="btnGenCoupons" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-plus"></i> สร้างคูปอง
+          </button>
+        </div>
+      </div>
+
+      <div class="small text-muted mb-2">
+        <span class="legend-dot dot-green"></span> ยังไม่ใช้
+        <span class="legend-dot dot-red ms-3"></span> ใช้แล้ว
+      </div>
+
+      <div id="couponList" class="list-group list-group-flush"></div>
+      <div id="couponEmpty" class="text-center text-muted py-4 d-none">ยังไม่มีคูปอง</div>
+    </div>
+  </div>
+</section>
+
+<!-- QR Modal -->
+<div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">QR ของคูปอง</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="qrBox" class="mx-auto mb-2" style="width:240px;height:240px"></div>
+        <div class="small text-muted" id="qrText"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnCopyCode" class="btn btn-outline-secondary">
+          <i class="fa-regular fa-copy"></i> คัดลอกรหัส
+        </button>
+        <a id="btnDownloadQR" class="btn btn-primary" download="coupon.png">
+          <i class="fa-solid fa-download"></i> ดาวน์โหลด QR
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Generate Modal -->
+<div class="modal fade" id="genModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="genForm">
+      <div class="modal-header">
+        <h5 class="modal-title">สร้างคูปองใหม่</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">จำนวน</label>
+            <input type="number" min="1" max="500" value="10" class="form-control" id="genCount">
+          </div>
+          <div class="col-6">
+            <label class="form-label">คะแนน/คูปอง</label>
+            <input type="number" min="1" value="10" class="form-control" id="genPoints">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Prefix (ตัวเลือก)</label>
+            <input type="text" placeholder="เช่น PROMO-" class="form-control" id="genPrefix">
+          </div>
+        </div>
+        <div class="form-text mt-2">จำกัดครั้งละไม่เกิน 500 โค้ด</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+        <button class="btn btn-primary" id="btnDoGen" type="submit">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> สร้าง
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
     <!-- Skeleton while loading -->
     <div id="adminSkeleton" class="vstack gap-2 mb-3" style="display:none">
@@ -221,6 +312,7 @@
 <!-- (ออปชัน) ต้องใช้ overlay ค่อยใส่ -->
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2/dist/loadingoverlay.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
 
   <!-- โค้ดแอดมินของเรา: ตัวเดียวพอ -->
   <script src="/admin.js" defer></script>
