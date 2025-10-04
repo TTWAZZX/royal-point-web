@@ -358,17 +358,12 @@ window.openSheet   = openSheet;
 
 /* =====================  COUPONS – ADMIN (FIXED MATCH HTML)  ===================== */
 // endpoints ที่ลองเรียกหลายแบบ
-const COUPON_LIST_ENDPOINTS = [
-  '/api/admin-coupons',
-  '/api/admin/coupons',
-  '/api/coupons',
-  '/api/list-coupons'
-];
-const COUPON_GENERATE_ENDPOINTS = [
-  '/api/admin-coupons-generate',
-  '/api/admin/coupons/generate',
-  '/api/coupons/generate'
-];
+// ใช้แค่ 2 endpoint นี้พอ
+const COUPON_LIST_ENDPOINTS = ['/api/admin-coupons'];
+const COUPON_GENERATE_ENDPOINTS = ['/api/admin-coupons-generate'];
+const genBtn = document.getElementById('btnGenCoupons') || document.getElementById('btnGenerateCoupons');
+genBtn?.addEventListener('click', generateCoupons);
+document.getElementById('btnReloadCoupons')?.addEventListener('click', loadCoupons);
 
 // อ่าน uid แอดมินจากค่าที่ตั้งไว้ตอน init()
 function getAdminUid(){

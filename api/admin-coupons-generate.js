@@ -1,73 +1,54 @@
-// /api/admin-coupons-generate.js
-import { createClient } from '@supabase/supabase-js';
+// POST /api/admin-coupons-generate  { adminUid, count|qty, points|point, prefix }
+// สร้างคูปองชุดใหญ่
+const crypto         = require('crypto');
+const SUPABASE_URL   = process.env.SUPABASE_URL;
+const SERVICE_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-// ปรับตามจริงของคุณ
-const ADMINS = ['Ucadb3c0f63ada96c0432a0aede267ff9'];
-
-function isAdmin(uid = '') {
-  return ADMINS.includes(String(uid));
+function makeCode(prefix='') {
+  // 8 ตัว HEX (คุณจะเปลี่ยนสูตรได้)
+  return prefix + crypto.randomBytes(4).toString('hex').toUpperCase();
 }
 
-function makeCode(prefix = '') {
-  // โค้ดอ่านง่าย (หลีกเลี่ยง O0Il)
-  const ABC = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for (let i = 0; i < 8; i++) s += ABC[Math.floor(Math.random() * ABC.length)];
-  return (prefix || '') + s;
-}
-
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') {
-      return res.status(405).json({ status: 'error', message: 'method_not_allowed' });
+      res.status(405).json({ status: 'error', message: 'POST only' }); return;
+    }
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      res.status(500).json({ status: 'error', message: 'Missing SUPABASE_URL or SERVICE_ROLE_KEY' }); return;
     }
 
-    const body = req.body || {};
-    const adminUid = body.adminUid || body.uid || '';
-    if (!isAdmin(adminUid)) {
-      return res.status(403).json({ status: 'error', message: 'forbidden' });
-    }
+    const bodyRaw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    const b = JSON.parse(bodyRaw || '{}');
 
-    const qty  = Math.max(1, Number(body.amount ?? body.qty ?? body.count ?? 1));
-    const pts  = Math.max(1, Number(body.points ?? body.point ?? body.value ?? 1));
-    const pref = String(body.prefix || '').trim();
+    const n   = Math.min(500, Math.max(1, Number(b.count ?? b.qty ?? b.amount ?? 1)));
+    const pts = Math.max(1, Number(b.points ?? b.point ?? b.value ?? 1));
+    const pre = String(b.prefix || '');
 
-    if (qty > 500) {
-      return res.status(400).json({ status: 'error', message: 'limit_500' });
-    }
-
-    // เตรียม rows ตาม schema ปัจจุบันของคุณ (point/status/claimer/used_at)
-    const rows = Array.from({ length: qty }, () => ({
-      code: makeCode(pref),
+    const rows = Array.from({ length: n }, () => ({
+      code: makeCode(pre),
       point: pts,
-      status: 'unused',  // เก็บเป็นข้อความ
+      status: 'unused',
       claimer: null,
-      used_at: null,
-      created_at: new Date().toISOString()
+      used_at: null
     }));
 
-    // ต้องมี UNIQUE(code) ใน DB (ดูข้อ 1)
-    const { data, error } = await supabase
-      .from('coupons')
-      .upsert(rows, { onConflict: 'code', ignoreDuplicates: true })
-      .select('code');
-
-    if (error) throw error;
-
-    return res.status(200).json({
-      status: 'success',
-      generated: rows.length,
-      inserted: (data || []).length
+    const url = `${SUPABASE_URL}/rest/v1/coupons`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        Prefer: 'return=representation'
+      },
+      body: JSON.stringify(rows)
     });
+    const text = await r.text();
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText} ${text}`);
+    const inserted = JSON.parse(text);
+    res.json({ status: 'success', inserted: inserted.length, items: inserted });
   } catch (e) {
-    console.error('[admin-coupons-generate] error', e);
-    return res.status(500).json({ status: 'error', message: e.message || 'server_error' });
+    res.status(500).json({ status: 'error', message: e.message || String(e) });
   }
-}
-
-export const config = { api: { bodyParser: true } };
+};

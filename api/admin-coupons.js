@@ -1,65 +1,43 @@
-// /api/admin-coupons.js
-import { createClient } from '@supabase/supabase-js';
+// GET /api/admin-coupons?adminUid=...&status=all|used|unused&q=...&limit=...
+// ดึงรายการคูปองแบบกระทัดรัด
+const SUPABASE_URL  = process.env.SUPABASE_URL;
+const SERVICE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-// ปรับตามจริงของคุณ
-const ADMINS = ['Ucadb3c0f63ada96c0432a0aede267ff9'];
-
-function isAdmin(uid = '') {
-  return ADMINS.includes(String(uid));
-}
-
-// แปลง row -> shape ที่ฝั่งหน้าเว็บอ่านง่าย
-function mapRow(r = {}) {
-  const statusStr = String(r.status ?? '').toLowerCase();
-  const usedByFlag =
-    !!r.claimer || !!r.used_at ||
-    statusStr.startsWith('used') ||
-    statusStr === '1' || statusStr === 'true' || statusStr === 'ใช้งานแล้ว';
-
-  return {
-    code: r.code || '',
-    points: Number(r.point ?? 0),
-    used: !!usedByFlag,
-    is_used: !!usedByFlag,     // เผื่อฟรอนต์อ่านชื่อนี้
-    redeemed: !!usedByFlag,    // เผื่อฟรอนต์อ่านชื่อนี้
-    created_at: r.created_at || null,
-    used_at: r.used_at || null,
-    used_by: r.claimer || null,
-    status: r.status || null,
-  };
-}
-
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   try {
     if (req.method !== 'GET') {
-      return res.status(405).json({ status: 'error', message: 'method_not_allowed' });
+      res.status(405).json({ status: 'error', message: 'GET only' }); return;
+    }
+    if (!SUPABASE_URL || !SERVICE_KEY) {
+      res.status(500).json({ status: 'error', message: 'Missing SUPABASE_URL or SERVICE_ROLE_KEY' }); return;
     }
 
-    const { adminUid } = req.query;
-    if (!isAdmin(adminUid)) {
-      return res.status(403).json({ status: 'error', message: 'forbidden' });
+    const { status = 'all', q = '', limit } = req.query;
+    const params = new URLSearchParams();
+    params.set('select', 'code,point,status,claimer,used_at');
+    // filter
+    if (status === 'used')   params.set('status', 'eq.used');
+    if (status === 'unused') params.set('status', 'eq.unused');
+    if (q)                   params.set('code', `ilike.*${q}*`);
+    // order + limit
+    params.append('order', 'used_at.desc'); // used ล่าสุดก่อน
+    params.append('order', 'code.asc');
+    if (limit) params.set('limit', String(Math.max(1, Number(limit) || 0)));
+
+    const url = `${SUPABASE_URL}/rest/v1/coupons?${params.toString()}`;
+    const r = await fetch(url, {
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+      }
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(`${r.status} ${r.statusText} ${t}`);
     }
-
-    const { data, error } = await supabase
-      .from('coupons')
-      .select('code, point, status, claimer, used_at, created_at')
-      .order('used_at', { ascending: true, nullsFirst: true })
-      .limit(1000);
-
-    if (error) throw error;
-
-    const items = (data || []).map(mapRow);
-    return res.status(200).json({ status: 'success', data: items });
+    const rows = await r.json();
+    res.json({ status: 'success', data: rows });
   } catch (e) {
-    console.error('[admin-coupons] error', e);
-    return res.status(500).json({ status: 'error', message: e.message || 'server_error' });
+    res.status(500).json({ status: 'error', message: e.message || String(e) });
   }
-}
-
-// ให้ Vercel รองรับ CommonJS ด้วย
-export const config = { api: { bodyParser: true } };
+};
