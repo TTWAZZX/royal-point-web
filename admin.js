@@ -562,3 +562,23 @@ couponEls.btnReload?.addEventListener('click', loadCoupons);
 // โหลดอัตโนมัติเมื่อมี panel คูปองอยู่บนหน้า
 document.addEventListener('DOMContentLoaded', ()=>{ if (couponEls.wrap) loadCoupons(); });
 /* =====================  END COUPONS – ADMIN  ===================== */
+
+/* ===== Wire old inline handlers & IDs for Coupons ===== */
+// รองรับทั้งแบบ onclick และแบบผูกด้วย id
+window.generateCoupons = generateCoupons;   // ให้ปุ่ม onclick ใช้ได้
+window.loadCoupons     = loadCoupons;       // ถ้ามี onclick="loadCoupons()"
+
+document.getElementById('btnGenerateCoupons')?.addEventListener('click', generateCoupons);
+document.getElementById('btnReloadCoupons')  ?.addEventListener('click', loadCoupons);
+
+// เผื่อ id ช่องกรอกไม่ตรงกัน ให้หาทั้งคู่
+const pick = (a,b)=> document.getElementById(a) || document.getElementById(b);
+couponEls.inputQty    = pick('genQty','qty');
+couponEls.inputPts    = pick('genPoints','points');
+couponEls.inputPrefix = pick('genPrefix','prefix');
+
+// โหลดรายการคูปองอัตโนมัติเมื่อหน้า/แท็บพร้อม
+document.addEventListener('DOMContentLoaded', ()=>{
+  // ต้องมี container รายการคูปองอยู่ก่อน
+  if (document.getElementById('couponList')) loadCoupons();
+});
