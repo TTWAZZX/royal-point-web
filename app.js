@@ -221,6 +221,22 @@ async function initApp(){
   }
 }
 
+async function ensureCameraPermission() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    const e = new Error('browser_no_getUserMedia');
+    e.userMessage = 'เบราว์เซอร์นี้ไม่รองรับกล้อง';
+    throw e;
+  }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ video: true });
+    s.getTracks().forEach(t => t.stop());
+    return true;
+  } catch (err) {
+    err.userMessage = 'ไม่ได้รับสิทธิ์ใช้งานกล้อง';
+    throw err;
+  }
+}
+
 function bindUI(){
   // ปุ่มรีเฟรชคะแนน
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
@@ -228,13 +244,23 @@ function bindUI(){
   // ปุ่มประวัติ — ผูกที่เดียวพอ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // ควบคุมกล้องในโมดัล (ถ้ามี)
+  // ควบคุมกล้องในโมดัล
+  const scanModalEl = document.getElementById('scanModal');
+  if (scanModalEl) {
+    // เริ่มอัตโนมัติเมื่อโมดัลแสดง
+    scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
+    // หยุดเมื่อจะปิด/ปิดแล้ว
+    scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
+    scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
+  }
+
+  // ปุ่ม start/stop (ไว้สำหรับควบคุมมือ)
   const startBtn = document.getElementById("startScanBtn");
   const stopBtn  = document.getElementById("stopScanBtn");
   startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
-  stopBtn  && stopBtn.addEventListener("click", () => stopScanner && stopScanner());
+  stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
 
-  // ปุ่มไฟฉาย
+  // ปุ่มไฟฉายตามเดิม
   const torchBtn = document.getElementById("torchBtn");
   if (torchBtn){
     torchBtn.addEventListener("click", async ()=>{
@@ -246,6 +272,79 @@ function bindUI(){
       }
     });
   }
+
+  async function startScanner(){
+  if (!els?.qrReader) return toastErr('ไม่พบพื้นที่สแกน');
+  if (SCANNING) return;
+
+  // ต้องเป็น HTTPS/localhost เท่านั้น
+  const secure = (location.protocol === 'https:' ||
+                  location.hostname === 'localhost' ||
+                  location.hostname === '127.0.0.1');
+  if (!secure || !isSecureContext) {
+    return toastErr('กล้องถูกบล็อก: กรุณาเปิดผ่าน HTTPS หรือ localhost');
+  }
+
+  // ขอสิทธิ์กล้องให้เบราว์เซอร์โหลดรายการอุปกรณ์
+  try { await ensureCameraPermission(); }
+  catch (e) { console.warn(e); return toastErr(e.userMessage || 'อนุญาตกล้องก่อนใช้งาน'); }
+
+  // ให้คอนเทนเนอร์เห็นได้จริง (ห้าม display:none)
+  els.qrReader.innerHTML = '';
+  els.qrReader.style.minHeight = '320px';
+
+  // เคลียร์ตัวเก่าถ้ามี
+  try { if (html5qrcode) { await stopScanner(); } } catch {}
+  html5qrcode = new Html5Qrcode(els.qrReader.id, { verbose: false });
+
+  // เลือกกล้องหลังถ้ามี
+  let devices = [];
+  try { devices = await Html5Qrcode.getCameras(); } catch {}
+  if (!devices?.length) return toastErr('ไม่พบกล้องในอุปกรณ์นี้');
+
+  const re = /(back|rear|environment|wide|main)/i;
+  const preferred = devices.find(d=>re.test(d.label)) || devices[0];
+
+  const qrbox = (() => {
+    const size = Math.min(320, Math.floor(Math.min(window.innerWidth, 480) - 32));
+    return { width: size, height: size };
+  })();
+  const config = { fps: 10, qrbox, aspectRatio: 1.7778, rememberLastUsedCamera: true };
+
+  const onScan = async (decodedText) => {
+    const code = String(decodedText || '').trim();
+    const now  = Date.now();
+    if (!code) return;
+    if (REDEEM_IN_FLIGHT) return;
+    if (code && code === LAST_DECODE && (now - LAST_DECODE_AT) < DUP_COOLDOWN) return;
+    LAST_DECODE = code; LAST_DECODE_AT = now;
+
+    REDEEM_IN_FLIGHT = true;
+    try {
+      await stopScanner();
+      await redeemCode(code, 'SCAN');
+    } finally {
+      setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
+    }
+  };
+  const onScanFailure = (_err) => {};
+
+  SCANNING = true;
+  try {
+    await html5qrcode.start(preferred.id, config, onScan, onScanFailure);
+    afterCameraStarted?.();
+  } catch (err1) {
+    console.warn('start with deviceId failed, try facingMode', err1);
+    try {
+      await html5qrcode.start({ facingMode: 'environment' }, config, onScan, onScanFailure);
+      afterCameraStarted?.();
+    } catch (err2) {
+      console.error('Scanner start failed', err2);
+      SCANNING = false;
+      toastErr('เปิดกล้องไม่สำเร็จ');
+    }
+  }
+}
 
   // ยืนยันรหัสลับ (กรณีกรอกมือ)
   els.submitBtn && els.submitBtn.addEventListener("click", async ()=>{
@@ -265,6 +364,8 @@ function bindUI(){
     }
   });
 }
+window.startScanner = startScanner;   // export ออกไปเป็น global
+window.stopScanner = stopScanner;
 
 // === Last updated helper (global) ===
 function setLastUpdated(time, cached = false) {
