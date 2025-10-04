@@ -956,27 +956,63 @@ async function stopScanner(){
   }
 }
 
+// escape HTML สั้นๆ
+const h = (s) => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+// ดึงชื่อผู้ใช้จากแหล่งที่น่าจะมีอยู่
+function getUserDisplayName() {
+  return (
+    window.DISPLAY_NAME ||
+    window.__DISPLAY_NAME ||
+    localStorage.getItem('displayName') ||
+    document.querySelector('#profileName, [data-profile-name], .profile-name')?.textContent?.trim() ||
+    UID || 'ผู้ใช้'
+  );
+}
+
+// แปลงวันเวลาเป็นรูปแบบไทย + เขตเวลาไทย
+function fmtThaiDateTime(v) {
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return '';
+  // จะได้ปี พ.ศ. อัตโนมัติ เพราะใช้ th-TH
+  const s = d.toLocaleString('th-TH', {
+    timeZone : 'Asia/Bangkok',
+    year     : 'numeric',
+    month    : 'short',
+    day      : '2-digit',
+    hour     : '2-digit',
+    minute   : '2-digit',
+    second   : '2-digit',
+    hour12   : false,
+  });
+  return s + ' น.'; // เติม "น." แบบไทย
+}
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
   const uid = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
   if (!uid) return toastErr("ไม่พบผู้ใช้");
 
-  const list  = document.getElementById('historyList');
-  const modal = new bootstrap.Modal(document.getElementById('historyModal'));
+  const listEl  = document.getElementById('historyList');
+  const modalEl = document.getElementById('historyModal');
+  const modal   = new bootstrap.Modal(modalEl);
+
+  // ตั้งชื่อหัวโมดัล: ประวัติพ้อยท์ — <ชื่อผู้ใช้>
+  const titleEl = modalEl.querySelector('.modal-title');
+  if (titleEl) {
+    titleEl.innerHTML = `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${h(getUserDisplayName())}</span>`;
+  }
 
   UiOverlay.show('กำลังโหลดประวัติ…');
   try{
     const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
-    const json = await safeJson(resp);
-
-    // รองรับหลายทรง payload: {items:[]}, {data:[]}, []
+    const json = await resp.json().catch(()=> ({}));
     const items = Array.isArray(json) ? json
                 : Array.isArray(json.items) ? json.items
                 : Array.isArray(json.data)  ? json.data
                 : [];
 
-    // เรียงล่าสุดก่อน
+    // ล่าสุดอยู่บน
     items.sort((a,b)=>{
       const ta = new Date(a.created_at || a.time || 0).getTime();
       const tb = new Date(b.created_at || b.time || 0).getTime();
@@ -984,22 +1020,23 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // เรนเดอร์: แสดงบรรทัดรองเฉพาะเมื่อมีค่า
-    list.innerHTML = items.map(it=>{
-      const amt  = Number(it.amount || it.point || it.points || 0);
+    // เรนเดอร์แต่ละแถว (ซ่อนบรรทัดย่อยถ้าไม่มีค่า)
+    listEl.innerHTML = items.map(it=>{
+      const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
-      const when = it.created_at || it.time || '';
-      const code = it.code || it.type || '';
-      const by   = it.created_by || it.actor || it.admin || '';   // ← ไม่มีค่า = ไม่ใส่บรรทัดรอง
-      const byLine = by ? `<div class="small text-muted">${h(by)}</div>` : '';
+      const when = fmtThaiDateTime(it.created_at || it.time || '');
+      const code = it.code || it.type || it.activity || '';
+      const by   = it.created_by || it.actor || it.admin || '';
+      const sub  = [it.ref || it.reference || '', it.note || ''].filter(Boolean).join(' · ');
       return `
-        <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+        <a class="list-group-item list-group-item-action d-grid gap-1" style="grid-template-columns:1fr auto auto;align-items:center;">
           <div>
-            <div class="fw-bold">${h(code)}</div>
-            ${byLine}
+            <div class="fw-bold">${h(code || 'รายการ')}</div>
+            ${by ? `<div class="small text-muted">${h(by)}</div>` : ''}
+            ${sub ? `<div class="small text-muted">${h(sub)}</div>` : ''}
           </div>
-          <div class="${amt>=0 ? 'text-success':'text-danger'} fw-bold">${sign}${amt}</div>
-          <div class="small text-muted ms-3">${h(when)}</div>
+          <div class="${amt>=0?'text-success':'text-danger'} fw-bold text-end">${sign}${amt}</div>
+          <div class="small text-muted text-end">${h(when)}</div>
         </a>`;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
