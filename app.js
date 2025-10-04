@@ -864,43 +864,28 @@ async function redeemReward(reward, btn){
 // ใช้แทนฟังก์ชันเดิมทั้งหมด
 // แก้ทั้งฟังก์ชัน redeemCode ให้แนบ uid เสมอ
 // ใช้แค่ /api/redeem ที่เดียว และส่งฟิลด์ให้ครบ
-async function redeemCode(input) {
-  // 1) เตรียมค่า
+// แลกคูปอง + แจ้งจำนวนคะแนนที่ได้รับ (รองรับ manual และ SCAN)
+async function redeemCode(input, source = 'manual') {
   const code = String(
     (input ?? document.getElementById('couponInput')?.value ?? '')
   ).trim();
-
-  if (!code) {
-    toastErr('กรุณากรอกรหัสคูปอง');
-    return;
-  }
+  if (!code) return toastErr('กรุณากรอกรหัสคูปอง');
 
   const uid =
     (typeof UID !== 'undefined' && UID) ||
     window.__UID ||
     localStorage.getItem('uid') || '';
+  if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
 
-  if (!uid) {
-    toastErr('ยังไม่พบ UID ของผู้ใช้');
-    return;
-  }
+  // เก็บยอดก่อนแลกไว้เทียบ (fallback ถ้า API ไม่บอก amount)
+  try { await refreshUserScore(); } catch {}
+  const before = Number(window.__userBalance || 0);
 
-  // 2) บอดี้ที่แบ็กเอนด์รับชัวร์: uid + code
-  //    (เผื่อหลังบ้านรับชื่อฟิลด์อื่นด้วย ใส่ duplicated fields ไปเลย)
-  const payload = {
-    uid,
-    code,
-    coupon: code,
-    coupon_code: code,
-    source: 'manual', // หรือ 'QR'
-  };
+  const payload = { uid, code, coupon: code, coupon_code: code, source };
 
-  console.debug('[redeem] POST /api/redeem ->', payload);
-
-  // 3) ยิงแค่ /api/redeem
   let res, json;
   try {
-    res = await fetch('/api/redeem', {
+    res  = await fetch('/api/redeem', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -909,95 +894,48 @@ async function redeemCode(input) {
     json = await res.json().catch(() => ({}));
   } catch (e) {
     console.error('[redeem] network error', e);
-    toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
-    return;
+    return toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
   }
 
-  // 4) ตรวจผลลัพธ์
   if (!res.ok || json?.status === 'error') {
     const msg = (json?.message || '').toLowerCase();
-    if (msg.includes('uid') || msg.includes('required')) {
-      toastErr('คำขอไม่ถูกต้อง: กรุณาเข้าสู่ระบบใหม่หรือรีเฟรช');
-    } else if (msg.includes('used') || msg.includes('already')) {
-      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-    } else if (msg.includes('not found')) {
-      toastErr('ไม่พบรหัสคูปอง');
-    } else {
-      toastErr('แลกคูปองไม่สำเร็จ');
-    }
+    if (msg.includes('used') || msg.includes('already')) return toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+    if (msg.includes('not found')) return toastErr('ไม่พบรหัสคูปอง');
+    if (msg.includes('uid') || msg.includes('required')) return toastErr('คำขอไม่ถูกต้อง: กรุณารีเฟรช/เข้าสู่ระบบอีกครั้ง');
     console.warn('[redeem] server rejected ->', json);
-    return;
+    return toastErr('แลกคูปองไม่สำเร็จ');
   }
 
-  // 5) สำเร็จ → รีเฟรชคะแนน/แจ้งเตือน
-  try { await refreshUserScore(); } catch {}
-  const added =
-    Number(json?.amount ?? json?.delta ?? json?.points ?? json?.point ?? 0);
-  if (added > 0) toastOk(`รับ +${added} คะแนน`);
-  else toastOk('แลกคูปองสำเร็จ');
-}
-
-async function startScanner(){
-  if (!els.qrReader) return;
-  if (SCANNING) return;
-  SCANNING = true;
-
-  const onScan = async (decodedText) => {
-    const code = String(decodedText || "").trim();
-    const now  = Date.now();
-    if (REDEEM_IN_FLIGHT) return;
-    if (code && code === LAST_DECODE && (now - LAST_DECODE_AT) < DUP_COOLDOWN) return;
-    LAST_DECODE = code; LAST_DECODE_AT = now;
-
-    REDEEM_IN_FLIGHT = true;
-    try {
-      await stopScanner();
-      await redeemCode(code, "SCAN");
-    } finally {
-      setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
+  // ดึง "คะแนนที่ได้" จาก response ถ้ามี, ไม่มีก็หาจากส่วนต่างก่อน-หลัง
+  const pickAmount = (o) => {
+    if (!o || typeof o !== 'object') return null;
+    const keys = [
+      'amount','delta','added','increment','points','point','score',
+      'data.amount','data.delta','data.points','data.point'
+    ];
+    for (const k of keys) {
+      const v = k.includes('.') ? k.split('.').reduce((a,c)=>a?.[c], o) : o[k];
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
     }
+    return null;
   };
+  let added = pickAmount(json);
 
-  try{
-    html5qrcode = new Html5Qrcode(els.qrReader.id);
+  try { await refreshUserScore(); } catch {}
+  const after = Number(window.__userBalance || before);
+  if (added === null) added = after - before;
 
-    // 1) กล้องหลัง exact
-    try{
-      await html5qrcode.start(
-        { facingMode: { exact: "environment" } },
-        { fps: 10, qrbox: { width: 260, height: 260 } },
-        onScan
-      );
-      afterCameraStarted();
-      return;
-    }catch{}
+  if (added > 0) {
+    toastOk(`รับ +${added} คะแนน`);
+    try { showScoreDelta?.(added); } catch {}
+  } else {
+    toastOk('แลกคูปองสำเร็จ');
+  }
 
-    // 2) กล้องหลังทั่วไป
-    try{
-      await html5qrcode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 260 } },
-        onScan
-      );
-      afterCameraStarted();
-      return;
-    }catch{}
-
-    // 3) เลือกจากรายการอุปกรณ์
-    const devices = await Html5Qrcode.getCameras();
-    if(!devices?.length) throw new Error("No camera devices");
-    const re = /(back|rear|environment|wide|main)/i;
-    const preferred = devices.find(d=>re.test(d.label)) || devices[devices.length-1];
-    await html5qrcode.start(
-      preferred.id,
-      { fps: 10, qrbox: { width: 260, height: 260 } },
-      onScan
-    );
-    afterCameraStarted();
-  }catch(e){
-    console.warn("Scanner start failed:", e);
-    SCANNING = false;
-    toastErr("ไม่สามารถเปิดกล้องได้");
+  // เคลียร์ช่องกรอกเมื่อเป็นการกรอกเอง
+  if (!input && document.getElementById('couponInput')) {
+    document.getElementById('couponInput').value = '';
   }
 }
 
