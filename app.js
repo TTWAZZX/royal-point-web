@@ -255,7 +255,7 @@ function bindUI(){
   if (!els?.qrReader) return toastErr('ไม่พบพื้นที่สแกน');
   if (SCANNING) return;
 
-  // ต้องเป็น HTTPS/localhost เท่านั้น
+  // ต้องเป็น HTTPS/localhost
   const secure = (location.protocol === 'https:' ||
                   location.hostname === 'localhost' ||
                   location.hostname === '127.0.0.1');
@@ -263,31 +263,17 @@ function bindUI(){
     return toastErr('กล้องถูกบล็อก: กรุณาเปิดผ่าน HTTPS หรือ localhost');
   }
 
-  // ขอสิทธิ์กล้องให้เบราว์เซอร์โหลดรายการอุปกรณ์
+  // ขอสิทธิ์กล้อง (เพื่อให้ enumerate ได้ label)
   try { await ensureCameraPermission(); }
   catch (e) { console.warn(e); return toastErr(e.userMessage || 'อนุญาตกล้องก่อนใช้งาน'); }
 
-  // ให้คอนเทนเนอร์เห็นได้จริง (ห้าม display:none)
+  // เตรียมพื้นที่สแกน
   els.qrReader.innerHTML = '';
   els.qrReader.style.minHeight = '320px';
 
-  // เคลียร์ตัวเก่าถ้ามี
+  // เคลียร์ตัวเก่า
   try { if (html5qrcode) { await stopScanner(); } } catch {}
   html5qrcode = new Html5Qrcode(els.qrReader.id, { verbose: false });
-
-  // เลือกกล้องหลังถ้ามี
-  let devices = [];
-  try { devices = await Html5Qrcode.getCameras(); } catch {}
-  if (!devices?.length) return toastErr('ไม่พบกล้องในอุปกรณ์นี้');
-
-  const re = /(back|rear|environment|wide|main)/i;
-  const preferred = devices.find(d=>re.test(d.label)) || devices[0];
-
-  const qrbox = (() => {
-    const size = Math.min(320, Math.floor(Math.min(window.innerWidth, 480) - 32));
-    return { width: size, height: size };
-  })();
-  const config = { fps: 10, qrbox, aspectRatio: 1.7778, rememberLastUsedCamera: true };
 
   const onScan = async (decodedText) => {
     const code = String(decodedText || '').trim();
@@ -307,21 +293,67 @@ function bindUI(){
   };
   const onScanFailure = (_err) => {};
 
+  const qrbox = (() => {
+    const size = Math.min(320, Math.floor(Math.min(window.innerWidth, 480) - 32));
+    return { width: size, height: size };
+  })();
+
+  // ไม่จำ device เดิม เพื่อกันติดกล้องหน้าที่เคยใช้
+  const config = { fps: 10, qrbox, aspectRatio: 1.7778, rememberLastUsedCamera: false };
+
+  async function startWithEnvironment(strict){
+    const constraint = strict
+      ? { facingMode: { exact: "environment" } }
+      : { facingMode: "environment" };
+    await html5qrcode.start(constraint, config, onScan, onScanFailure);
+  }
+
   SCANNING = true;
   try {
-    await html5qrcode.start(preferred.id, config, onScan, onScanFailure);
+    // 1) บังคับ environment แบบ strict ก่อน
+    await startWithEnvironment(true);
     afterCameraStarted?.();
-  } catch (err1) {
-    console.warn('start with deviceId failed, try facingMode', err1);
+  } catch (e1) {
     try {
-      await html5qrcode.start({ facingMode: 'environment' }, config, onScan, onScanFailure);
+      // 2) ผ่อนเงื่อนไขลง (บางเบราว์เซอร์)
+      await startWithEnvironment(false);
       afterCameraStarted?.();
-    } catch (err2) {
-      console.error('Scanner start failed', err2);
-      SCANNING = false;
-      toastErr('เปิดกล้องไม่สำเร็จ');
+    } catch (e2) {
+      // 3) เลือกจากรายการอุปกรณ์ โดยพยายามเล็ง “กล้องหลัง”
+      let devices = [];
+      try { devices = await Html5Qrcode.getCameras(); } catch {}
+      if (!devices?.length) {
+        SCANNING = false;
+        console.warn('no camera devices', e2);
+        return toastErr('ไม่พบกล้องในอุปกรณ์นี้');
+      }
+
+      const backRe  = /(back|rear|environment|world|main|wide|triple)/i;
+      const frontRe = /(front|user|selfie|face)/i;
+
+      let chosen = devices.find(d => backRe.test(d.label));
+      if (!chosen) {
+        // บางเครื่องเรียงกล้องหน้าไว้ก่อน → ลองจากท้ายก่อน
+        chosen = [...devices].reverse().find(d => !frontRe.test(d.label)) || devices[devices.length - 1];
+      }
+
+      await html5qrcode.start(chosen.id, config, onScan, onScanFailure);
+      afterCameraStarted?.();
+
+      // 4) ยืนยันอีกชั้นว่าไม่ได้เผลอเปิดกล้องหน้า
+      const track = getActiveVideoTrack();
+      const fm = track?.getSettings?.().facingMode || '';
+      const lbl = track?.label || '';
+      if (/^user$/i.test(fm) || frontRe.test(lbl)) {
+        await stopScanner();
+        await startWithEnvironment(false);
+        afterCameraStarted?.();
+      }
     }
   }
+
+  // อัปเดตสถานะ track สำหรับไฟฉาย
+  ACTIVE_VIDEO_TRACK = getActiveVideoTrack();
 }
 
   // ยืนยันรหัสลับ (กรณีกรอกมือ)
