@@ -187,8 +187,14 @@ async function initApp(){
     window.__UID = UID;
     try { localStorage.setItem('uid', UID); } catch {}
 
-    if (els.username)   els.username.textContent = prof.displayName || "—";
-    if (els.profilePic) els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
+   if (els.username) {
+  els.username.textContent = prof.displayName || "—";
+  try { localStorage.setItem('displayName', prof.displayName || ""); } catch {}
+  }
+  if (els.profilePic) {
+    els.profilePic.src = prof.pictureUrl || "https://placehold.co/120x120";
+  }
+    setHistoryUserName();
 
     enableAvatarPreview();
     showAdminEntry(ADMIN_UIDS.includes(UID));
@@ -985,6 +991,24 @@ function fmtThaiDateTime(v) {
   return s + ' น.'; // เติม "น." แบบไทย
 }
 
+function setHistoryUserName() {
+  const span = document.getElementById('historyUser');
+  if (!span) return;
+
+  // 1) เอาตามที่โชว์บนการ์ดโปรไฟล์ก่อน
+  let name = (els?.username?.textContent || '').trim();
+
+  // 2) ถ้าเป็นว่าง/ขีด ให้ใช้ที่เก็บไว้
+  if (!name || name === '—') {
+    name =
+      (localStorage.getItem('displayName') || '').trim() ||
+      (window.DISPLAY_NAME || window.__DISPLAY_NAME || '').trim();
+  }
+
+  // 3) ถ้ายังไม่มี ให้ใช้คำทั่วไปแทน (ไม่ fallback เป็น UID)
+  span.textContent = name || 'ผู้ใช้';
+}
+
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 // ประวัติพ้อยท์ (มินิมอล: แสดงเฉพาะคะแนน + วันเวลา)
 // ประวัติพ้อยท์ (มินิมอล: วันเวลา + คะแนน) + หัวโมดัลเป็นชื่อผู้ใช้
@@ -994,6 +1018,8 @@ async function openHistory(){
     window.__UID ||
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ไม่พบผู้ใช้');
+
+  setHistoryUserName(); // <-- ใส่บรรทัดนี้setHistoryUserName(); // <-- ใส่บรรทัดนี้
 
   const listEl  = document.getElementById('historyList');
   const modalEl = document.getElementById('historyModal');
