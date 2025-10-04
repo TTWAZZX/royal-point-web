@@ -3238,3 +3238,13 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 /* Helper: ซ่อนจริงตอนโหลด/แสดงหลังโหลด */
 .skeleton-hide-when-loading { visibility: visible; }
+
+.tx-row{display:grid;grid-template-columns:1fr auto auto;gap:.5rem;padding:.5rem 0;border-bottom:1px solid #eef1f4}
+.tx-title{font-weight:600}
+.tx-sub{color:#8a9099;font-size:.85rem}
+.tx-amt{font-weight:700;min-width:3.5rem;text-align:right}
+.tx-amt.plus{color:#16a34a}
+.tx-amt.minus{color:#ef4444}
+.tx-at{color:#8a9099;font-size:.85rem;min-width:10.5rem;text-align:right}
+
+.hidden{display:none!important}

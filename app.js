@@ -260,14 +260,22 @@ function bindUI(){
 }
 
 // === Last updated helper (global) ===
-function setLastUpdated(time = Date.now()) {
+function setLastUpdated(time, cached = false) {
   const el = document.querySelector('#lastUpdated, [data-last-updated]');
-  if (!el) return; // หากยังไม่มี element ก็ไม่ต้องทำอะไร
+  if (!el) return;
+
+  // ไม่มีเวลา → ซ่อน
+  if (!time) {
+    el.textContent = '';
+    el.classList.add('hidden');
+    return;
+  }
+
   const d = typeof time === 'number' ? new Date(time) : new Date(time);
-  el.textContent = d.toLocaleString('th-TH', { hour12: false });
-  el.dataset.ts = d.toISOString();
+  el.classList.remove('hidden');
+  el.textContent =
+    `${cached ? '(แคช) ' : ''}อัปเดตล่าสุด ${d.toLocaleString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false})}`;
 }
-// สำคัญ: ผูกกับ window เผื่อไฟล์คุณใช้ type="module" หรือมีสโคปปิด
 window.setLastUpdated = setLastUpdated;
 
 // ---------- helper: อัปเดตข้อความ "อัปเดตล่าสุด" บนปุ่มรีเฟรช ----------
@@ -315,21 +323,22 @@ function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", 
 // ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload + ไม่ทำให้ initApp ล้ม
 async function refreshUserScore(){
   const uid =
-    UID ||
+    (typeof UID !== 'undefined' && UID) ||
     window.__UID ||
     localStorage.getItem('uid') ||
     '';
 
-  // ถ้าไม่มี uid ให้รีเซ็ตตัวเลขแบบปลอดภัย แล้วจบแบบไม่ throw
+  // ถ้าไม่มี uid: รีเซ็ตแบบปลอดภัยแล้วจบ
   if (!uid) {
     console.warn('[refreshUserScore] missing uid');
-    if (els.points) els.points.textContent = '0';
-    document.getElementById('xpPair')?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
+    if (els?.points) els.points.textContent = '0';
+    document.getElementById('xpPair')
+      ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
     try { window.setLastUpdated?.(true); } catch {}
     return;
   }
 
-  // helper: แยกค่าคะแนนจาก payload หลายทรง
+  // ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
     if (!o || typeof o !== 'object') return null;
     const cands = [
@@ -345,27 +354,28 @@ async function refreshUserScore(){
 
   let fromCache = false, data = null;
 
-  // 1) พยายามดึงจาก API ตรง ๆ
+  // 1) เรียก API ปกติ
   try{
-    const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
-    const json = await res.json().catch(()=>null);
+    const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
+    const json = await res.json().catch(() => null);
     if (!res.ok || !json || json?.status === 'error') {
       throw new Error(json?.message || `HTTP ${res.status}`);
     }
     data = json;
   }catch(e){
-    console.warn('[refreshUserScore] fetch failed → try cache', e);
-    // 2) fallback: ใช้ค่าที่แคชไว้ในหน่วยความจำ (ถ้ามี)
+    console.warn('[refreshUserScore] fetch failed → use cache if any', e);
+    // 2) fallback: ใช้แคชในหน่วยความจำ
     if (Number.isFinite(Number(window.__userBalance))) {
       data = { score: Number(window.__userBalance) };
       fromCache = true;
     }
   }
 
-  // ถ้ายังไม่มีข้อมูลเลย: อย่าทำให้แอปล้ม — เซ็ตศูนย์แล้วจบ
+  // ถ้าไม่มีข้อมูลเลย: ไม่ทำให้แอปล้ม
   if (!data) {
-    if (els.points) els.points.textContent = '0';
-    document.getElementById('xpPair')?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
+    if (els?.points) els.points.textContent = '0';
+    document.getElementById('xpPair')
+      ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
     try { window.setLastUpdated?.(true); } catch {}
     return;
   }
@@ -379,20 +389,41 @@ async function refreshUserScore(){
   prevScore = newScore;
 
   // อัปเดตตัวเลขหลัก
-  if (els.points) els.points.textContent = String(newScore);
-  // เอฟเฟกต์/เด้งตัวเลข + แสดงผลต่าง
+  if (els?.points) els.points.textContent = String(newScore);
   try { bumpScoreFx?.(); } catch {}
   try { showScoreDelta?.(delta); } catch {}
 
-  // อัปเดตคู่ตัวเลขความคืบหน้า (ถ้ามีข้อมูล)
-  const need = Number(data?.need || data?.next_need || 0);
-  const cur  = Number(data?.current || newScore);
-  const max  = Number(data?.max || need || 0);
+  // ===== คำนวณคู่ตัวเลขความคืบหน้า: cur / max (มี fallback ป้องกัน 0) =====
+  let need = Number(data?.need ?? data?.next_need);
+  let cur  = Number(data?.current ?? newScore);
+  let max  = Number(data?.max ?? data?.target);
+
+  // ถ้า API ไม่ให้หรือเป็น 0/ไม่ finite → ใช้ TIERS ผ่าน getTier(newScore) ถ้ามี
+  if (!Number.isFinite(max) || max <= 0) {
+    try {
+      const tier = (typeof getTier === 'function') ? getTier(newScore) : null; // {min, next}
+      if (tier && Number.isFinite(tier.next)) {
+        max  = tier.next;
+        cur  = newScore;
+        need = Math.max(0, tier.next - newScore);
+      } else {
+        // อยู่ tier สูงสุดหรือไม่มี getTier → ให้ max=คะแนนปัจจุบัน (ไม่เป็นหารศูนย์)
+        max  = newScore || 1;
+        cur  = newScore;
+        need = 0;
+      }
+    } catch {
+      max  = newScore || 1;
+      cur  = newScore;
+      need = 0;
+    }
+  }
+
   const pair = document.getElementById('xpPair');
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  // ตราประทับเวลา (หรือบอกว่าเป็นแคช)
-  try { window.setLastUpdated?.(fromCache); } catch {}
+  // ตราประทับเวลา
+  try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
@@ -798,30 +829,35 @@ async function redeemReward(reward, btn){
 
 /* ================= Redeem code / Scanner ================= */
 // ใช้แทนฟังก์ชันเดิมทั้งหมด
+// แก้ทั้งฟังก์ชัน redeemCode ให้แนบ uid เสมอ
 async function redeemCode(code, source = 'QR') {
   if (!code) { toastErr('ไม่มีรหัส'); return; }
 
-  // ก่อนแลก: เก็บยอด
+  // ก่อนแลก: เก็บยอดไว้เทียบ
   try { await refreshUserScore(); } catch {}
   const before = Number(window.__userBalance || 0);
 
-  // ลองส่งหลาย body shape เผื่อ API ใช้ชื่อฟิลด์ต่างกัน
+  // เอา uid ให้ชัวร์
+  const uid =
+    (typeof UID !== 'undefined' && UID) ||
+    window.__UID ||
+    localStorage.getItem('uid') ||
+    '';
+
+  if (!uid) { toastErr('ยังไม่พร้อมใช้งาน (ไม่มี UID)'); return; }
+
+  // ส่งหลายทรง field name แต่ "ต้องมี uid" ทุกทรง
   const bodies = [
-    { code, source },
-    { coupon: code, source },
-    { coupon_code: code, source },
+    { uid, code,         source },
+    { uid, coupon: code, source },
+    { uid, coupon_code: code, source },
   ];
 
   let resp, lastErr;
   for (const body of bodies) {
     try {
       resp = await tryEndpoints(
-        [
-          '/api/redeem',
-          '/api/redeem-code',
-          '/api/coupon/redeem',
-          '/api/claim-coupon',
-        ],
+        ['/api/redeem', '/api/redeem-code', '/api/coupon/redeem', '/api/claim-coupon'],
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -842,40 +878,22 @@ async function redeemCode(code, source = 'QR') {
     return;
   }
 
-  // หาจำนวนคะแนนที่เพิ่มจาก response
-  function pickAmount(obj) {
-    if (!obj || typeof obj !== 'object') return null;
-    const cands = [
-      obj.amount, obj.delta, obj.added, obj.increment,
-      obj.point, obj.points, obj.value, obj.score,
-      obj?.data?.amount, obj?.data?.delta, obj?.data?.point, obj?.data?.points
-    ];
-    for (const v of cands) {
-      const n = Number(v);
-      if (!Number.isNaN(n)) return n;
-    }
+  // หาคะแนนที่เพิ่มจาก response (ถ้า API ไม่ส่ง ก็คำนวณจากก่อน-หลัง)
+  const pickAmount = (o) => {
+    if (!o || typeof o !== 'object') return null;
+    const cands = [o.amount,o.delta,o.added,o.increment,o.point,o.points,o.value,o.score,o?.data?.amount,o?.data?.delta,o?.data?.point,o?.data?.points];
+    for (const v of cands) { const n = Number(v); if (!Number.isNaN(n)) return n; }
     return null;
-  }
+  };
 
   let added = pickAmount(resp);
 
-  // หลังแลก: ดึงยอดใหม่ → ใช้ก่อน–หลัง ถ้า API ไม่บอกค่ามา
   try { await refreshUserScore(); } catch {}
   const after = Number(window.__userBalance || before);
   if (added === null) added = after - before;
 
-  // ถ้ากลับมา 0 และ status บอกว่า used ให้แจ้งชัดเจน
-  const statusStr = (resp?.status || resp?.data?.status || '').toString().toLowerCase();
-  if (added === 0 && statusStr.includes('used')) {
-    toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-    return;
-  }
-
-  if (added > 0) toastOk(`สำเร็จ +${added} คะแนน`);
-  else if (added < 0) toastOk(`สำเร็จ ${added} คะแนน`);
-  else toastErr('คูปองไม่ถูกเพิ่มคะแนน');
-
-  try { await openHistory(); } catch {}
+  if (added > 0) toastOk(`รับ +${added} คะแนน`);
+  else toastOk('แลกคูปองสำเร็จ');
 }
 
 async function startScanner(){
@@ -1026,6 +1044,39 @@ async function openHistory(){
   }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
   modal.show();
+}
+
+// คัดลอก-วางแทนของเดิม
+function renderHistoryList(rows = []) {
+  const host = document.getElementById('historyList');
+  if (!host) return;
+  const fmtSign = (n) => (n > 0 ? `+${n}` : `${n}`);
+  const fmtDate = (s) => {
+    try { return new Date(s).toLocaleString('th-TH', { hour12:false }); }
+    catch { return s || ''; }
+  };
+
+  host.innerHTML = rows.map(tx => {
+    const amount = Number(tx.amount ?? tx.points ?? tx.point ?? tx.delta ?? 0);
+    const title  = (tx.title || tx.source || tx.activity || 'ADMIN').toString();
+    const subParts = [
+      tx.code || tx.coupon || tx.coupon_code || '',
+      tx.ref  || tx.reference || '',
+      tx.note || ''
+    ].filter(Boolean);
+    const sub = subParts.join(' · '); // ถ้าไม่มี จะได้สตริงว่าง → ไม่เรนเดอร์
+
+    return `
+      <div class="tx-row">
+        <div class="tx-main">
+          <div class="tx-title">${escapeHtml(title)}</div>
+          ${sub ? `<div class="tx-sub">${escapeHtml(sub)}</div>` : ''}
+        </div>
+        <div class="tx-amt ${amount >= 0 ? 'plus' : 'minus'}">${fmtSign(amount)}</div>
+        <div class="tx-at">${fmtDate(tx.created_at || tx.at)}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 /* ================= Utils ================= */
