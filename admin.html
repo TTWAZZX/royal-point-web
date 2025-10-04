@@ -96,44 +96,42 @@
       <!-- ======================== TAB: COUPONS ======================== -->
       <div class="tab-pane fade show active" id="panelCoupons">
         <section id="couponPanel" class="mb-4">
-          <!-- แถบสร้างคูปอง -->
-          <div class="card shadow-sm mb-3">
-            <div class="card-body row g-2 align-items-end">
-              <div class="col-12 col-md-3">
-                <label class="form-label">จำนวนคูปอง</label>
-                <input id="genQty" type="number" min="1" value="10" class="form-control">
-              </div>
-              <div class="col-12 col-md-3">
-                <label class="form-label">คะแนนต่อคูปอง</label>
-                <input id="genPoints" type="number" min="1" value="10" class="form-control">
-              </div>
-              <div class="col-12 col-md-3">
-                <label class="form-label">Prefix (ถ้ามี)</label>
-                <input id="genPrefix" type="text" class="form-control" placeholder="เช่น PROMO">
-              </div>
-              <div class="col-12 col-md-3 d-grid">
-                <button id="btnGenerateCoupons" class="btn btn-primary">
-                  <i class="fa-solid fa-plus"></i> สร้างคูปอง
-                </button>
-              </div>
-              <div class="col-12">
-                <div id="couponError" class="text-danger small"></div>
-              </div>
-            </div>
-          </div>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="form-label">จำนวนคูปอง</label>
+          <input id="genQty" type="number" min="1" value="10" class="form-control">
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">คะแนนต่อคูปอง</label>
+          <input id="genPoints" type="number" min="1" value="10" class="form-control">
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label">Prefix (ถ้ามี)</label>
+          <input id="genPrefix" type="text" class="form-control" placeholder="เช่น PROMO">
+        </div>
+        <div class="col-12 col-md-3 d-grid">
+          <button id="btnGenerateCoupons" class="btn btn-primary">
+            <i class="fa-solid fa-plus"></i> สร้างคูปอง
+          </button>
+        </div>
+      </div>
 
-          <!-- หัว + ปุ่มรีเฟรช -->
-          <div class="d-flex align-items-center justify-content-between mb-2">
-            <h5 class="m-0"><i class="fa-solid fa-ticket"></i> รายการคูปอง</h5>
-            <button id="btnReloadCoupons" class="btn btn-outline-secondary btn-sm">
-              <i class="fa-solid fa-rotate"></i> รีเฟรช
-            </button>
-          </div>
+      <div id="couponError" class="text-danger small mt-2"></div>
 
-          <!-- รายการคูปอง -->
-          <div id="couponList"></div>
-          <div id="couponEmpty" class="text-center text-muted py-4 d-none">ยังไม่มีคูปอง</div>
-        </section>
+      <div class="d-flex align-items-center justify-content-between mt-4">
+        <h5 class="mb-0"><i class="fa-solid fa-ticket"></i> รายการคูปอง</h5>
+        <button id="btnReloadCoupons" class="btn btn-outline-secondary btn-sm">
+          <i class="fa-solid fa-rotate"></i> รีเฟรช
+        </button>
+      </div>
+
+      <div id="couponList" class="mt-2"></div>
+      <div id="couponEmpty" class="text-center text-muted py-3 d-none">ยังไม่มีคูปอง</div>
+    </div>
+  </div>
+</section>
       </div>
 
       <!-- ======================== TAB: POINTS / USERS ======================== -->

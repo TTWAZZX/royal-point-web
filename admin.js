@@ -582,3 +582,21 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // ต้องมี container รายการคูปองอยู่ก่อน
   if (document.getElementById('couponList')) loadCoupons();
 });
+
+/* ==== COUPON: wire UI + expose globals ==== */
+(function setupCouponUI () {
+  const btnGen    = document.getElementById('btnGenerateCoupons');
+  const btnReload = document.getElementById('btnReloadCoupons');
+
+  if (btnGen)    btnGen.addEventListener('click', () => generateCoupons());
+  if (btnReload) btnReload.addEventListener('click', () => loadCoupons());
+
+  // โหลดรายการทันทีเมื่อมีแผงคูปองอยู่บนหน้า
+  if (document.getElementById('couponPanel')) {
+    loadCoupons();
+  }
+})();
+
+// เผื่อมี inline/สคริปต์อื่นเรียก ฟังก์ชันแบบ global
+window.generateCoupons = generateCoupons;
+window.loadCoupons     = loadCoupons;
