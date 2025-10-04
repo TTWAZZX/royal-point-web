@@ -81,12 +81,20 @@ function renderSkeleton() {
 async function loadList() {
   renderSkeleton();
   try {
-    const url = `${API_LIST}?adminUid=${encodeURIComponent(MY_UID)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    const data = await res.json().catch(()=>({status:"error"}));
-    if (data.status !== "success" || !Array.isArray(data.data)) {
-      throw new Error(data.message || "โหลดข้อมูลไม่สำเร็จ");
+    const q1 = `${API_LIST}?uid=${encodeURIComponent(MY_UID)}`;
+    const q2 = `${API_LIST}?adminUid=${encodeURIComponent(MY_UID)}`;
+
+    let res  = await fetch(q1, { cache: "no-store" });
+    let data = await res.json().catch(()=>({}));
+
+    if (data?.status !== "success" || !Array.isArray(data.data)) {
+      res  = await fetch(q2, { cache: "no-store" });
+      data = await res.json().catch(()=>({}));
     }
+    if (data?.status !== "success" || !Array.isArray(data.data)) {
+      throw new Error(data?.message || "โหลดข้อมูลไม่สำเร็จ");
+    }
+
     rows = data.data.map((r,i)=>({ rank:i+1, uid:r.uid, name:r.name, score:Number(r.score||0) }));
     qs("#adminInfo")?.replaceChildren(document.createTextNode(`ทั้งหมด ${fmt(rows.length)} รายการ`));
     applyFilterSortPaginate(true);

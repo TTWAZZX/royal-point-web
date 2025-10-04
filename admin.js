@@ -354,161 +354,223 @@ window.doAdjust    = doAdjust;
 window.confirmReset= confirmReset;
 window.openSheet   = openSheet;
 
-/* ==============================
-   Coupon Admin (list / search / QR / generate)
-   ============================== */
-(function injectCouponLegendCss(){
-  if (document.getElementById("coupon-legend-css")) return;
-  const s = document.createElement("style");
-  s.id = "coupon-legend-css";
-  s.textContent = `
-    .legend-dot{display:inline-block;width:.65rem;height:.65rem;border-radius:50%;vertical-align:middle;margin-right:.35rem}
-    .dot-green{background:#16a34a}.dot-red{background:#ef4444}
-  `;
-  document.head.appendChild(s);
-})();
+/* =====================  COUPONS – ADMIN (HTML-compatible)  ===================== */
+/** รองรับหลาย endpoint */
+const COUPON_LIST_ENDPOINTS = [
+  '/api/admin/coupons',
+  '/api/admin-coupons',
+  '/api/coupons',
+  '/api/list-coupons'
+];
+const COUPON_GENERATE_ENDPOINTS = [
+  '/api/admin/coupons/generate',
+  '/api/admin-coupons-generate',
+  '/api/coupons/generate'
+];
 
-let COUPONS = [];
-const $c = (x)=>document.getElementById(x);
-const esc = (s)=>String(s??"").replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-const fmt = (n)=>Number(n||0).toLocaleString();
+/** utils */
+function htmlEscape(s){ return String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m])); }
+async function fetchJsonSafe(url, opts){
+  const res = await fetch(url, opts);
+  const text = await res.text();
+  let json; try{ json = JSON.parse(text);}catch{ json = {status:res.ok?'success':'error', message:text||res.statusText};}
+  if(!res.ok || json?.status==='error'){ const e=new Error(json?.message||`HTTP ${res.status}`); e.response=res; e.body=text; e.json=json; throw e; }
+  return json;
+}
+async function tryMany(endpoints, opts, {label=''}={}) {
+  let lastErr;
+  for (const url of endpoints){
+    try { const data = await fetchJsonSafe(url, opts); console.info(`[COUPON] OK ${label}:`, url); return {url, data}; }
+    catch(e){ console.warn(`[COUPON] FAIL ${label}:`, url, e); lastErr=e; }
+  }
+  throw lastErr || new Error('all_endpoints_failed');
+}
+function pickCouponArray(payload){
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data))  return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+function getAdminUid(){
+  return window.__UID || localStorage.getItem('uid') || document.querySelector('[data-uid]')?.dataset.uid || '';
+}
 
+/** DOM (ให้ตรงกับ admin.html) */
+const couponUI = {
+  wrap:     document.getElementById('couponAdmin'),
+  list:     document.getElementById('couponList'),
+  empty:    document.getElementById('couponEmpty'),
+  filter:   document.getElementById('couponFilter'),
+  search:   document.getElementById('couponSearch'),
+  reload:   document.getElementById('btnReloadCoupons'),
+  genOpen:  document.getElementById('btnGenCoupons'),
+  genForm:  document.getElementById('genForm'),
+  genCount: document.getElementById('genCount'),
+  genPoints:document.getElementById('genPoints'),
+  genPrefix:document.getElementById('genPrefix'),
+  qrModal:  document.getElementById('qrModal'),
+  qrBox:    document.getElementById('qrBox'),
+  qrText:   document.getElementById('qrText'),
+  qrCopy:   document.getElementById('btnCopyCode'),
+  qrDown:   document.getElementById('btnDownloadQR'),
+};
+
+/** โหลดคูปองทั้งหมด */
 async function loadCoupons(){
-  if (!$c("couponList")) return;
-  const filter = $c("couponFilter")?.value || "all";
-  const q      = ($c("couponSearch")?.value || "").trim();
-
-  const url = new URL(API_COUPON_LIST, location.origin);
-  url.searchParams.set("adminUid", window.ADMIN_UID || "");
-  if (filter !== "all") url.searchParams.set("filter", filter);
-  if (q) url.searchParams.set("q", q);
-
-  $c("couponList").innerHTML = `<div class="p-3 text-center text-muted">กำลังโหลด…</div>`;
-  $c("couponEmpty")?.classList.add("d-none");
+  if (!couponUI.list) return;
+  couponUI.list.innerHTML = `<div class="text-muted py-3 text-center">กำลังโหลด…</div>`;
+  couponUI.empty.classList.add('d-none');
 
   try{
-    const res = await fetch(url, { cache:"no-store" });
-    const json = await res.json().catch(()=>({status:"error"}));
-    if (json.status !== "success" || !Array.isArray(json.data)) throw new Error(json.message || "โหลดคูปองไม่สำเร็จ");
-    COUPONS = json.data;
-    renderCoupons();
+    const adminUid = getAdminUid();
+    const { data } = await tryMany(
+      COUPON_LIST_ENDPOINTS.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
+      { cache:'no-store' },
+      { label:'list' }
+    );
+    let rows = pickCouponArray(data);
+
+    // filter/search (ถ้ามีค่า)
+    const f = couponUI.filter?.value || 'all';
+    const q = (couponUI.search?.value || '').trim().toLowerCase();
+    if (f !== 'all') rows = rows.filter(r => !!(r.used ?? r.is_used ?? r.redeemed) === (f==='used'));
+    if (q) rows = rows.filter(r => String(r.code || r.coupon || r.coupon_code || r.id || '').toLowerCase().includes(q));
+
+    renderCouponList(rows);
   }catch(e){
-    $c("couponList").innerHTML = `<div class="p-3 text-danger text-center">${esc(e.message||e)}</div>`;
+    console.error('loadCoupons error', e);
+    couponUI.list.innerHTML = '';
+    couponUI.empty.classList.remove('d-none');
+    Swal.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
   }
 }
 
-function renderCoupons(){
-  const host = $c("couponList");
-  const emptyEl = $c("couponEmpty");
-  if (!host) return;
-
-  const q = ($c("couponSearch")?.value || "").trim().toLowerCase();
-  const f = $c("couponFilter")?.value || "all";
-
-  const rows = COUPONS.filter(r=>{
-    const matchQ = !q || String(r.code||"").toLowerCase().includes(q);
-    const matchF = f==="all" || (f==="used"? !!r.used : !r.used);
-    return matchQ && matchF;
-  });
-
+/** เรนเดอร์รายการ */
+function renderCouponList(rows=[]){
   if (!rows.length){
-    host.innerHTML = "";
-    emptyEl?.classList.remove("d-none");
+    couponUI.list.innerHTML = '';
+    couponUI.empty.classList.remove('d-none');
     return;
   }
-  emptyEl?.classList.add("d-none");
+  couponUI.empty.classList.add('d-none');
 
-  host.innerHTML = rows.map(r=>{
-    const usedIcon = r.used
-      ? `<i class="fa-solid fa-circle text-danger me-1" title="ใช้แล้ว${r.used_at? ' • '+new Date(r.used_at).toLocaleString('th-TH',{hour12:false}):''}"></i>`
-      : `<i class="fa-solid fa-circle text-success me-1" title="ยังไม่ใช้"></i>`;
-    const code = esc(r.code);
-    const pts  = fmt(r.points ?? r.point ?? 0);
+  couponUI.list.innerHTML = rows.map(r=>{
+    const code   = r.code || r.coupon || r.coupon_code || r.id || '';
+    const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
+    const used   = !!(r.used ?? r.is_used ?? r.redeemed);
+    const ts     = r.created_at || r.createdAt || r.time || '';
+    const when   = ts ? new Date(ts).toLocaleString('th-TH',{hour12:false}) : '';
+    const badge  = used
+      ? `<span class="badge bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
+      : `<span class="badge bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
     return `
-      <div class="list-group-item d-flex align-items-center justify-content-between">
-        <div class="d-flex align-items-center gap-2">
-          ${usedIcon}
-          <code class="fw-semibold">${code}</code>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-          <span class="badge text-bg-secondary">${pts} pt</span>
-          <button class="btn btn-outline-secondary btn-sm" data-copy="${code}" title="คัดลอก">
+      <div class="card mb-2 shadow-sm">
+        <div class="card-body d-flex align-items-center gap-3">
+          <div class="flex-grow-1">
+            <div class="fw-semibold fs-6">${htmlEscape(code)}</div>
+            <div class="text-muted small">+${points} คะแนน ${when?`• ${htmlEscape(when)}`:''}</div>
+          </div>
+          <div class="me-2">${badge}</div>
+          <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${htmlEscape(code)}" title="คัดลอกรหัส">
             <i class="fa-regular fa-copy"></i>
           </button>
-          <button class="btn btn-outline-primary btn-sm" data-qr="${code}" title="แสดง QR">
+          <button class="btn btn-primary btn-sm" data-act="qr" data-code="${htmlEscape(code)}" title="แสดง QR">
             <i class="fa-solid fa-qrcode"></i>
           </button>
         </div>
-      </div>
-    `;
-  }).join("");
+      </div>`;
+  }).join('');
 }
 
-function openQRModal(code){
-  const box = $c("qrBox");
-  const txt = $c("qrText");
-  const aDL = $c("btnDownloadQR");
-  const aCP = $c("btnCopyCode");
+/** คลิกคัดลอก/QR */
+couponUI.list?.addEventListener('click', (ev)=>{
+  const btn = ev.target.closest('button[data-act]');
+  if (!btn) return;
+  const code = btn.dataset.code || '';
+  if (!code) return;
 
-  box.innerHTML = "";
-  txt.textContent = code;
+  if (btn.dataset.act === 'copy'){
+    navigator.clipboard?.writeText(code).then(
+      ()=> Swal.fire({icon:'success',title:'คัดลอกแล้ว',timer:900,showConfirmButton:false}),
+      ()=> Swal.fire({icon:'success',title:'คัดลอกแล้ว',timer:900,showConfirmButton:false}),
+    );
+  }else if (btn.dataset.act === 'qr'){
+    openQrModal(code);
+  }
+});
 
-  new QRCode(box, { text: code, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+/** แสดง QR ด้วย qrcodejs (ตาม HTML ของคุณ) */
+function openQrModal(code){
+  if (!couponUI.qrModal || !couponUI.qrBox) return;
+  couponUI.qrBox.innerHTML = '';            // เคลียร์ของเก่า
+  couponUI.qrText.textContent = code || '';
+  try{
+    // qrcodejs สร้าง <canvas> หรือ <img> ภายใน qrBox
+    new QRCode(couponUI.qrBox, { text: String(code||''), width: 240, height: 240 });
+    setTimeout(()=>{                         // ทำปุ่มดาวน์โหลดให้ใช้ dataURL จาก canvas/img ที่สร้าง
+      const cv = couponUI.qrBox.querySelector('canvas');
+      const im = couponUI.qrBox.querySelector('img');
+      const dataUrl = cv ? cv.toDataURL('image/png') : (im?.src || '');
+      if (dataUrl) {
+        couponUI.qrDown?.classList.remove('disabled');
+        couponUI.qrDown?.setAttribute('href', dataUrl);
+      } else {
+        couponUI.qrDown?.classList.add('disabled');
+        couponUI.qrDown?.removeAttribute('href');
+      }
+    }, 50);
+  }catch(e){
+    console.warn('QRCode render failed', e);
+  }
 
-  setTimeout(()=>{ // set ลิงก์ดาวน์โหลด PNG
-    const canvas = box.querySelector("canvas");
-    if (canvas) aDL.href = canvas.toDataURL("image/png");
-  }, 40);
+  // คัดลอกโค้ด
+  couponUI.qrCopy?.addEventListener('click', ()=>{
+    navigator.clipboard?.writeText(code);
+  }, {once:true});
 
-  aCP.onclick = ()=> navigator.clipboard?.writeText(code).then(()=> Swal.fire("คัดลอกแล้ว","","success"));
-  bootstrap.Modal.getOrCreateInstance($c("qrModal")).show();
+  new bootstrap.Modal(couponUI.qrModal).show();
 }
 
-function bindCouponUI(){
-  if (!$c("couponAdmin")) return;
+/** สร้างคูปอง (modal submit) */
+async function generateCoupons(ev){
+  ev?.preventDefault?.();
+  const adminUid = getAdminUid();
+  const qty  = Math.max(1, Number(couponUI.genCount?.value || 1));
+  const pts  = Math.max(1, Number(couponUI.genPoints?.value || 1));
+  const pref = (couponUI.genPrefix?.value || '').trim();
 
-  $c("btnReloadCoupons")?.addEventListener("click", loadCoupons);
-  $c("btnGenCoupons")?.addEventListener("click", ()=> bootstrap.Modal.getOrCreateInstance($c("genModal")).show());
+  const payload = {
+    adminUid,
+    amount: qty, qty, count: qty,
+    points: pts, point: pts, value: pts,
+    prefix: pref || undefined
+  };
 
-  $c("couponSearch")?.addEventListener("keydown", (e)=>{ if (e.key === "Enter") renderCoupons(); });
-  $c("couponFilter")?.addEventListener("change", renderCoupons);
-
-  $c("couponList")?.addEventListener("click", (e)=>{
-    const copyBtn = e.target.closest("[data-copy]");
-    const qrBtn   = e.target.closest("[data-qr]");
-    if (copyBtn) navigator.clipboard?.writeText(copyBtn.dataset.copy).then(()=> Swal.fire("คัดลอกแล้ว","","success"));
-    if (qrBtn) openQRModal(qrBtn.dataset.qr);
-  });
-
-  $c("genForm")?.addEventListener("submit", async (e)=>{
-    e.preventDefault();
-    const count  = Math.max(1, Math.min(500, Number($c("genCount").value || 0)));
-    const points = Math.max(1, Number($c("genPoints").value || 0));
-    const prefix = ($c("genPrefix").value || "").trim();
-
-    try{
-      $c("btnDoGen").disabled = true;
-      const res = await fetch(API_COUPON_GEN, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ adminUid: window.ADMIN_UID || "", count, points, prefix })
-      });
-      const json = await res.json();
-      if (json.status !== "success") throw new Error(json.message || "สร้างคูปองไม่สำเร็จ");
-      bootstrap.Modal.getInstance($c("genModal"))?.hide();
-      await Swal.fire("สำเร็จ", `สร้างคูปอง ${fmt(json.data?.length || count)} โค้ด`, "success");
-      loadCoupons();
-    }catch(e){
-      Swal.fire("ผิดพลาด", String(e.message||e), "error");
-    }finally{
-      $c("btnDoGen").disabled = false;
-    }
-  });
-
-  // รอให้ ADMIN_UID ถูกตั้งค่าใน init() เดิมก่อน แล้วค่อยโหลดคูปอง
-  const waitUid = () => (window.ADMIN_UID ? loadCoupons() : setTimeout(waitUid, 120));
-  waitUid();
+  try{
+    couponUI.genForm?.querySelector('button[type="submit"]')?.setAttribute('disabled','disabled');
+    await tryMany(
+      COUPON_GENERATE_ENDPOINTS,
+      { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) },
+      { label:'generate' }
+    );
+    Swal.fire('สำเร็จ','สร้างคูปองเรียบร้อย','success');
+    bootstrap.Modal.getInstance(document.getElementById('genModal'))?.hide();
+    await loadCoupons();
+  }catch(e){
+    console.error('generateCoupons error', e);
+    Swal.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+  }finally{
+    couponUI.genForm?.querySelector('button[type="submit"]')?.removeAttribute('disabled');
+  }
 }
 
-// ผูกตอน DOM พร้อม (ไฟล์นี้มี init() เดิมของคุณแล้ว)
-document.addEventListener("DOMContentLoaded", ()=>{ bindCouponUI(); });
+/** ปุ่ม/อีเวนต์ */
+couponUI.reload?.addEventListener('click', loadCoupons);
+couponUI.genOpen?.addEventListener('click', ()=> new bootstrap.Modal(document.getElementById('genModal')).show());
+couponUI.genForm?.addEventListener('submit', generateCoupons);
+couponUI.filter?.addEventListener('change', loadCoupons);
+couponUI.search?.addEventListener('keydown', (e)=>{ if(e.key==='Enter') loadCoupons(); });
+
+/** โหลดคูปองเมื่อหน้าแอดมินพร้อม */
+document.addEventListener('DOMContentLoaded', ()=>{ if (couponUI.wrap) loadCoupons(); });
+/* =====================  END COUPONS – ADMIN  ===================== */

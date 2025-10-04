@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Royal Point — Admin (Bright)</title>
+  <title>Royal Point — Admin</title>
 
   <!-- Bootstrap + Font Awesome -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -42,10 +42,13 @@
     .offcanvas{--bs-offcanvas-bg:#ffffff;color:#0f172a;border-top:1px solid var(--c-border)}
     .offcanvas .muted{color:#64748b}
 
-    /* skeleton (ใช้ร่วมกับ admin.js) */
-    .skel{position:relative;overflow:hidden;background:#e5e7eb;border-radius:12px}
+    /* skeleton */
+    .skel{position:relative;overflow:hidden;background:#e5e7eb;border-radius:12px;height:16px}
     .skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:sh 1.2s infinite}
     @keyframes sh{100%{transform:translateX(100%)}}
+
+    .rp-badge-used   { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+    .rp-badge-unused { background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
 
     @media (max-width:576px){
       .appbar{border-radius:0;margin:-8px -8px 8px}
@@ -56,8 +59,6 @@
 </head>
 <body>
   <div class="container py-3">
-    <div id="topbar"></div>
-
     <!-- App Bar (sticky) -->
     <div class="appbar d-flex align-items-center gap-3 mb-3 sticky-top-safe">
       <div class="d-flex align-items-center gap-2">
@@ -76,17 +77,80 @@
       </div>
     </div>
 
-    <!-- Search (sticky) -->
-    <div class="mb-3 sticky-top-safe">
-      <input id="txtSearch" class="form-control search" placeholder="ค้นหาชื่อ..." />
-    </div>
+    <!-- แถบสลับหน้าหลักของแอดมิน -->
+    <ul class="nav nav-pills gap-2 mb-3" id="adminTabs">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#panelCoupons" type="button">
+          <i class="fa-solid fa-ticket"></i> จัดการคูปอง
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#panelPoints" type="button">
+          <i class="fa-solid fa-star"></i> จัดการคะแนน
+        </button>
+      </li>
+    </ul>
 
-    <!-- List as Minimal Cards -->
-    <div id="listUsers" class="vstack gap-2 mb-5">
-      <!-- สคริปต์จะเติมการ์ด -->
-    </div>
+    <div class="tab-content">
 
-    <!-- Bottom Sheet: Manage -->
+      <!-- ======================== TAB: COUPONS ======================== -->
+      <div class="tab-pane fade show active" id="panelCoupons">
+        <section id="couponPanel" class="mb-4">
+          <!-- แถบสร้างคูปอง -->
+          <div class="card shadow-sm mb-3">
+            <div class="card-body row g-2 align-items-end">
+              <div class="col-12 col-md-3">
+                <label class="form-label">จำนวนคูปอง</label>
+                <input id="genQty" type="number" min="1" value="10" class="form-control">
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label">คะแนนต่อคูปอง</label>
+                <input id="genPoints" type="number" min="1" value="10" class="form-control">
+              </div>
+              <div class="col-12 col-md-3">
+                <label class="form-label">Prefix (ถ้ามี)</label>
+                <input id="genPrefix" type="text" class="form-control" placeholder="เช่น PROMO">
+              </div>
+              <div class="col-12 col-md-3 d-grid">
+                <button id="btnGenerateCoupons" class="btn btn-primary">
+                  <i class="fa-solid fa-plus"></i> สร้างคูปอง
+                </button>
+              </div>
+              <div class="col-12">
+                <div id="couponError" class="text-danger small"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- หัว + ปุ่มรีเฟรช -->
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <h5 class="m-0"><i class="fa-solid fa-ticket"></i> รายการคูปอง</h5>
+            <button id="btnReloadCoupons" class="btn btn-outline-secondary btn-sm">
+              <i class="fa-solid fa-rotate"></i> รีเฟรช
+            </button>
+          </div>
+
+          <!-- รายการคูปอง -->
+          <div id="couponList"></div>
+          <div id="couponEmpty" class="text-center text-muted py-4 d-none">ยังไม่มีคูปอง</div>
+        </section>
+      </div>
+
+      <!-- ======================== TAB: POINTS / USERS ======================== -->
+      <div class="tab-pane fade" id="panelPoints">
+        <!-- Search (sticky) -->
+        <div class="mb-3 sticky-top-safe">
+          <input id="txtSearch" class="form-control search" placeholder="ค้นหาชื่อ..." />
+        </div>
+
+        <!-- รายชื่อผู้ใช้ -->
+        <div id="listUsers" class="vstack gap-2 mb-5">
+          <!-- สคริปต์จะเติมการ์ด -->
+        </div>
+      </div>
+    </div><!-- /.tab-content -->
+
+    <!-- Bottom Sheet: Manage (ผู้ใช้) -->
     <div class="offcanvas offcanvas-bottom" tabindex="-1" id="sheetManage" aria-labelledby="sheetManageLabel">
       <div class="offcanvas-header">
         <h5 class="offcanvas-title" id="sheetManageLabel">
@@ -117,7 +181,6 @@
           </button>
         </div>
 
-        <!-- Actions -->
         <div class="row g-2">
           <div class="col-6">
             <button class="btn btn-outline-secondary w-100 py-3" id="actHistory">
@@ -193,128 +256,37 @@
         </div>
       </div>
     </div>
-    <!-- ========== Coupon Admin ========== -->
-<section class="container my-4" id="couponAdmin">
-  <div class="card shadow-sm">
-    <div class="card-body">
-      <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-        <h5 class="mb-0 me-auto">จัดการคูปอง</h5>
-        <div class="d-flex gap-2">
-          <select id="couponFilter" class="form-select form-select-sm" style="width:140px">
-            <option value="all">ทั้งหมด</option>
-            <option value="unused">ยังไม่ใช้</option>
-            <option value="used">ใช้แล้ว</option>
-          </select>
-          <input id="couponSearch" class="form-control form-control-sm" placeholder="ค้นหารหัส... (พิมพ์แล้ว Enter)">
-          <button id="btnReloadCoupons" class="btn btn-outline-secondary btn-sm">
-            <i class="fa-solid fa-rotate"></i> รีเฟรช
-          </button>
-          <button id="btnGenCoupons" class="btn btn-primary btn-sm">
-            <i class="fa-solid fa-plus"></i> สร้างคูปอง
-          </button>
-        </div>
-      </div>
 
-      <div class="small text-muted mb-2">
-        <span class="legend-dot dot-green"></span> ยังไม่ใช้
-        <span class="legend-dot dot-red ms-3"></span> ใช้แล้ว
-      </div>
-
-      <div id="couponList" class="list-group list-group-flush"></div>
-      <div id="couponEmpty" class="text-center text-muted py-4 d-none">ยังไม่มีคูปอง</div>
-    </div>
-  </div>
-</section>
-
-<!-- QR Modal -->
-<div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">QR ของคูปอง</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body text-center">
-        <div id="qrBox" class="mx-auto mb-2" style="width:240px;height:240px"></div>
-        <div class="small text-muted" id="qrText"></div>
-      </div>
-      <div class="modal-footer">
-        <button id="btnCopyCode" class="btn btn-outline-secondary">
-          <i class="fa-regular fa-copy"></i> คัดลอกรหัส
-        </button>
-        <a id="btnDownloadQR" class="btn btn-primary" download="coupon.png">
-          <i class="fa-solid fa-download"></i> ดาวน์โหลด QR
-        </a>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Generate Modal -->
-<div class="modal fade" id="genModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <form class="modal-content" id="genForm">
-      <div class="modal-header">
-        <h5 class="modal-title">สร้างคูปองใหม่</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-2">
-          <div class="col-6">
-            <label class="form-label">จำนวน</label>
-            <input type="number" min="1" max="500" value="10" class="form-control" id="genCount">
+    <!-- QR Modal (คูปอง) -->
+    <div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title"><i class="fa-solid fa-qrcode"></i> QR ของคูปอง</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
           </div>
-          <div class="col-6">
-            <label class="form-label">คะแนน/คูปอง</label>
-            <input type="number" min="1" value="10" class="form-control" id="genPoints">
-          </div>
-          <div class="col-12">
-            <label class="form-label">Prefix (ตัวเลือก)</label>
-            <input type="text" placeholder="เช่น PROMO-" class="form-control" id="genPrefix">
+          <div class="modal-body text-center">
+            <img id="qrImage" src="" alt="QR code" class="img-fluid mb-2">
+            <div id="qrText" class="small text-muted"></div>
           </div>
         </div>
-        <div class="form-text mt-2">จำกัดครั้งละไม่เกิน 500 โค้ด</div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-        <button class="btn btn-primary" id="btnDoGen" type="submit">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> สร้าง
-        </button>
-      </div>
-    </form>
-  </div>
-</div>
+    </div>
 
     <!-- Skeleton while loading -->
     <div id="adminSkeleton" class="vstack gap-2 mb-3" style="display:none">
-      <div class="card p-2"><div class="skel skel-line" style="width:60%"></div></div>
-      <div class="card p-2"><div class="skel skel-line" style="width:50%"></div></div>
-      <div class="card p-2"><div class="skel skel-line" style="width:70%"></div></div>
+      <div class="card p-2"><div class="skel" style="width:60%"></div></div>
+      <div class="card p-2"><div class="skel" style="width:50%"></div></div>
+      <div class="card p-2"><div class="skel" style="width:70%"></div></div>
     </div>
   </div><!-- /.container -->
 
-  <!-- ========== สำรองโค้ด inline เดิมของคุณ (ไม่ถูกรัน) ========== -->
-  <script id="__admin_inline_backup__" type="text/plain">
-  /* โค้ด inline เดิมทั้งหมดของคุณอยู่ในบล็อกนี้
-     - ไม่ได้ถูกลบ
-     - ไม่ถูกรัน (กันชนกับ admin.js)
-     - หากต้องการกลับไปใช้ภายหลัง เพียงเปลี่ยน type="text/plain" เป็น type="text/javascript" */
-  </script>
-
-  <!-- ไลบรารี (ลำดับสำคัญ) -->
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2.1.7/dist/loadingoverlay.min.js"></script>
+  <!-- Libraries -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<!-- (ออปชัน) ต้องใช้ overlay ค่อยใส่ -->
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gasparesganga-jquery-loading-overlay@2/dist/loadingoverlay.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" referrerpolicy="no-referrer"></script>
 
-  <!-- โค้ดแอดมินของเรา: ตัวเดียวพอ -->
+  <!-- Admin logic (single entry) -->
   <script src="/admin.js" defer></script>
 </body>
 </html>
