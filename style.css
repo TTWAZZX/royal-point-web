@@ -3248,3 +3248,20 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .tx-at{color:#8a9099;font-size:.85rem;min-width:10.5rem;text-align:right}
 
 .hidden{display:none!important}
+
+/* ประวัติพ้อยท์: แสดงเฉพาะวันเวลา + คะแนน ให้พอดีจอมือถือ */
+#historyList.hist-compact { padding: 0; }
+.hc-row{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:.75rem; padding:.6rem .25rem; border-bottom:1px solid #eef1f4;
+}
+.hc-at{ font-size:.95rem; color:#6b7280; line-height:1.2; }
+.hc-amt{ font-weight:700; min-width:4.5rem; text-align:right; }
+.hc-amt.plus{ color:#16a34a; }   /* เขียว */
+.hc-amt.minus{ color:#ef4444; }  /* แดง  */
+
+@media (max-width:480px){
+  .hc-at{ font-size:.9rem; }
+  .hc-amt{ font-size:1rem; }
+  #historyModal .modal-dialog{ margin:.5rem; }
+}

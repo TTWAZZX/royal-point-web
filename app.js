@@ -986,13 +986,9 @@ function fmtThaiDateTime(v) {
 }
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
+// ประวัติพ้อยท์ (มินิมอล: แสดงเฉพาะคะแนน + วันเวลา)
+// ประวัติพ้อยท์ (มินิมอล: วันเวลา + คะแนน) + หัวโมดัลเป็นชื่อผู้ใช้
 async function openHistory(){
-  // ตัวช่วย escape แบบ local (ไม่ชนชื่อ h เดิม)
-  const esc = (s) => (typeof escapeHtml === 'function'
-    ? escapeHtml(s)
-    : String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
-  );
-
   const uid =
     (typeof UID !== 'undefined' && UID) ||
     window.__UID ||
@@ -1003,30 +999,27 @@ async function openHistory(){
   const modalEl = document.getElementById('historyModal');
   const modal   = new bootstrap.Modal(modalEl);
 
-  // ตั้งชื่อหัวโมดัล
-  const getUserDisplayName = window.getUserDisplayName || function(){
-    return (
-      window.DISPLAY_NAME ||
-      window.__DISPLAY_NAME ||
-      localStorage.getItem('displayName') ||
-      document.querySelector('#profileName, [data-profile-name], .profile-name')?.textContent?.trim() ||
-      UID || 'ผู้ใช้'
-    );
-  };
-  const titleEl = modalEl.querySelector('.modal-title');
-  if (titleEl) {
-    titleEl.innerHTML =
-      `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${esc(getUserDisplayName())}</span>`;
-  }
+  // helper ไม่ชนชื่อเดิม
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  const getDisplayName = () =>
+    (window.DISPLAY_NAME ||
+     window.__DISPLAY_NAME ||
+     localStorage.getItem('displayName') ||
+     document.querySelector('#profileName, [data-profile-name], .profile-name, .user-name, .profile-title')?.textContent?.trim() ||
+     uid || 'ผู้ใช้');
 
-  // formatter วันที่แบบไทย
-  const fmtThaiDateTime = window.fmtThaiDateTime || function(v){
+  // ใส่ชื่อผู้ใช้ที่หัวโมดัล
+  const titleEl = modalEl.querySelector('.modal-title');
+  if (titleEl) titleEl.innerHTML = `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${esc(getDisplayName())}</span>`;
+
+  // formatter เวลาแบบไทย
+  const fmtThaiDateTime = (v) => {
     const d = new Date(v);
     if (Number.isNaN(d.getTime())) return '';
     return d.toLocaleString('th-TH', {
       timeZone: 'Asia/Bangkok',
-      year: 'numeric', month: 'short', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+      year:'numeric', month:'short', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
     }) + ' น.';
   };
 
@@ -1035,9 +1028,9 @@ async function openHistory(){
     const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
     const json = await resp.json().catch(()=> ({}));
     const items = Array.isArray(json) ? json
-                : Array.isArray(json.items) ? json.items
-                : Array.isArray(json.data)  ? json.data
-                : [];
+      : Array.isArray(json.items) ? json.items
+      : Array.isArray(json.data)  ? json.data
+      : [];
 
     // ล่าสุดอยู่บน
     items.sort((a,b)=>{
@@ -1047,33 +1040,25 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // เรนเดอร์ (ซ่อนบรรทัดย่อยถ้าไม่มีค่า)
+    // โหมดมินิมอล: เวลา + คะแนน
+    listEl.classList.add('hist-compact');
     listEl.innerHTML = items.map(it=>{
       const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
       const when = fmtThaiDateTime(it.created_at || it.time || '');
-      const code = it.code || it.type || it.activity || 'รายการ';
-      const by   = it.created_by || it.actor || it.admin || '';
-      const sub  = [it.ref || it.reference || '', it.note || ''].filter(Boolean).join(' · ');
-
       return `
-        <a class="list-group-item list-group-item-action d-grid gap-1"
-           style="grid-template-columns:1fr auto auto;align-items:center;">
-          <div>
-            <div class="fw-bold">${esc(code)}</div>
-            ${by  ? `<div class="small text-muted">${esc(by)}</div>`  : ''}
-            ${sub ? `<div class="small text-muted">${esc(sub)}</div>` : ''}
-          </div>
-          <div class="${amt>=0?'text-success':'text-danger'} fw-bold text-end">${sign}${amt}</div>
-          <div class="small text-muted text-end">${esc(when)}</div>
-        </a>`;
+        <div class="hc-row">
+          <div class="hc-at">${esc(when)}</div>
+          <div class="hc-amt ${amt>=0?'plus':'minus'}">${sign}${amt}</div>
+        </div>
+      `;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
     modal.show();
-  } catch (e){
+  }catch(e){
     console.error(e);
     toastErr('โหลดประวัติไม่สำเร็จ');
-  } finally {
+  }finally{
     UiOverlay.hide();
   }
 }
