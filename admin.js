@@ -369,27 +369,35 @@ window.openSheet   = openSheet;
 
 /* =====================  COUPONS – ADMIN (tabs + live tracking)  ===================== */
 (() => {
-  
-  // ===== helper สรุปสถานะใช้แล้วให้ชัวร์ =====
-function isUsed(row) {
-  const s = String(row.status || '').toLowerCase();
-  if (s === 'used' || s === 'redeemed') return true;
-  if (row.used === true || row.is_used === true || row.redeemed === true) return true;
-  if (row.used_at) return true;
-  if (row.claimer && String(row.claimer).trim() !== '') return true;
-  return false;
-}
 
-function updateCouponCounters(rows){
-  const all    = rows.length;
-  const used   = rows.filter(isUsed).length;
-  const unused = all - used;
+  // ===== helper: สรุปสถานะคูปอง “ใช้แล้วหรือยัง” ให้ชัวร์ =====
+  function isUsed(row) {
+    const s = String(row.status || '').toLowerCase();
+    if (s === 'used' || s === 'redeemed') return true;
+    if (row.used === true || row.is_used === true || row.redeemed === true) return true;
+    if (row.used_at) return true;
+    if (row.claimer && String(row.claimer).trim() !== '') return true;
+    return false;
+  }
 
-  document.getElementById('countAll')   ?.textContent = all;
-  document.getElementById('countUsed')  ?.textContent = used;
-  document.getElementById('countUnused')?.textContent = unused;
-}
+  // อัปเดตตัวนับ (ห้ามใช้ ?. ฝั่งซ้ายของ =)
+  function updateCouponCounters(rows){
+    const all    = rows.length;
+    const used   = rows.filter(isUsed).length;
+    const unused = all - used;
 
+    const elAll    = document.getElementById('countAll');
+    const elUsed   = document.getElementById('countUsed');
+    const elUnused = document.getElementById('countUnused');
+    if (elAll)    elAll.textContent    = all;
+    if (elUsed)   elUsed.textContent   = used;
+    if (elUnused) elUnused.textContent = unused;
+
+    // เผื่อคุณใช้ badge ในแท็บ
+    if (els.badgeAll)    els.badgeAll.textContent    = all;
+    if (els.badgeUsed)   els.badgeUsed.textContent   = used;
+    if (els.badgeUnused) els.badgeUnused.textContent = unused;
+  }
 
   // รองรับหลาย endpoint เผื่อ API อยู่คนละ path
   const ENDPOINT_LIST = [
@@ -403,32 +411,33 @@ function updateCouponCounters(rows){
     '/api/coupons/generate',
   ];
 
+  // refs ของโซนคูปอง (ไม่ชนกับตัวอื่นในไฟล์ เพราะอยู่ใน IIFE)
   const els = {
-    list:      document.getElementById('couponList'),
-    empty:     document.getElementById('couponEmpty'),
-    btnReload: document.getElementById('btnReloadCoupons'),
-    btnGen:    document.getElementById('btnGenerateCoupons'),
-    qty:       document.getElementById('genQty'),
-    pts:       document.getElementById('genPoints'),
-    prefix:    document.getElementById('genPrefix'),
-    tabs:      document.getElementById('couponTabs'),
-    badgeAll:  document.getElementById('badgeAll'),
-    badgeUnused: document.getElementById('badgeUnused'),
-    badgeUsed: document.getElementById('badgeUsed'),
+    list:         document.getElementById('couponList'),
+    empty:        document.getElementById('couponEmpty'),
+    btnReload:    document.getElementById('btnReloadCoupons'),
+    btnGen:       document.getElementById('btnGenerateCoupons'),
+    qty:          document.getElementById('genQty'),
+    pts:          document.getElementById('genPoints'),
+    prefix:       document.getElementById('genPrefix'),
+    tabs:         document.getElementById('couponTabs'),
+    badgeAll:     document.getElementById('badgeAll'),
+    badgeUnused:  document.getElementById('badgeUnused'),
+    badgeUsed:    document.getElementById('badgeUsed'),
     // QR modal parts
-    qrBox:     document.getElementById('qrBox'),
-    qrText:    document.getElementById('qrText'),
-    qrStatus:  document.getElementById('qrStatus'),
-    qrModal:   document.getElementById('qrModal'),
-    btnCopyCode:   document.getElementById('btnCopyCode'),
-    btnDownloadQR: document.getElementById('btnDownloadQR'),
+    qrBox:        document.getElementById('qrBox'),
+    qrText:       document.getElementById('qrText'),
+    qrStatus:     document.getElementById('qrStatus'),
+    qrModal:      document.getElementById('qrModal'),
+    btnCopyCode:  document.getElementById('btnCopyCode'),
+    btnDownloadQR:document.getElementById('btnDownloadQR'),
   };
 
-  let COUPON_ROWS = [];                  // เก็บรายการทั้งหมดไว้รีเรนเดอร์
-  let COUPON_FILTER = 'all';             // 'all' | 'unused' | 'used'
-  let trackTimer = null;                 // ตัวจับเวลาติดตามสถานะใน QR modal
-  const TRACK_INTERVAL_MS = 1500;        // โพลทุก 1.5s
-  const TRACK_TIMEOUT_MS  = 90_000;      // หมดเวลา 90s
+  let COUPON_ROWS   = [];               // เก็บรายการทั้งหมดไว้สำหรับ render/กรอง
+  let COUPON_FILTER = 'all';            // 'all' | 'unused' | 'used'
+  let trackTimer    = null;             // สำหรับติดตามสถานะใน QR modal
+  const TRACK_INTERVAL_MS = 1500;
+  const TRACK_TIMEOUT_MS  = 90_000;
 
   const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'
@@ -440,23 +449,11 @@ function updateCouponCounters(rows){
     window.__UID ||
     localStorage.getItem('uid') || '';
 
-  const usedFlag = r => !!(r.used ?? r.is_used ?? r.redeemed ?? (r.status === 'used'));
-
   function pickRows(p) {
-    if (Array.isArray(p?.data)) return p.data;
-    if (Array.isArray(p)) return p;
+    if (Array.isArray(p?.data))  return p.data;
+    if (Array.isArray(p))        return p;
     if (Array.isArray(p?.items)) return p.items;
     return [];
-  }
-
-  function sortNewestFirst(rows) {
-    // พยายามใช้ created_at/createdAt/time ถ้ามี; ถ้าไม่มีใช้รหัสเป็น fallback
-    return rows.slice().sort((a,b) => {
-      const ta = Date.parse(a.created_at || a.createdAt || a.time || 0) || 0;
-      const tb = Date.parse(b.created_at || b.createdAt || b.time || 0) || 0;
-      if (tb !== ta) return tb - ta;
-      return String(b.code || b.coupon || b.id || '').localeCompare(String(a.code || a.coupon || a.id || ''));
-    });
   }
 
   async function fetchJson(url, opts) {
@@ -481,81 +478,84 @@ function updateCouponCounters(rows){
     throw lastErr || new Error('all_endpoints_failed');
   }
 
+  // วาดรายการ (คัดกรองด้วย COUPON_FILTER + เรียงใหม่ก่อน)
   function render(rows = []) {
-  if (!els.list) return;
+    if (!els.list) return;
 
-  // --- ถ้าคุณมีตัวแปร currentFilter ('all'|'unused'|'used') ให้กรองตรงนี้ ---
-  const filtered = (window.currentFilter ? rows.filter(r => {
-    const u = isUsed(r);
-    if (window.currentFilter === 'used')   return u;
-    if (window.currentFilter === 'unused') return !u;
-    return true;
-  }) : rows);
+    const filtered = rows.filter(r => {
+      const u = isUsed(r);
+      if (COUPON_FILTER === 'used')   return u;
+      if (COUPON_FILTER === 'unused') return !u;
+      return true;
+    });
 
-  // --- จัดเรียงล่าสุดก่อน ถ้ามี created_at/createdAt ---
-  const sorted = filtered.slice().sort((a,b) => {
-    const ta = new Date(a.created_at || a.createdAt || 0).getTime();
-    const tb = new Date(b.created_at || b.createdAt || 0).getTime();
-    return (tb||0) - (ta||0);
-  });
+    // เรียง “ใหม่ก่อน” ถ้ามี created_at/createdAt/time
+    const sorted = filtered.slice().sort((a,b) => {
+      const ta = Date.parse(a.created_at || a.createdAt || a.time || 0) || 0;
+      const tb = Date.parse(b.created_at || b.createdAt || b.time || 0) || 0;
+      if (tb !== ta) return tb - ta;
+      return String(b.code || b.coupon || b.id || '')
+             .localeCompare(String(a.code || a.coupon || a.id || ''));
+    });
 
-  if (!sorted.length) {
-    els.list.innerHTML = '';
-    els.empty?.classList.remove('d-none');
-    return;
-  }
-  els.empty?.classList.add('d-none');
+    if (!sorted.length) {
+      els.list.innerHTML = '';
+      if (els.empty) els.empty.classList.remove('d-none');
+      return;
+    }
+    if (els.empty) els.empty.classList.add('d-none');
 
-  els.list.innerHTML = sorted.map(r => {
-    const code   = r.code || r.coupon || r.coupon_code || r.id || '';
-    const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
-    const used   = isUsed(r);
-    const badge  = used
-      ? `<span class="badge rp-badge-used"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
-      : `<span class="badge rp-badge-unused"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
-    return `
-      <div class="card mb-2">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="flex-grow-1">
-            <div class="fw-semibold">${esc(code)}</div>
-            <div class="small text-muted">+${points} คะแนน</div>
+    els.list.innerHTML = sorted.map(r => {
+      const code   = r.code || r.coupon || r.coupon_code || r.id || '';
+      const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
+      const used   = isUsed(r);
+      const badge  = used
+        ? `<span class="badge rp-badge-used"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
+        : `<span class="badge rp-badge-unused"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
+      return `
+        <div class="card mb-2">
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="flex-grow-1">
+              <div class="fw-semibold">${esc(code)}</div>
+              <div class="small text-muted">+${points} คะแนน</div>
+            </div>
+            <div class="me-2">${badge}</div>
+            <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+            <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}">
+              <i class="fa-solid fa-qrcode"></i>
+            </button>
           </div>
-          <div class="me-2">${badge}</div>
-          <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}">
-            <i class="fa-regular fa-copy"></i>
-          </button>
-          <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}">
-            <i class="fa-solid fa-qrcode"></i>
-          </button>
-        </div>
-      </div>`;
-  }).join('');
-}
+        </div>`;
+    }).join('');
+  }
 
   async function loadCoupons() {
-  if (!els.list) return;
-  els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
-  try {
-    const adminUid = getAdminUid();
-    const resp = await tryMany(
-      ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
-      { cache: 'no-store' }
-    );
-    const rows = pickRows(resp.data) || [];
+    if (!els.list) return;
+    els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
+    try {
+      const adminUid = getAdminUid();
+      const resp = await tryMany(
+        ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
+        { cache: 'no-store' }
+      );
+      // เก็บไว้ใช้กับการกดแท็บภายหลัง
+      COUPON_ROWS = pickRows(resp.data) || [];
 
-    // อัปเดตตัวนับแท็บ — ใส่ตรงนี้!
-    updateCouponCounters(rows);
+      // อัปเดตตัวนับในแท็บ/ชิป
+      updateCouponCounters(COUPON_ROWS);
 
-    // วาดรายการ (ด้านใน render จะกรองตามแท็บและจัดเรียงล่าสุดก่อน)
-    render(rows);
+      // วาดรายการตามฟิลเตอร์ปัจจุบัน
+      render(COUPON_ROWS);
 
-  } catch (e) {
-    console.error('loadCoupons error', e);
-    els.list.innerHTML = '';
-    els.empty?.classList.remove('d-none');
-    Swal?.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+    } catch (e) {
+      console.error('loadCoupons error', e);
+      els.list.innerHTML = '';
+      if (els.empty) els.empty.classList.remove('d-none');
+      window.Swal?.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+    }
   }
-}
 
   async function generateCoupons() {
     const adminUid = getAdminUid();
@@ -577,11 +577,11 @@ function updateCouponCounters(rows){
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(body)
       });
-      if (window.Swal) Swal.fire('สำเร็จ','สร้างคูปองแล้ว','success');
-      await loadCoupons(); // จะเรียง “ล่าสุดก่อน” ให้ทันที
+      window.Swal?.fire('สำเร็จ','สร้างคูปองแล้ว','success');
+      await loadCoupons(); // refresh
     } catch (e) {
       console.error('generateCoupons error', e);
-      if (window.Swal) Swal.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+      window.Swal?.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
     } finally {
       els.btnGen?.removeAttribute('disabled');
     }
@@ -622,16 +622,14 @@ function updateCouponCounters(rows){
   }
 
   async function pollOnce(code) {
-    // วิธีง่ายสุด: โหลดลิสต์แล้วหาโค้ดนั้น ๆ
-    // (ถ้า backend รองรับ ?code=xxx ก็เปลี่ยนมาใช้แบบเจาะได้)
     const adminUid = getAdminUid();
     const resp = await tryMany(
       ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
       { cache: 'no-store' }
     );
     const rows = pickRows(resp.data);
-    const row = rows.find(r => (r.code || r.coupon || r.coupon_code || r.id || '') === code);
-    return row ? usedFlag(row) : false;
+    const row  = rows.find(r => (r.code || r.coupon || r.coupon_code || r.id || '') === code);
+    return row ? isUsed(row) : false;
   }
 
   function startTrack(code) {
@@ -643,15 +641,13 @@ function updateCouponCounters(rows){
         const used = await pollOnce(code);
         if (used) {
           setQrStatus(`<div class="text-success small"><i class="fa-solid fa-circle-check me-1"></i> ใช้แล้ว — อัปเดตรายการ…</div>`);
-          if (navigator?.vibrate) navigator.vibrate(80);
+          navigator?.vibrate?.(80);
           stopTrack();
-          await loadCoupons(); // รีเฟรชรายการให้สถานะเปลี่ยนเป็น “ใช้แล้ว”
+          await loadCoupons(); // รีเฟรชสถานะในลิสต์
         } else {
-          // ยังไม่ใช้ — แสดงสปินเนอร์ต่อไป
           const elapsed = Math.floor((Date.now()-t0)/1000);
           setQrStatus(`<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i> รอการใช้คูปอง… (${elapsed}s)</div>`);
         }
-        // หมดเวลา
         if (Date.now() - t0 > TRACK_TIMEOUT_MS) {
           setQrStatus(`<div class="text-warning small"><i class="fa-regular fa-clock me-1"></i> หมดเวลารอ กรุณาปิดหน้าต่างนี้หรือสแกนใหม่</div>`);
           stopTrack();
@@ -665,8 +661,8 @@ function updateCouponCounters(rows){
     trackTimer = setInterval(tick, TRACK_INTERVAL_MS);
   }
 
-  // ==== Events ====
-  // คลิกที่รายการคูปอง (คัดลอก/QR)
+  // ==== Events =========================================================
+  // copy/QR
   els.list?.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-act]');
     if (!btn) return;
@@ -675,15 +671,16 @@ function updateCouponCounters(rows){
 
     if (btn.dataset.act === 'copy') {
       navigator.clipboard?.writeText(code);
-      window.Swal?.fire({ toast:true, position:'top', timer:1200, showConfirmButton:false, icon:'success', title:'คัดลอกแล้ว' });
+      window.Swal?.fire({ toast:true, position:'top', timer:1200, showConfirmButton:false,
+                          icon:'success', title:'คัดลอกแล้ว' });
     } else if (btn.dataset.act === 'qr') {
       openQrModal(code);
     }
   });
 
-  // ปุ่มรีเฟรช/สร้าง
+  // reload / generate
   els.btnReload?.addEventListener('click', loadCoupons);
-  els.btnGen?.addEventListener('click', generateCoupons);
+  els.btnGen   ?.addEventListener('click', generateCoupons);
 
   // เปลี่ยนแท็บกรอง
   els.tabs?.addEventListener('click', (e) => {
@@ -697,12 +694,13 @@ function updateCouponCounters(rows){
     render(COUPON_ROWS);
   });
 
-  // ปิด QR modal แล้วหยุดติดตาม + รีโหลดอีกทีเพื่อความชัวร์
+  // ปิด QR modal แล้วหยุดติดตาม + reload อีกครั้ง
   els.qrModal?.addEventListener('hidden.bs.modal', () => {
     stopTrack();
     setTimeout(() => { if (typeof loadCoupons === 'function') loadCoupons(); }, 200);
   });
 
-  // โหลดอัตโนมัติเมื่อหน้า/แผงพร้อม
+  // โหลดอัตโนมัติเมื่อ element พร้อม
   if (els.list) loadCoupons();
+
 })();
