@@ -71,6 +71,7 @@ function h(str) {
   }[s]));
 }
 
+
 /** Admin gate */
 const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
 
@@ -324,9 +325,7 @@ function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggl
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
-// ===== refreshUserScore: ดึงคะแนนให้ครอบจักรวาล + เก็บไว้เทียบก่อน–หลัง =====
-// ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload
-// ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload + ไม่ทำให้ initApp ล้ม
+// ===== refreshUserScore (patched) =====
 async function refreshUserScore(){
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -334,7 +333,7 @@ async function refreshUserScore(){
     localStorage.getItem('uid') ||
     '';
 
-  // ถ้าไม่มี uid: รีเซ็ตแบบปลอดภัยแล้วจบ
+  // ไม่มี uid → รีเซ็ตแบบปลอดภัย
   if (!uid) {
     console.warn('[refreshUserScore] missing uid');
     if (els?.points) els.points.textContent = '0';
@@ -344,7 +343,7 @@ async function refreshUserScore(){
     return;
   }
 
-  // ดึง score จาก payload หลายทรง
+  // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
     if (!o || typeof o !== 'object') return null;
     const cands = [
@@ -360,7 +359,7 @@ async function refreshUserScore(){
 
   let fromCache = false, data = null;
 
-  // 1) เรียก API ปกติ
+  // 1) ลองเรียก API ปกติ
   try{
     const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
     const json = await res.json().catch(() => null);
@@ -377,7 +376,7 @@ async function refreshUserScore(){
     }
   }
 
-  // ถ้าไม่มีข้อมูลเลย: ไม่ทำให้แอปล้ม
+  // ถ้าไม่มีข้อมูลเลย
   if (!data) {
     if (els?.points) els.points.textContent = '0';
     document.getElementById('xpPair')
@@ -387,24 +386,18 @@ async function refreshUserScore(){
   }
 
   const newScore = pickScore(data) ?? 0;
-  const oldScore = Number(prevScore || 0);
-  const delta    = newScore - oldScore;
 
-  // commit state
+  // --- commit state (อย่าเซ็ต prevScore ตรงนี้) ---
   window.__userBalance = newScore;
-  prevScore = newScore;
 
-  // อัปเดตตัวเลขหลัก
-  if (els?.points) els.points.textContent = String(newScore);
-  try { bumpScoreFx?.(); } catch {}
-  try { showScoreDelta?.(delta); } catch {}
+  // อัปเดตการ์ดโปรไฟล์/ธีม/แถบ ฯลฯ ให้ครบ ผ่าน setPoints()
+  try { setPoints(newScore); } catch (e) { console.warn('setPoints failed', e); }
 
-  // ===== คำนวณคู่ตัวเลขความคืบหน้า: cur / max (มี fallback ป้องกัน 0) =====
+  // ===== คำนวณคู่ตัวเลขความคืบหน้า: cur / max (fallback ถ้า API ไม่ให้) =====
   let need = Number(data?.need ?? data?.next_need);
   let cur  = Number(data?.current ?? newScore);
   let max  = Number(data?.max ?? data?.target);
 
-  // ถ้า API ไม่ให้หรือเป็น 0/ไม่ finite → ใช้ TIERS ผ่าน getTier(newScore) ถ้ามี
   if (!Number.isFinite(max) || max <= 0) {
     try {
       const tier = (typeof getTier === 'function') ? getTier(newScore) : null; // {min, next}
@@ -413,7 +406,6 @@ async function refreshUserScore(){
         cur  = newScore;
         need = Math.max(0, tier.next - newScore);
       } else {
-        // อยู่ tier สูงสุดหรือไม่มี getTier → ให้ max=คะแนนปัจจุบัน (ไม่เป็นหารศูนย์)
         max  = newScore || 1;
         cur  = newScore;
         need = 0;
@@ -428,7 +420,7 @@ async function refreshUserScore(){
   const pair = document.getElementById('xpPair');
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  // ตราประทับเวลา
+  // ตราประทับเวลา/ทูลทิป “อัปเดตล่าสุด”
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
