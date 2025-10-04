@@ -259,6 +259,17 @@ function bindUI(){
   });
 }
 
+// === Last updated helper (global) ===
+function setLastUpdated(time = Date.now()) {
+  const el = document.querySelector('#lastUpdated, [data-last-updated]');
+  if (!el) return; // หากยังไม่มี element ก็ไม่ต้องทำอะไร
+  const d = typeof time === 'number' ? new Date(time) : new Date(time);
+  el.textContent = d.toLocaleString('th-TH', { hour12: false });
+  el.dataset.ts = d.toISOString();
+}
+// สำคัญ: ผูกกับ window เผื่อไฟล์คุณใช้ type="module" หรือมีสโคปปิด
+window.setLastUpdated = setLastUpdated;
+
 // ---------- helper: อัปเดตข้อความ "อัปเดตล่าสุด" บนปุ่มรีเฟรช ----------
 function setLastUpdated(fromCache = false){
   // หา element ปุ่มรีเฟรช (คุณมี id="refreshBtn" ใน index.html แล้ว)
@@ -301,6 +312,7 @@ function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", 
 
 // ===== refreshUserScore: ดึงคะแนนให้ครอบจักรวาล + เก็บไว้เทียบก่อน–หลัง =====
 // ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload
+// ดึงคะแนนผู้ใช้แบบ “แน่ใจว่ามี uid” + รับทุกทรง payload + ไม่ทำให้ initApp ล้ม
 async function refreshUserScore(){
   const uid =
     UID ||
@@ -308,68 +320,79 @@ async function refreshUserScore(){
     localStorage.getItem('uid') ||
     '';
 
+  // ถ้าไม่มี uid ให้รีเซ็ตตัวเลขแบบปลอดภัย แล้วจบแบบไม่ throw
   if (!uid) {
     console.warn('[refreshUserScore] missing uid');
-    // โชว์ 0 แบบปลอดภัย
-    els.points && (els.points.textContent = '0');
+    if (els.points) els.points.textContent = '0';
     document.getElementById('xpPair')?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
+    try { window.setLastUpdated?.(true); } catch {}
     return;
   }
 
-  // helper แยกค่าคะแนนจาก payload หลายทรง
+  // helper: แยกค่าคะแนนจาก payload หลายทรง
   const pickScore = (o) => {
     if (!o || typeof o !== 'object') return null;
-    // รองรับทั้ง {score},{points},{balance},{data:{...}}
     const cands = [
       o.score, o.points, o.point, o.balance, o.total,
       o?.data?.score, o?.data?.points, o?.data?.balance, o?.data?.total
     ];
-    for (const v of cands) if (Number.isFinite(Number(v))) return Number(v);
+    for (const v of cands) {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
     return null;
   };
 
-  let fromCache = false, data = null, lastErr = null;
+  let fromCache = false, data = null;
 
+  // 1) พยายามดึงจาก API ตรง ๆ
   try{
-    // เรียก endpoint เดียวที่มีจริง
-    const res = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
-    const json = await res.json();
-    if (!res.ok || json?.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
+    const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
+    const json = await res.json().catch(()=>null);
+    if (!res.ok || !json || json?.status === 'error') {
+      throw new Error(json?.message || `HTTP ${res.status}`);
+    }
     data = json;
   }catch(e){
-    lastErr = e;
-    console.warn('[refreshUserScore] fetch failed, try cache', e);
-    // ลองดึงจาก cache ในหน่วยความจำ/ที่เราเก็บไว้
+    console.warn('[refreshUserScore] fetch failed → try cache', e);
+    // 2) fallback: ใช้ค่าที่แคชไว้ในหน่วยความจำ (ถ้ามี)
     if (Number.isFinite(Number(window.__userBalance))) {
       data = { score: Number(window.__userBalance) };
       fromCache = true;
     }
   }
 
-  if (!data) throw lastErr || new Error('no_data');
+  // ถ้ายังไม่มีข้อมูลเลย: อย่าทำให้แอปล้ม — เซ็ตศูนย์แล้วจบ
+  if (!data) {
+    if (els.points) els.points.textContent = '0';
+    document.getElementById('xpPair')?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
+    try { window.setLastUpdated?.(true); } catch {}
+    return;
+  }
 
   const newScore = pickScore(data) ?? 0;
   const oldScore = Number(prevScore || 0);
   const delta    = newScore - oldScore;
 
-  // เก็บ state ล่าสุดให้ฟังก์ชันอื่นใช้
+  // commit state
   window.__userBalance = newScore;
   prevScore = newScore;
 
-  // อัปเดต UI
+  // อัปเดตตัวเลขหลัก
   if (els.points) els.points.textContent = String(newScore);
-  bumpScoreFx();           // เด้งนุ่ม ๆ
-  showScoreDelta(delta);   // โชว์ +/-
+  // เอฟเฟกต์/เด้งตัวเลข + แสดงผลต่าง
+  try { bumpScoreFx?.(); } catch {}
+  try { showScoreDelta?.(delta); } catch {}
 
-  // แถบ progress/ข้อความ
+  // อัปเดตคู่ตัวเลขความคืบหน้า (ถ้ามีข้อมูล)
   const need = Number(data?.need || data?.next_need || 0);
   const cur  = Number(data?.current || newScore);
   const max  = Number(data?.max || need || 0);
   const pair = document.getElementById('xpPair');
-  pair && (pair.textContent = `${cur} / ${max} คะแนน`);
+  if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  // ตราปั๊มเวลาอัปเดต (หรือบอกว่าเป็นแคช)
-  try { setLastUpdated?.(fromCache); } catch {}
+  // ตราประทับเวลา (หรือบอกว่าเป็นแคช)
+  try { window.setLastUpdated?.(fromCache); } catch {}
 }
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
