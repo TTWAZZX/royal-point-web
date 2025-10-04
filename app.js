@@ -863,68 +863,76 @@ async function redeemReward(reward, btn){
 /* ================= Redeem code / Scanner ================= */
 // ใช้แทนฟังก์ชันเดิมทั้งหมด
 // แก้ทั้งฟังก์ชัน redeemCode ให้แนบ uid เสมอ
-async function redeemCode(code, source = 'QR') {
-  if (!code) { toastErr('ไม่มีรหัส'); return; }
+// ใช้แค่ /api/redeem ที่เดียว และส่งฟิลด์ให้ครบ
+async function redeemCode(input) {
+  // 1) เตรียมค่า
+  const code = String(
+    (input ?? document.getElementById('couponInput')?.value ?? '')
+  ).trim();
 
-  // ก่อนแลก: เก็บยอดไว้เทียบ
-  try { await refreshUserScore(); } catch {}
-  const before = Number(window.__userBalance || 0);
-
-  // เอา uid ให้ชัวร์
-  const uid =
-    (typeof UID !== 'undefined' && UID) ||
-    window.__UID ||
-    localStorage.getItem('uid') ||
-    '';
-
-  if (!uid) { toastErr('ยังไม่พร้อมใช้งาน (ไม่มี UID)'); return; }
-
-  // ส่งหลายทรง field name แต่ "ต้องมี uid" ทุกทรง
-  const bodies = [
-    { uid, code,         source },
-    { uid, coupon: code, source },
-    { uid, coupon_code: code, source },
-  ];
-
-  let resp, lastErr;
-  for (const body of bodies) {
-    try {
-      resp = await tryEndpoints(
-        ['/api/redeem', '/api/redeem-code', '/api/coupon/redeem', '/api/claim-coupon'],
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        },
-        { scope: 'redeem' }
-      );
-      lastErr = null;
-      break;
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  if (lastErr) {
-    const msg = (lastErr?.message || '').toLowerCase();
-    if (msg.includes('used') || msg.includes('already')) toastErr('คูปองนี้ถูกใช้ไปแล้ว');
-    else toastErr('แลกคูปองไม่สำเร็จ');
+  if (!code) {
+    toastErr('กรุณากรอกรหัสคูปอง');
     return;
   }
 
-  // หาคะแนนที่เพิ่มจาก response (ถ้า API ไม่ส่ง ก็คำนวณจากก่อน-หลัง)
-  const pickAmount = (o) => {
-    if (!o || typeof o !== 'object') return null;
-    const cands = [o.amount,o.delta,o.added,o.increment,o.point,o.points,o.value,o.score,o?.data?.amount,o?.data?.delta,o?.data?.point,o?.data?.points];
-    for (const v of cands) { const n = Number(v); if (!Number.isNaN(n)) return n; }
-    return null;
+  const uid =
+    (typeof UID !== 'undefined' && UID) ||
+    window.__UID ||
+    localStorage.getItem('uid') || '';
+
+  if (!uid) {
+    toastErr('ยังไม่พบ UID ของผู้ใช้');
+    return;
+  }
+
+  // 2) บอดี้ที่แบ็กเอนด์รับชัวร์: uid + code
+  //    (เผื่อหลังบ้านรับชื่อฟิลด์อื่นด้วย ใส่ duplicated fields ไปเลย)
+  const payload = {
+    uid,
+    code,
+    coupon: code,
+    coupon_code: code,
+    source: 'manual', // หรือ 'QR'
   };
 
-  let added = pickAmount(resp);
+  console.debug('[redeem] POST /api/redeem ->', payload);
 
+  // 3) ยิงแค่ /api/redeem
+  let res, json;
+  try {
+    res = await fetch('/api/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+    json = await res.json().catch(() => ({}));
+  } catch (e) {
+    console.error('[redeem] network error', e);
+    toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
+    return;
+  }
+
+  // 4) ตรวจผลลัพธ์
+  if (!res.ok || json?.status === 'error') {
+    const msg = (json?.message || '').toLowerCase();
+    if (msg.includes('uid') || msg.includes('required')) {
+      toastErr('คำขอไม่ถูกต้อง: กรุณาเข้าสู่ระบบใหม่หรือรีเฟรช');
+    } else if (msg.includes('used') || msg.includes('already')) {
+      toastErr('คูปองนี้ถูกใช้ไปแล้ว');
+    } else if (msg.includes('not found')) {
+      toastErr('ไม่พบรหัสคูปอง');
+    } else {
+      toastErr('แลกคูปองไม่สำเร็จ');
+    }
+    console.warn('[redeem] server rejected ->', json);
+    return;
+  }
+
+  // 5) สำเร็จ → รีเฟรชคะแนน/แจ้งเตือน
   try { await refreshUserScore(); } catch {}
-  const after = Number(window.__userBalance || before);
-  if (added === null) added = after - before;
-
+  const added =
+    Number(json?.amount ?? json?.delta ?? json?.points ?? json?.point ?? 0);
   if (added > 0) toastOk(`รับ +${added} คะแนน`);
   else toastOk('แลกคูปองสำเร็จ');
 }
