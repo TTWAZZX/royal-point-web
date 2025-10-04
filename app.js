@@ -956,9 +956,6 @@ async function stopScanner(){
   }
 }
 
-// escape HTML สั้นๆ
-const h = (s) => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-
 // ดึงชื่อผู้ใช้จากแหล่งที่น่าจะมีอยู่
 function getUserDisplayName() {
   return (
@@ -990,18 +987,48 @@ function fmtThaiDateTime(v) {
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
 async function openHistory(){
-  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
-  if (!uid) return toastErr("ไม่พบผู้ใช้");
+  // ตัวช่วย escape แบบ local (ไม่ชนชื่อ h เดิม)
+  const esc = (s) => (typeof escapeHtml === 'function'
+    ? escapeHtml(s)
+    : String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))
+  );
+
+  const uid =
+    (typeof UID !== 'undefined' && UID) ||
+    window.__UID ||
+    localStorage.getItem('uid') || '';
+  if (!uid) return toastErr('ไม่พบผู้ใช้');
 
   const listEl  = document.getElementById('historyList');
   const modalEl = document.getElementById('historyModal');
   const modal   = new bootstrap.Modal(modalEl);
 
-  // ตั้งชื่อหัวโมดัล: ประวัติพ้อยท์ — <ชื่อผู้ใช้>
+  // ตั้งชื่อหัวโมดัล
+  const getUserDisplayName = window.getUserDisplayName || function(){
+    return (
+      window.DISPLAY_NAME ||
+      window.__DISPLAY_NAME ||
+      localStorage.getItem('displayName') ||
+      document.querySelector('#profileName, [data-profile-name], .profile-name')?.textContent?.trim() ||
+      UID || 'ผู้ใช้'
+    );
+  };
   const titleEl = modalEl.querySelector('.modal-title');
   if (titleEl) {
-    titleEl.innerHTML = `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${h(getUserDisplayName())}</span>`;
+    titleEl.innerHTML =
+      `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${esc(getUserDisplayName())}</span>`;
   }
+
+  // formatter วันที่แบบไทย
+  const fmtThaiDateTime = window.fmtThaiDateTime || function(v){
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString('th-TH', {
+      timeZone: 'Asia/Bangkok',
+      year: 'numeric', month: 'short', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    }) + ' น.';
+  };
 
   UiOverlay.show('กำลังโหลดประวัติ…');
   try{
@@ -1020,30 +1047,32 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // เรนเดอร์แต่ละแถว (ซ่อนบรรทัดย่อยถ้าไม่มีค่า)
+    // เรนเดอร์ (ซ่อนบรรทัดย่อยถ้าไม่มีค่า)
     listEl.innerHTML = items.map(it=>{
       const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
       const when = fmtThaiDateTime(it.created_at || it.time || '');
-      const code = it.code || it.type || it.activity || '';
+      const code = it.code || it.type || it.activity || 'รายการ';
       const by   = it.created_by || it.actor || it.admin || '';
       const sub  = [it.ref || it.reference || '', it.note || ''].filter(Boolean).join(' · ');
+
       return `
-        <a class="list-group-item list-group-item-action d-grid gap-1" style="grid-template-columns:1fr auto auto;align-items:center;">
+        <a class="list-group-item list-group-item-action d-grid gap-1"
+           style="grid-template-columns:1fr auto auto;align-items:center;">
           <div>
-            <div class="fw-bold">${h(code || 'รายการ')}</div>
-            ${by ? `<div class="small text-muted">${h(by)}</div>` : ''}
-            ${sub ? `<div class="small text-muted">${h(sub)}</div>` : ''}
+            <div class="fw-bold">${esc(code)}</div>
+            ${by  ? `<div class="small text-muted">${esc(by)}</div>`  : ''}
+            ${sub ? `<div class="small text-muted">${esc(sub)}</div>` : ''}
           </div>
           <div class="${amt>=0?'text-success':'text-danger'} fw-bold text-end">${sign}${amt}</div>
-          <div class="small text-muted text-end">${h(when)}</div>
+          <div class="small text-muted text-end">${esc(when)}</div>
         </a>`;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
     modal.show();
   } catch (e){
     console.error(e);
-    toastErr("โหลดประวัติไม่สำเร็จ");
+    toastErr('โหลดประวัติไม่สำเร็จ');
   } finally {
     UiOverlay.hide();
   }
