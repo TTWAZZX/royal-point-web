@@ -367,92 +367,140 @@ window.doAdjust    = doAdjust;
 window.confirmReset= confirmReset;
 window.openSheet   = openSheet;
 
-/* =====================  COUPONS – ADMIN (stable)  ===================== */
+/* =====================  COUPONS – ADMIN (tabs + live tracking)  ===================== */
 (() => {
-  // รองรับหลาย endpoint เผื่อเปลี่ยนโฟลเดอร์ API
-  const ENDPOINT_LIST = ['/api/admin-coupons','/api/admin/coupons','/api/list-coupons'];
-  const ENDPOINT_GEN  = ['/api/admin-coupons-generate','/api/admin/coupons/generate','/api/coupons/generate'];
+  // รองรับหลาย endpoint เผื่อ API อยู่คนละ path
+  const ENDPOINT_LIST = [
+    '/api/admin-coupons',
+    '/api/admin/coupons',
+    '/api/list-coupons',
+  ];
+  const ENDPOINT_GEN = [
+    '/api/admin-coupons-generate',
+    '/api/admin/coupons/generate',
+    '/api/coupons/generate',
+  ];
 
-  // อ้างอิง element ให้ตรงกับ admin.html (รองรับทั้ง 2 id ของปุ่ม)
-  const $ = (id) => document.getElementById(id);
   const els = {
-    list: $('couponList'),
-    empty: $('couponEmpty'),
-    btnReload: $('btnReloadCoupons'),
-    btnGen: $('btnGenCoupons') || $('btnGenerateCoupons'),
-    qty: $('genQty'),
-    pts: $('genPoints'),
-    prefix: $('genPrefix'),
+    list:      document.getElementById('couponList'),
+    empty:     document.getElementById('couponEmpty'),
+    btnReload: document.getElementById('btnReloadCoupons'),
+    btnGen:    document.getElementById('btnGenerateCoupons'),
+    qty:       document.getElementById('genQty'),
+    pts:       document.getElementById('genPoints'),
+    prefix:    document.getElementById('genPrefix'),
+    tabs:      document.getElementById('couponTabs'),
+    badgeAll:  document.getElementById('badgeAll'),
+    badgeUnused: document.getElementById('badgeUnused'),
+    badgeUsed: document.getElementById('badgeUsed'),
+    // QR modal parts
+    qrBox:     document.getElementById('qrBox'),
+    qrText:    document.getElementById('qrText'),
+    qrStatus:  document.getElementById('qrStatus'),
+    qrModal:   document.getElementById('qrModal'),
+    btnCopyCode:   document.getElementById('btnCopyCode'),
+    btnDownloadQR: document.getElementById('btnDownloadQR'),
   };
-  if (!els.list) return; // ถ้าไม่มีแผงคูปองบนหน้านี้ ไม่ต้องรันต่อ
+
+  let COUPON_ROWS = [];                  // เก็บรายการทั้งหมดไว้รีเรนเดอร์
+  let COUPON_FILTER = 'all';             // 'all' | 'unused' | 'used'
+  let trackTimer = null;                 // ตัวจับเวลาติดตามสถานะใน QR modal
+  const TRACK_INTERVAL_MS = 1500;        // โพลทุก 1.5s
+  const TRACK_TIMEOUT_MS  = 90_000;      // หมดเวลา 90s
+
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, m => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'
+  }[m]));
+  const escAttr = s => esc(s).replace(/"/g,'&quot;');
 
   const getAdminUid = () =>
     (typeof ADMIN_UID !== 'undefined' && ADMIN_UID) ||
-    window.__UID || localStorage.getItem('uid') || '';
+    window.__UID ||
+    localStorage.getItem('uid') || '';
 
-  // util เล็กๆ
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  const escAttr = (s) => esc(s).replace(/"/g,'&quot;');
-  const pickRows = (p) => Array.isArray(p?.data) ? p.data : Array.isArray(p) ? p : Array.isArray(p?.items) ? p.items : [];
+  const usedFlag = r => !!(r.used ?? r.is_used ?? r.redeemed ?? (r.status === 'used'));
 
-  async function fetchJson(url, opts){
-    const r = await fetch(url, opts);
-    const t = await r.text();
+  function pickRows(p) {
+    if (Array.isArray(p?.data)) return p.data;
+    if (Array.isArray(p)) return p;
+    if (Array.isArray(p?.items)) return p.items;
+    return [];
+  }
+
+  function sortNewestFirst(rows) {
+    // พยายามใช้ created_at/createdAt/time ถ้ามี; ถ้าไม่มีใช้รหัสเป็น fallback
+    return rows.slice().sort((a,b) => {
+      const ta = Date.parse(a.created_at || a.createdAt || a.time || 0) || 0;
+      const tb = Date.parse(b.created_at || b.createdAt || b.time || 0) || 0;
+      if (tb !== ta) return tb - ta;
+      return String(b.code || b.coupon || b.id || '').localeCompare(String(a.code || a.coupon || a.id || ''));
+    });
+  }
+
+  async function fetchJson(url, opts) {
+    const res  = await fetch(url, opts);
+    const text = await res.text();
     try {
-      const j = JSON.parse(t);
-      if (!r.ok || j?.status === 'error') throw new Error(j?.message || r.statusText);
+      const j = JSON.parse(text);
+      if (!res.ok || j?.status === 'error') throw new Error(j?.message || res.statusText);
       return j;
     } catch {
-      if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
+      if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
       return { status: 'success', data: [] };
     }
   }
-  async function tryMany(endpoints, opts){
+
+  async function tryMany(endpoints, opts) {
     let lastErr;
-    for (const u of endpoints){
-      try { return await fetchJson(u, opts); } catch(e){ lastErr = e; }
+    for (const u of endpoints) {
+      try { return await fetchJson(u, opts); }
+      catch (e) { lastErr = e; }
     }
     throw lastErr || new Error('all_endpoints_failed');
   }
 
-  function isCouponUsed(r){
-  // รองรับหลายฟิลด์/รูปแบบชื่อ
-  const statusRaw = (r.status ?? r.state ?? '').toString().toLowerCase();
-  const flag = r.used ?? r.is_used ?? r.redeemed ?? r.claimed ?? r.isClaimed ?? r.used_flag ?? r.is_used_flag;
-  const ts   = r.used_at ?? r.claimed_at ?? r.redeemed_at;
-  const num1 = Number(r.used ?? r.is_used ?? r.used_flag) === 1;
+  function render(allRows) {
+    if (!els.list) return;
 
-  return Boolean(flag) || !!ts || num1 ||
-         statusRaw === 'used' || statusRaw === 'redeemed' || statusRaw === 'claimed' ||
-         statusRaw === 'true' || statusRaw === 'yes' || statusRaw === '1';
-}
+    // นับยอด
+    const total = allRows.length;
+    const unused = allRows.filter(r => !usedFlag(r)).length;
+    const used   = total - unused;
+    if (els.badgeAll)    els.badgeAll.textContent    = total;
+    if (els.badgeUnused) els.badgeUnused.textContent = unused;
+    if (els.badgeUsed)   els.badgeUsed.textContent   = used;
 
-  function render(rows=[]){
-    if (!rows.length){
+    // กรองตามแท็บ
+    let rows = allRows;
+    if (COUPON_FILTER === 'unused') rows = allRows.filter(r => !usedFlag(r));
+    if (COUPON_FILTER === 'used')   rows = allRows.filter(r =>  usedFlag(r));
+
+    if (!rows.length) {
       els.list.innerHTML = '';
       els.empty?.classList.remove('d-none');
       return;
     }
     els.empty?.classList.add('d-none');
+
     els.list.innerHTML = rows.map(r => {
       const code   = r.code || r.coupon || r.coupon_code || r.id || '';
       const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
-      const used = isCouponUsed(r);
+      const used   = usedFlag(r);
       const badge  = used
-        ? `<span class="badge bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
-        : `<span class="badge bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
+        ? `<span class="badge text-bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
+        : `<span class="badge text-bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
       return `
         <div class="card mb-2 shadow-sm">
           <div class="card-body d-flex align-items-center gap-3">
             <div class="flex-grow-1">
               <div class="fw-semibold">${esc(code)}</div>
-              <div class="small text-muted">+${points} คะแนน</div>
+              <div class="text-muted small">+${points} คะแนน</div>
             </div>
             <div class="me-2">${badge}</div>
-            <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}">
+            <button class="btn btn-outline-secondary btn-sm" data-act="copy" data-code="${escAttr(code)}" title="คัดลอกรหัส">
               <i class="fa-regular fa-copy"></i>
             </button>
-            <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}">
+            <button class="btn btn-primary btn-sm" data-act="qr" data-code="${escAttr(code)}" title="แสดง QR">
               <i class="fa-solid fa-qrcode"></i>
             </button>
           </div>
@@ -460,24 +508,26 @@ window.openSheet   = openSheet;
     }).join('');
   }
 
-  async function loadCoupons(){
+  async function loadCoupons() {
+    if (!els.list) return;
     els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
-    try{
+    try {
       const adminUid = getAdminUid();
       const resp = await tryMany(
         ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
         { cache: 'no-store' }
       );
-      render(pickRows(resp.data));
-    }catch(e){
+      COUPON_ROWS = sortNewestFirst(pickRows(resp.data));
+      render(COUPON_ROWS);
+    } catch (e) {
       console.error('loadCoupons error', e);
       els.list.innerHTML = '';
       els.empty?.classList.remove('d-none');
-      Swal?.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+      if (window.Swal) Swal.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
     }
   }
 
-  async function generateCoupons(){
+  async function generateCoupons() {
     const adminUid = getAdminUid();
     const qty  = Math.max(1, Number(els.qty?.value || 1));
     const pts  = Math.max(1, Number(els.pts?.value || 1));
@@ -485,109 +535,144 @@ window.openSheet   = openSheet;
 
     const body = {
       adminUid,
-      amount: qty, qty, count: qty,         // ส่งชื่อซ้ำๆ กันให้หลังบ้านรับได้แน่
+      amount: qty, qty, count: qty,
       points: pts, point: pts, value: pts,
       prefix: pref || undefined
     };
 
-    const disableBtn = (on) => {
-      const b = els.btnGen || $('btnGenerateCoupons');
-      if (!b) return;
-      if (on) b.setAttribute('disabled','disabled');
-      else b.removeAttribute('disabled');
-    };
-
-    try{
-      disableBtn(true);
+    try {
+      els.btnGen?.setAttribute('disabled','disabled');
       await tryMany(ENDPOINT_GEN, {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(body)
       });
-      Swal?.fire('สำเร็จ','สร้างคูปองแล้ว','success');
-      await loadCoupons();
-    }catch(e){
+      if (window.Swal) Swal.fire('สำเร็จ','สร้างคูปองแล้ว','success');
+      await loadCoupons(); // จะเรียง “ล่าสุดก่อน” ให้ทันที
+    } catch (e) {
       console.error('generateCoupons error', e);
-      Swal?.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
-    }finally{
-      disableBtn(false);
+      if (window.Swal) Swal.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+    } finally {
+      els.btnGen?.removeAttribute('disabled');
     }
   }
 
-  // QR ที่เสถียร: ใช้ qrcodejs ถ้ามี, ไม่งั้น fallback เป็น QuickChart
-  // ===== QR helper (ใช้ qrcode.min.js วาดลง #qrBox โดยตรง) =====
-function showQr(code) {
-  const box  = document.getElementById('qrBox');
-  const text = document.getElementById('qrText');
-  const dl   = document.getElementById('btnDownloadQR');
-
-  if (!box) return;
-
-  // ล้างของเดิม แล้ววาดใหม่
-  box.innerHTML = '';
-  if (window.QRCode) {
-    new QRCode(box, {
-      text: String(code || ''),
-      width: 240,
-      height: 240,
-      correctLevel: QRCode.CorrectLevel.M
-    });
-  } else {
-    // เผื่อไม่มี lib จริง ๆ ให้ fallback เป็นข้อความ
-    box.textContent = code;
+  // ===== QR Modal helpers =====
+  function setQrStatus(html) {
+    if (els.qrStatus) els.qrStatus.innerHTML = html;
   }
 
-  if (text) text.textContent = code || '';
-
-  // เซ็ตลิงก์ดาวน์โหลดจาก canvas/img ที่เพิ่งวาด
-  setTimeout(() => {
-    const dataUrl =
-      box.querySelector('canvas')?.toDataURL('image/png') ||
-      box.querySelector('img')?.src || '';
-
-    if (dl && dataUrl) {
-      dl.href = dataUrl;
-      dl.download = `${code || 'coupon'}.png`;
+  function openQrModal(code) {
+    // แสดงภาพ QR
+    if (els.qrBox) {
+      els.qrBox.innerHTML = '';
+      const img = new Image();
+      img.alt = 'QR code';
+      img.className = 'img-fluid';
+      img.src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(code)}`;
+      els.qrBox.appendChild(img);
+      if (els.btnDownloadQR) els.btnDownloadQR.href = img.src.replace('260x260','1024x1024');
     }
-  }, 50);
+    if (els.qrText) els.qrText.textContent = code;
+    setQrStatus(`<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i> กำลังรอการใช้คูปอง…</div>`);
 
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('qrModal')).show();
-}
+    // ปุ่มคัดลอก
+    els.btnCopyCode?.addEventListener('click', () => navigator.clipboard?.writeText(code), { once:true });
 
-// รีเฟรชรายการคูปองอัตโนมัติเมื่อปิด QR Modal
-document.addEventListener('DOMContentLoaded', () => {
-  const el = document.getElementById('qrModal');
-  if (!el) return;
-  el.addEventListener('hidden.bs.modal', () => {
-    // หน่วงนิดหน่อยเผื่อ backend เพิ่งอัปเดตสถานะ
-    setTimeout(() => {
-      if (typeof loadCoupons === 'function') loadCoupons();
-    }, 200);
-  });
-});
+    // เริ่มติดตามสถานะ (polling)
+    startTrack(code);
 
-  // delegate copy/qr
+    // แสดง modal
+    bootstrap.Modal.getOrCreateInstance(els.qrModal).show();
+  }
+
+  function stopTrack() {
+    if (trackTimer) clearInterval(trackTimer);
+    trackTimer = null;
+  }
+
+  async function pollOnce(code) {
+    // วิธีง่ายสุด: โหลดลิสต์แล้วหาโค้ดนั้น ๆ
+    // (ถ้า backend รองรับ ?code=xxx ก็เปลี่ยนมาใช้แบบเจาะได้)
+    const adminUid = getAdminUid();
+    const resp = await tryMany(
+      ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
+      { cache: 'no-store' }
+    );
+    const rows = pickRows(resp.data);
+    const row = rows.find(r => (r.code || r.coupon || r.coupon_code || r.id || '') === code);
+    return row ? usedFlag(row) : false;
+  }
+
+  function startTrack(code) {
+    stopTrack();
+    const t0 = Date.now();
+
+    const tick = async () => {
+      try {
+        const used = await pollOnce(code);
+        if (used) {
+          setQrStatus(`<div class="text-success small"><i class="fa-solid fa-circle-check me-1"></i> ใช้แล้ว — อัปเดตรายการ…</div>`);
+          if (navigator?.vibrate) navigator.vibrate(80);
+          stopTrack();
+          await loadCoupons(); // รีเฟรชรายการให้สถานะเปลี่ยนเป็น “ใช้แล้ว”
+        } else {
+          // ยังไม่ใช้ — แสดงสปินเนอร์ต่อไป
+          const elapsed = Math.floor((Date.now()-t0)/1000);
+          setQrStatus(`<div class="text-muted small"><i class="fa-solid fa-spinner fa-spin me-1"></i> รอการใช้คูปอง… (${elapsed}s)</div>`);
+        }
+        // หมดเวลา
+        if (Date.now() - t0 > TRACK_TIMEOUT_MS) {
+          setQrStatus(`<div class="text-warning small"><i class="fa-regular fa-clock me-1"></i> หมดเวลารอ กรุณาปิดหน้าต่างนี้หรือสแกนใหม่</div>`);
+          stopTrack();
+        }
+      } catch (e) {
+        console.warn('track error', e);
+      }
+    };
+
+    tick(); // ยิงทันที 1 ครั้ง
+    trackTimer = setInterval(tick, TRACK_INTERVAL_MS);
+  }
+
+  // ==== Events ====
+  // คลิกที่รายการคูปอง (คัดลอก/QR)
   els.list?.addEventListener('click', (ev) => {
-  const btn = ev.target.closest('button[data-act]');
-  if (!btn) return;
-  const code = btn.dataset.code || '';
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const code = btn.dataset.code || '';
+    if (!code) return;
 
-  if (btn.dataset.act === 'copy') {
-    navigator.clipboard?.writeText(code);
-    if (window.Swal) Swal.fire({toast:true,position:'top',timer:1300,showConfirmButton:false,icon:'success',title:'คัดลอกแล้ว'});
-  } else if (btn.dataset.act === 'qr') {
-    showQr(code);   // << ใช้ตัวนี้แทนการเรียกเว็บ QR ภายนอก
-  }
-});
+    if (btn.dataset.act === 'copy') {
+      navigator.clipboard?.writeText(code);
+      window.Swal?.fire({ toast:true, position:'top', timer:1200, showConfirmButton:false, icon:'success', title:'คัดลอกแล้ว' });
+    } else if (btn.dataset.act === 'qr') {
+      openQrModal(code);
+    }
+  });
 
-  // bind ปุ่มทั้ง 2 id
+  // ปุ่มรีเฟรช/สร้าง
   els.btnReload?.addEventListener('click', loadCoupons);
-  (els.btnGen || $('btnGenerateCoupons'))?.addEventListener('click', generateCoupons);
+  els.btnGen?.addEventListener('click', generateCoupons);
 
-  // โหลดอัตโนมัติ
-  loadCoupons();
+  // เปลี่ยนแท็บกรอง
+  els.tabs?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-filter]');
+    if (!btn) return;
+    // active UI
+    els.tabs.querySelectorAll('.nav-link').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    // set filter & render
+    COUPON_FILTER = btn.dataset.filter || 'all';
+    render(COUPON_ROWS);
+  });
 
-  // เผื่อมี inline/onlick เก่า
-  window.generateCoupons = generateCoupons;
-  window.loadCoupons     = loadCoupons;
+  // ปิด QR modal แล้วหยุดติดตาม + รีโหลดอีกทีเพื่อความชัวร์
+  els.qrModal?.addEventListener('hidden.bs.modal', () => {
+    stopTrack();
+    setTimeout(() => { if (typeof loadCoupons === 'function') loadCoupons(); }, 200);
+  });
+
+  // โหลดอัตโนมัติเมื่อหน้า/แผงพร้อม
+  if (els.list) loadCoupons();
 })();
