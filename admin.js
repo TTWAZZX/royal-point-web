@@ -105,6 +105,16 @@ async function reloadAllUsers(){
   }
 }
 
+function sortCouponsNewestFirst(rows = []) {
+  return [...rows].sort((a, b) => {
+    const ad = +new Date(a.created_at || a.createdAt || a.time || 0);
+    const bd = +new Date(b.created_at || b.createdAt || b.time || 0);
+    if (ad && bd && ad !== bd) return bd - ad;      // ใหม่ก่อน
+    // เผื่อหลังบ้านไม่ส่งเวลา: เรียงตาม id/code แบบ desc เป็นตัวสำรอง
+    return String(b.id || b.code || '').localeCompare(String(a.id || a.code || ''));
+  });
+}
+
 function renderList(rows){
   const box = $id("listUsers");
   if (!rows || rows.length===0){
@@ -137,6 +147,7 @@ function renderList(rows){
     const score = Number(card.dataset.score||0);
     openSheet(uid, name, score);
   };
+
 }
 
 // ============ EVENTS ============
@@ -404,6 +415,18 @@ window.openSheet   = openSheet;
     throw lastErr || new Error('all_endpoints_failed');
   }
 
+  function isCouponUsed(r){
+  // รองรับหลายฟิลด์/รูปแบบชื่อ
+  const statusRaw = (r.status ?? r.state ?? '').toString().toLowerCase();
+  const flag = r.used ?? r.is_used ?? r.redeemed ?? r.claimed ?? r.isClaimed ?? r.used_flag ?? r.is_used_flag;
+  const ts   = r.used_at ?? r.claimed_at ?? r.redeemed_at;
+  const num1 = Number(r.used ?? r.is_used ?? r.used_flag) === 1;
+
+  return Boolean(flag) || !!ts || num1 ||
+         statusRaw === 'used' || statusRaw === 'redeemed' || statusRaw === 'claimed' ||
+         statusRaw === 'true' || statusRaw === 'yes' || statusRaw === '1';
+}
+
   function render(rows=[]){
     if (!rows.length){
       els.list.innerHTML = '';
@@ -414,7 +437,7 @@ window.openSheet   = openSheet;
     els.list.innerHTML = rows.map(r => {
       const code   = r.code || r.coupon || r.coupon_code || r.id || '';
       const points = Number(r.points ?? r.point ?? r.amount ?? r.value ?? 0);
-      const used   = !!(r.used ?? r.is_used ?? r.redeemed ?? (r.status === 'used'));
+      const used = isCouponUsed(r);
       const badge  = used
         ? `<span class="badge bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
         : `<span class="badge bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
@@ -530,6 +553,18 @@ function showQr(code) {
 
   bootstrap.Modal.getOrCreateInstance(document.getElementById('qrModal')).show();
 }
+
+// รีเฟรชรายการคูปองอัตโนมัติเมื่อปิด QR Modal
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('qrModal');
+  if (!el) return;
+  el.addEventListener('hidden.bs.modal', () => {
+    // หน่วงนิดหน่อยเผื่อ backend เพิ่งอัปเดตสถานะ
+    setTimeout(() => {
+      if (typeof loadCoupons === 'function') loadCoupons();
+    }, 200);
+  });
+});
 
   // delegate copy/qr
   els.list?.addEventListener('click', (ev) => {
