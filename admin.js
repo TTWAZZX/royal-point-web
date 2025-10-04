@@ -492,36 +492,58 @@ window.openSheet   = openSheet;
   }
 
   // QR ที่เสถียร: ใช้ qrcodejs ถ้ามี, ไม่งั้น fallback เป็น QuickChart
-  function showQr(code){
-    const box = $('qrBox'); if (!box) return;
-    box.innerHTML = '';
-    if (window.QRCode){
-      new QRCode(box, { text: code, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
-    }else{
-      const img = new Image();
-      img.alt = 'QR code';
-      img.width = 240; img.height = 240;
-      img.src = `https://quickchart.io/qr?text=${encodeURIComponent(code)}&size=240`;
-      box.appendChild(img);
-    }
-    $('qrText')?.replaceChildren(document.createTextNode(code));
-    const dl = $('btnDownloadQR');
-    if (dl) dl.href = `https://quickchart.io/qr?text=${encodeURIComponent(code)}&size=1024`;
-    $('btnCopyCode')?.addEventListener('click', ()=> navigator.clipboard?.writeText(code), { once:true });
-    bootstrap.Modal.getOrCreateInstance($('qrModal')).show();
+  // ===== QR helper (ใช้ qrcode.min.js วาดลง #qrBox โดยตรง) =====
+function showQr(code) {
+  const box  = document.getElementById('qrBox');
+  const text = document.getElementById('qrText');
+  const dl   = document.getElementById('btnDownloadQR');
+
+  if (!box) return;
+
+  // ล้างของเดิม แล้ววาดใหม่
+  box.innerHTML = '';
+  if (window.QRCode) {
+    new QRCode(box, {
+      text: String(code || ''),
+      width: 240,
+      height: 240,
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } else {
+    // เผื่อไม่มี lib จริง ๆ ให้ fallback เป็นข้อความ
+    box.textContent = code;
   }
 
-  // delegate copy/qr
-  els.list.addEventListener('click', (ev)=>{
-    const btn = ev.target.closest('button[data-act]'); if (!btn) return;
-    const code = btn.dataset.code || '';
-    if (btn.dataset.act === 'copy'){
-      navigator.clipboard?.writeText(code);
-      Swal?.fire({toast:true,position:'top',timer:1200,showConfirmButton:false,icon:'success',title:'คัดลอกแล้ว'});
-    }else if (btn.dataset.act === 'qr'){
-      showQr(code);
+  if (text) text.textContent = code || '';
+
+  // เซ็ตลิงก์ดาวน์โหลดจาก canvas/img ที่เพิ่งวาด
+  setTimeout(() => {
+    const dataUrl =
+      box.querySelector('canvas')?.toDataURL('image/png') ||
+      box.querySelector('img')?.src || '';
+
+    if (dl && dataUrl) {
+      dl.href = dataUrl;
+      dl.download = `${code || 'coupon'}.png`;
     }
-  });
+  }, 50);
+
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('qrModal')).show();
+}
+
+  // delegate copy/qr
+  els.list?.addEventListener('click', (ev) => {
+  const btn = ev.target.closest('button[data-act]');
+  if (!btn) return;
+  const code = btn.dataset.code || '';
+
+  if (btn.dataset.act === 'copy') {
+    navigator.clipboard?.writeText(code);
+    if (window.Swal) Swal.fire({toast:true,position:'top',timer:1300,showConfirmButton:false,icon:'success',title:'คัดลอกแล้ว'});
+  } else if (btn.dataset.act === 'qr') {
+    showQr(code);   // << ใช้ตัวนี้แทนการเรียกเว็บ QR ภายนอก
+  }
+});
 
   // bind ปุ่มทั้ง 2 id
   els.btnReload?.addEventListener('click', loadCoupons);
