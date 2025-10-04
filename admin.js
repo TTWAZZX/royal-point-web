@@ -356,72 +356,56 @@ window.doAdjust    = doAdjust;
 window.confirmReset= confirmReset;
 window.openSheet   = openSheet;
 
-/* =====================  COUPONS – ADMIN (fixed, self-contained)  ===================== */
+/* =====================  COUPONS – ADMIN (stable)  ===================== */
 (() => {
-  // รองรับหลาย endpoint เผื่อโฟลเดอร์ API ต่างชื่อ
-  const ENDPOINT_LIST = [
-    '/api/admin-coupons',
-    '/api/admin/coupons',
-    '/api/list-coupons',
-  ];
-  const ENDPOINT_GEN = [
-    '/api/admin-coupons-generate',
-    '/api/admin/coupons/generate',
-    '/api/coupons/generate',
-  ];
+  // รองรับหลาย endpoint เผื่อเปลี่ยนโฟลเดอร์ API
+  const ENDPOINT_LIST = ['/api/admin-coupons','/api/admin/coupons','/api/list-coupons'];
+  const ENDPOINT_GEN  = ['/api/admin-coupons-generate','/api/admin/coupons/generate','/api/coupons/generate'];
 
-  // อ้างอิง element ให้ตรงกับ admin.html
+  // อ้างอิง element ให้ตรงกับ admin.html (รองรับทั้ง 2 id ของปุ่ม)
+  const $ = (id) => document.getElementById(id);
   const els = {
-    list:     document.getElementById('couponList'),
-    empty:    document.getElementById('couponEmpty'),
-    btnReload:document.getElementById('btnReloadCoupons'),
-    btnGen:   document.getElementById('btnGenCoupons'),
-    qty:      document.getElementById('genQty'),
-    pts:      document.getElementById('genPoints'),
-    prefix:   document.getElementById('genPrefix'),
+    list: $('couponList'),
+    empty: $('couponEmpty'),
+    btnReload: $('btnReloadCoupons'),
+    btnGen: $('btnGenCoupons') || $('btnGenerateCoupons'),
+    qty: $('genQty'),
+    pts: $('genPoints'),
+    prefix: $('genPrefix'),
   };
+  if (!els.list) return; // ถ้าไม่มีแผงคูปองบนหน้านี้ ไม่ต้องรันต่อ
 
-  // uid แอดมินจาก state เดิม
   const getAdminUid = () =>
     (typeof ADMIN_UID !== 'undefined' && ADMIN_UID) ||
-    window.__UID ||
-    localStorage.getItem('uid') ||
-    '';
+    window.__UID || localStorage.getItem('uid') || '';
 
-  // utils
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, m => (
-    { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[m]
-  ));
-  const escAttr = s => esc(s).replace(/"/g,'&quot;');
-  const pickRows = p => Array.isArray(p?.data) ? p.data :
-                        Array.isArray(p) ? p :
-                        Array.isArray(p?.items) ? p.items : [];
+  // util เล็กๆ
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const escAttr = (s) => esc(s).replace(/"/g,'&quot;');
+  const pickRows = (p) => Array.isArray(p?.data) ? p.data : Array.isArray(p) ? p : Array.isArray(p?.items) ? p.items : [];
 
-  async function fetchJson(url, opts) {
-    const res  = await fetch(url, opts);
-    const text = await res.text();
+  async function fetchJson(url, opts){
+    const r = await fetch(url, opts);
+    const t = await r.text();
     try {
-      const j = JSON.parse(text);
-      if (!res.ok || j?.status === 'error') throw new Error(j?.message || res.statusText);
+      const j = JSON.parse(t);
+      if (!r.ok || j?.status === 'error') throw new Error(j?.message || r.statusText);
       return j;
     } catch {
-      if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+      if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
       return { status: 'success', data: [] };
     }
   }
-
-  async function tryMany(endpoints, opts) {
+  async function tryMany(endpoints, opts){
     let lastErr;
-    for (const u of endpoints) {
-      try { return await fetchJson(u, opts); }
-      catch (e) { lastErr = e; }
+    for (const u of endpoints){
+      try { return await fetchJson(u, opts); } catch(e){ lastErr = e; }
     }
     throw lastErr || new Error('all_endpoints_failed');
   }
 
-  function render(rows = []) {
-    if (!els.list) return;
-    if (!rows.length) {
+  function render(rows=[]){
+    if (!rows.length){
       els.list.innerHTML = '';
       els.empty?.classList.remove('d-none');
       return;
@@ -435,7 +419,7 @@ window.openSheet   = openSheet;
         ? `<span class="badge bg-danger"><i class="fa-solid fa-xmark"></i> ใช้แล้ว</span>`
         : `<span class="badge bg-success"><i class="fa-solid fa-check"></i> ยังไม่ใช้</span>`;
       return `
-        <div class="card mb-2">
+        <div class="card mb-2 shadow-sm">
           <div class="card-body d-flex align-items-center gap-3">
             <div class="flex-grow-1">
               <div class="fw-semibold">${esc(code)}</div>
@@ -453,25 +437,24 @@ window.openSheet   = openSheet;
     }).join('');
   }
 
-  async function loadCoupons() {
-    if (!els.list) return;
+  async function loadCoupons(){
     els.list.innerHTML = `<div class="text-center text-muted py-3">กำลังโหลด…</div>`;
-    try {
+    try{
       const adminUid = getAdminUid();
       const resp = await tryMany(
         ENDPOINT_LIST.map(u => `${u}?adminUid=${encodeURIComponent(adminUid)}`),
         { cache: 'no-store' }
       );
       render(pickRows(resp.data));
-    } catch (e) {
+    }catch(e){
       console.error('loadCoupons error', e);
       els.list.innerHTML = '';
       els.empty?.classList.remove('d-none');
-      if (window.Swal) Swal.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+      Swal?.fire('โหลดคูปองไม่สำเร็จ', e.message || 'server error', 'error');
     }
   }
 
-  async function generateCoupons() {
+  async function generateCoupons(){
     const adminUid = getAdminUid();
     const qty  = Math.max(1, Number(els.qty?.value || 1));
     const pts  = Math.max(1, Number(els.pts?.value || 1));
@@ -479,59 +462,75 @@ window.openSheet   = openSheet;
 
     const body = {
       adminUid,
-      amount: qty, qty, count: qty,
+      amount: qty, qty, count: qty,         // ส่งชื่อซ้ำๆ กันให้หลังบ้านรับได้แน่
       points: pts, point: pts, value: pts,
-      prefix: pref || undefined,
+      prefix: pref || undefined
     };
 
-    try {
-      els.btnGen?.setAttribute('disabled','disabled');
+    const disableBtn = (on) => {
+      const b = els.btnGen || $('btnGenerateCoupons');
+      if (!b) return;
+      if (on) b.setAttribute('disabled','disabled');
+      else b.removeAttribute('disabled');
+    };
+
+    try{
+      disableBtn(true);
       await tryMany(ENDPOINT_GEN, {
         method: 'POST',
         headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(body)
       });
-      if (window.Swal) Swal.fire('สำเร็จ','สร้างคูปองแล้ว','success');
+      Swal?.fire('สำเร็จ','สร้างคูปองแล้ว','success');
       await loadCoupons();
-    } catch (e) {
+    }catch(e){
       console.error('generateCoupons error', e);
-      if (window.Swal) Swal.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
-    } finally {
-      els.btnGen?.removeAttribute('disabled');
+      Swal?.fire('สร้างคูปองไม่สำเร็จ', e.message || 'server error', 'error');
+    }finally{
+      disableBtn(false);
     }
   }
 
-  // copy/QR delegation
-  els.list?.addEventListener('click', (ev) => {
-    const btn = ev.target.closest('button[data-act]');
-    if (!btn) return;
+  // QR ที่เสถียร: ใช้ qrcodejs ถ้ามี, ไม่งั้น fallback เป็น QuickChart
+  function showQr(code){
+    const box = $('qrBox'); if (!box) return;
+    box.innerHTML = '';
+    if (window.QRCode){
+      new QRCode(box, { text: code, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M });
+    }else{
+      const img = new Image();
+      img.alt = 'QR code';
+      img.width = 240; img.height = 240;
+      img.src = `https://quickchart.io/qr?text=${encodeURIComponent(code)}&size=240`;
+      box.appendChild(img);
+    }
+    $('qrText')?.replaceChildren(document.createTextNode(code));
+    const dl = $('btnDownloadQR');
+    if (dl) dl.href = `https://quickchart.io/qr?text=${encodeURIComponent(code)}&size=1024`;
+    $('btnCopyCode')?.addEventListener('click', ()=> navigator.clipboard?.writeText(code), { once:true });
+    bootstrap.Modal.getOrCreateInstance($('qrModal')).show();
+  }
+
+  // delegate copy/qr
+  els.list.addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('button[data-act]'); if (!btn) return;
     const code = btn.dataset.code || '';
-    if (btn.dataset.act === 'copy') {
+    if (btn.dataset.act === 'copy'){
       navigator.clipboard?.writeText(code);
-      if (window.Swal) Swal.fire({toast:true,position:'top',timer:1300,showConfirmButton:false,icon:'success',title:'คัดลอกแล้ว'});
-    } else if (btn.dataset.act === 'qr') {
-      const box  = document.getElementById('qrBox');
-      const text = document.getElementById('qrText');
-      const img  = new Image();
-      img.src = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(code)}`;
-      if (box) { box.innerHTML = ''; box.appendChild(img); }
-      if (text) text.textContent = code;
-      const dl = document.getElementById('btnDownloadQR');
-      if (dl) dl.href = img.src.replace('260x260','1024x1024');
-      const cp = document.getElementById('btnCopyCode');
-      cp?.addEventListener('click', ()=> navigator.clipboard?.writeText(code), { once:true });
-      bootstrap.Modal.getOrCreateInstance(document.getElementById('qrModal')).show();
+      Swal?.fire({toast:true,position:'top',timer:1200,showConfirmButton:false,icon:'success',title:'คัดลอกแล้ว'});
+    }else if (btn.dataset.act === 'qr'){
+      showQr(code);
     }
   });
 
-  // bind ปุ่ม
+  // bind ปุ่มทั้ง 2 id
   els.btnReload?.addEventListener('click', loadCoupons);
-  els.btnGen?.addEventListener('click', generateCoupons);
+  (els.btnGen || $('btnGenerateCoupons'))?.addEventListener('click', generateCoupons);
 
-  // --- expose ให้โค้ด/onclick ภายนอกเรียกได้ ---
+  // โหลดอัตโนมัติ
+  loadCoupons();
+
+  // เผื่อมี inline/onlick เก่า
   window.generateCoupons = generateCoupons;
   window.loadCoupons     = loadCoupons;
-
-  // auto load เมื่อมี panel คูปอง
-  if (els.list) loadCoupons();
 })();
