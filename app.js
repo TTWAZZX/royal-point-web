@@ -410,6 +410,48 @@ function setLastUpdated(ts = Date.now(), fromCache = false){
 }
 window.setLastUpdated = setLastUpdated;
 
+// ---- OVERRIDE: ซ่อนข้อความ "อัปเดตล่าสุด" บนหัวโปรไฟล์ แต่คง tooltip ของปุ่มรีเฟรช ----
+(function(){
+  // เก็บฟังก์ชันเดิมไว้เผื่ออนาคต (ตอนนี้ยังไม่เรียกกลับ เพราะเดี๋ยวมันจะไปใส่ข้อความคืน)
+  const _orig = window.setLastUpdated;
+
+  window.setLastUpdated = function(ts = Date.now(), fromCache = false){
+    // 1) อัปเดต tooltip ของปุ่มรีเฟรชตามเดิม (เผื่ออยากชี้เมาส์ดูเวลาได้)
+    const btn = document.getElementById('refreshBtn');
+    if (btn){
+      const d = new Date(ts);
+      const text =
+        `${fromCache ? 'อัปเดตจากแคช' : 'อัปเดตล่าสุด'}: ` +
+        d.toLocaleString('th-TH', {
+          year:'numeric', month:'2-digit', day:'2-digit',
+          hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+        });
+
+      btn.setAttribute('title', text);
+      btn.setAttribute('data-bs-original-title', text);
+      try {
+        let tip = bootstrap.Tooltip.getInstance(btn);
+        if (!tip) tip = new bootstrap.Tooltip(btn);
+        if (typeof tip.setContent === 'function') {
+          tip.setContent({ '.tooltip-inner': text });   // Bootstrap 5.3+
+        } else {
+          tip.update();                                  // Bootstrap 5.0–5.2
+        }
+      } catch {}
+    }
+
+    // 2) ล้าง/ซ่อนข้อความบนหัวโปรไฟล์
+    const el = document.querySelector('#lastUpdated, [data-last-updated]');
+    if (el){
+      el.textContent = '';         // ล้างข้อความ
+      el.classList.add('hidden');  // ถ้ามี CSS .hidden อยู่แล้วจะหายทันที
+      // ถ้าอยากลบออกจาก DOM เลย ให้ใช้บรรทัดล่างแทน:
+      // el.remove();
+    }
+
+    // 3) ไม่เรียก _orig(ts, fromCache) เพราะของเดิมจะไปเขียนข้อความทับกลับมาอีกรอบ
+  };
+})();
 
 function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
