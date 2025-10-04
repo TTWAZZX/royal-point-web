@@ -1,4 +1,3 @@
-// /api/admin-coupons-generate.js
 import { createClient } from '@supabase/supabase-js';
 
 function genCode(len = 6) {
@@ -32,12 +31,14 @@ export default async function handler(req, res) {
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+  const nowIso = new Date().toISOString();
   const rows = Array.from({ length: n }, () => ({
     code: (prefix || '') + genCode(6),
     point: p,
-    status: 'unused',   // ← ตรงกับ schema ของคุณ
+    status: 'unused',
     claimer: null,
-    used_at: null
+    used_at: null,
+    created_at: nowIso
   }));
 
   const { error } = await supabase.from('coupons').insert(rows);

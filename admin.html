@@ -270,6 +270,24 @@
         </div>
       </div>
     </div>
+    <div class="modal fade" id="qrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-solid fa-qrcode me-2"></i>QR ของคูปอง</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <div id="qrBox" class="d-flex justify-content-center"></div>
+        <div id="qrText" class="mt-2 small text-muted"></div>
+      </div>
+      <div class="modal-footer">
+        <a id="btnDownloadQR" class="btn btn-outline-secondary" target="_blank" rel="noopener">ดาวน์โหลด</a>
+        <button id="btnCopyCode" class="btn btn-primary">คัดลอกรหัส</button>
+      </div>
+    </div>
+  </div>
+</div>
 
     <!-- Skeleton while loading -->
     <div id="adminSkeleton" class="vstack gap-2 mb-3" style="display:none">
@@ -283,6 +301,8 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- QR code (client-side) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <!-- Admin logic (single entry) -->
   <script src="/admin.js" defer></script>

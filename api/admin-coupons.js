@@ -1,4 +1,3 @@
-// /api/admin-coupons.js
 import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
@@ -15,22 +14,22 @@ export default async function handler(req, res) {
 
   const { data, error } = await supabase
     .from('coupons')
-    .select('code, point, status, claimer, used_at')
-    .order('used_at', { ascending: false })
+    .select('code, point, status, claimer, used_at, created_at')
+    .order('created_at', { ascending: false })  // ใหม่ก่อน
     .order('code', { ascending: true });
 
   if (error) {
     return res.status(500).json({ status: 'error', message: error.message });
   }
 
-  // map ให้ฝั่งหน้าใช้สะดวก
-  const items = (data || []).map((r) => ({
+  const items = (data || []).map(r => ({
     code: r.code,
     points: r.point,
     status: r.status,
     used: r.status === 'used',
     claimer: r.claimer,
     used_at: r.used_at,
+    created_at: r.created_at
   }));
 
   return res.status(200).json({ status: 'success', data: items });
