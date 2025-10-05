@@ -3462,3 +3462,79 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-profile-card #tierTag{
   width: clamp(220px, 60%, 420px); /* ปรับ 60% ตามใจ */
 }
+
+/* ================= Balanced chips (auto width, centered, equal gap) ================= */
+.rp-profile-card{
+  --chip-gap: 10px;              /* ปรับช่องไฟบน-ล่างระหว่างบล็อกสองอันให้เท่ากันจากตัวแปรนี้ */
+}
+
+/* ให้คอนเทนเนอร์ของสองชิปจัดกึ่งกลางจริง ๆ */
+.rp-profile-card .rp-xp-pair,
+.rp-profile-card .rp-status-center{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--chip-gap);   /* ช่องไฟเท่ากันทั้งสองบล็อก */
+}
+
+/* ชิปทั้งสอง: หน้าตาเดียวกัน + กว้างตามข้อความ */
+.rp-profile-card #xpPair,
+.rp-profile-card #tierTag{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  padding: 4px 12px;
+  min-height: 28px;
+  border-radius: 999px;
+
+  /* กว้างตามข้อความจริง (ไม่ล็อกเป็น % แล้ว) */
+  width: fit-content;
+  max-width: 96%;                /* กันยาวล้นการ์ดแบบสุด ๆ */
+  white-space: nowrap;           /* ให้เป็นชิปบรรทัดเดียว ดูพรีเมียมขึ้น */
+  /* ถ้าต้องการให้ตัดบรรทัดแทน ให้เปลี่ยนเป็น white-space: normal; */
+
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2px;
+
+  background: linear-gradient(180deg,#f7f9fc,#edf1f7);
+  color: #334155;
+  border: 1px solid rgba(51,65,85,.12);
+  box-shadow: 0 1px 2px rgba(16,24,40,.06),
+              0 1px 0 rgba(255,255,255,.70) inset;
+}
+
+/* ไอคอนนำหน้าจาก data-ico (ถ้ามี) */
+.rp-profile-card #xpPair::before,
+.rp-profile-card #tierTag::before{
+  content: attr(data-ico);
+  font-size: 14px;
+  transform: translateY(-.5px);
+}
+
+/* สีชิปสถานะตาม tier (ธีมเดิมของคุณ) */
+.rp-profile-card[data-tier="silver"] #tierTag{
+  background: linear-gradient(180deg,#f5f7fa,#e9eef6);
+  color:#334155;
+}
+.rp-profile-card[data-tier="gold"] #tierTag{
+  background: linear-gradient(180deg,#fff6ce,#ffe28c);
+  border-color: #ffd16680;
+  color:#7a5b00;
+}
+.rp-profile-card[data-tier="platinum"] #tierTag{
+  background: linear-gradient(180deg,#e8f7ff,#d8f1ff);
+  border-color:#90cdf480;
+  color:#005c8a;
+}
+
+/* จอเล็ก – ลด padding/ตัวอักษรเล็กน้อย แต่ยังคง auto width ไว้ */
+@media (max-width: 360px){
+  .rp-profile-card #xpPair,
+  .rp-profile-card #tierTag{
+    padding: 4px 10px;
+    font-size: 11.5px;
+  }
+}
