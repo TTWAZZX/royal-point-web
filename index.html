@@ -70,7 +70,9 @@
         <span id="tierPill" class="rp-tier-pill rp-tier-silver">
           <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
         </span>
-      </div>
+      <!-- ย้ายมาที่นี่ -->
+  <span id="tierTag" class="rp-tag d-none" data-ico="✨">Max Level</span>
+</div>
     </div>
 
     <!-- คะแนนสะสม -->
@@ -81,22 +83,15 @@
       </div>
     </div>
 
-    <!-- Progress -->
-<div class="rp-progress-area mt-2">
+    <div class="rp-progress-area mt-2">
   <div id="progressBar" class="rp-progress-line prog-silver">
     <div id="progressFill" class="rp-progress-fill"></div>
   </div>
 
-  <!-- ชิปคู่: XP pair + Tier tag (อยู่บรรทัดเดียวกัน) -->
+  <!-- แถวนี้เหลือเฉพาะ xpPair -->
   <div class="text-center small rp-xp-pair xp-wrap">
     <span id="xpPair" data-ico="🎯">0 / 0 คะแนน</span>
-    <span id="tierTag" class="rp-tag d-none" data-ico="🥇">✨ Max Level</span>
   </div>
-</div>
-
-<!-- สถานะ (เก็บไว้เฉพาะตัวที่ JS ใช้, ห้ามมี tierTag ซ้ำ) -->
-<div class="rp-status-center mt-1">
-  <span id="next-tier" class="visually-hidden"></span>
 </div>
   </section>
 

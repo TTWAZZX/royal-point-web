@@ -3666,3 +3666,89 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
     max-width: 94%;
   }
 }
+
+/* ===== Header layout: วาง Max Level ข้างๆ tier pill ===== */
+.rp-profile-card .rp-title{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;                /* มือถือให้ขึ้นบรรทัดใหม่ได้ */
+}
+
+/* ป้าย Max Level แบบชิปพรีเมียม */
+.rp-profile-card #tierTag{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 12px;
+  border-radius:999px;
+  background:linear-gradient(180deg,#f3f6ff,#eaf0ff);
+  border:1px solid rgba(59,130,246,.22);
+  color:#1f2a5a;
+  font-weight:700;
+  font-size:12px;
+  line-height:1.25;
+  white-space:nowrap;            /* ไม่ตัดคำในจอกว้าง */
+  box-shadow:0 1px 2px rgba(16,24,40,.06), 0 1px 0 rgba(255,255,255,.7) inset;
+}
+.rp-profile-card #tierTag::before{
+  content:attr(data-ico);
+  font-size:14px;
+  position:relative;
+  top:-1px;
+}
+
+/* มือถือ: ให้ป้าย Max ลงบรรทัดใหม่และจัดกลาง */
+@media (max-width: 576px){
+  .rp-profile-card #tierTag{
+    width:100%;
+    justify-content:center;
+    text-align:center;
+  }
+}
+
+/* ===== XP pair แถวตัวเอง (ตรงกลาง, ความกว้างตามข้อความ) ===== */
+.rp-profile-card .rp-xp-pair{
+  display:flex;
+  justify-content:center;
+  margin-top:10px;
+}
+
+.rp-profile-card #xpPair{
+  display:inline-block;
+  padding:6px 12px;
+  border-radius:999px;
+  border:1px solid rgba(51,65,85,.12);
+  background:linear-gradient(180deg,#f7f9fc,#edf1f7);
+  color:#334155;
+  font-weight:700;
+  font-size:12px;
+  line-height:1.25;
+  max-width:92%;
+  white-space:normal;          /* ให้พับบรรทัดได้ถ้าข้อความยาว */
+  overflow-wrap:anywhere;
+  text-align:center;
+  box-shadow:0 1px 2px rgba(16,24,40,.06), 0 1px 0 rgba(255,255,255,.7) inset;
+}
+.rp-profile-card #xpPair::before{
+  content:attr(data-ico);
+  margin-right:6px;
+  font-size:14px;
+  position:relative;
+  top:-1px;
+}
+
+/* ระยะห่างแนวดิ่งให้ “เท่ากัน” ระหว่าง xpPair กับป้าย Max */
+.rp-profile-card .rp-progress-area{
+  --chip-gap: 10px;
+}
+.rp-profile-card .rp-title{ margin-bottom: var(--chip-gap); }
+.rp-profile-card .rp-xp-pair{ margin-top: var(--chip-gap); }
+
+@media (max-width: 480px){
+  .rp-profile-card #xpPair,
+  .rp-profile-card #tierTag{
+    font-size:11.5px;
+    padding:6px 11px;
+  }
+}
