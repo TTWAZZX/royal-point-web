@@ -3403,12 +3403,19 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 }
 .status-chip.hidden{ display:none; }
 
-.rp-status-center{display:flex;justify-content:center}
+/* กล่องชิปแสดงตลอด */
+.rp-status-center{ display:flex; justify-content:center; }
 .status-chip{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:.35rem .6rem;border-radius:999px;
+  display:inline-flex !important;       /* บังคับให้แสดง */
+  align-items:center; gap:6px;
+  padding:.35rem .6rem; border-radius:999px;
   background:var(--chip-bg,#f4f6f8);
   box-shadow:0 1px 0 rgba(0,0,0,.05);
-  font-weight:600;font-size:.9rem;
+  font-weight:600; font-size:.9rem;
+  transition:opacity .2s ease;
 }
-.status-chip.hidden{display:none;}
+
+/* เลิกใช้ hidden (กันสไตล์อื่นมาแอบซ่อน) */
+.status-chip.hidden,
+.status-chip.d-none{ display:inline-flex !important; }
+

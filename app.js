@@ -557,10 +557,9 @@ async function refreshUserScore(){
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
-// แสดง/ซ่อนข้อความ: “สะสมอีก X คะแนน → เลื่อนเป็น NextTier”
-/* ========== Next-tier Chip (robust) ========== */
+/* ===== Next-tier chip (always visible) ===== */
 function updateTierStatus(score){
-  // หา host; ถ้าไม่มี ให้สร้างไว้ใต้ .rp-progress-area
+  // host: ใช้ .rp-status-center ถ้ามี ไม่งั้นสร้างใต้ .rp-progress-area
   const host = document.querySelector('.rp-status-center') || (()=>{
     const h = document.createElement('div');
     h.className = 'rp-status-center mt-1';
@@ -568,92 +567,93 @@ function updateTierStatus(score){
     return h;
   })();
 
-  // หา/สร้างตัวชิป
+  // element: #tierStatus ถ้าไม่มีให้สร้าง
   let el = document.getElementById('tierStatus');
   if (!el){
     el = document.createElement('span');
     el.id = 'tierStatus';
-    el.className = 'status-chip hidden';
+    el.className = 'status-chip';
     host.appendChild(el);
   }
 
-  try{
-    const t = getTier(Number(score||0));         // {key, name, min, next}
-    // ยังมีเลเวลถัดไปอยู่ (next เป็นตัวเลขและมากกว่าคะแนนปัจจุบัน)
-    if (Number.isFinite(t.next) && t.next > score){
-      const remain   = Math.max(0, Math.round(t.next - score));
-      const nextName = (getTier(t.next)?.name) || 'ระดับถัดไป';
-      const emoji    = (window.TIER_EMOJI && TIER_EMOJI[nextName]) || '';
-      el.textContent = `สะสมอีก ${remain.toLocaleString('th-TH')} คะแนน → เลื่อนเป็น ${nextName} ${emoji}`;
-      el.classList.remove('hidden','d-none');
-    }else{
-      // อยู่ระดับสูงสุดแล้ว
-      el.textContent = '✨ Max Level';
-      el.classList.remove('hidden','d-none');
-    }
-  }catch(e){
-    // ถ้ามีอะไรผิดพลาด ซ่อนไว้เฉย ๆ
-    el.classList.add('hidden');
+  // คำนวณข้อความชิป
+  const s = Number(score || 0);
+  const t = getTier(s);                      // { key, name, min, next, ... }
+  const hasNext = Number.isFinite(t.next) && t.next > s;
+
+  if (hasNext){
+    const remain   = Math.max(0, Math.round(t.next - s));
+    const nextName = (getTier(t.next)?.name) || 'ระดับถัดไป';
+    const emoji    = (window.TIER_EMOJI && TIER_EMOJI[nextName]) || '';
+    el.textContent = `สะสมอีก ${remain.toLocaleString('th-TH')} คะแนน → เลื่อนเป็น ${nextName} ${emoji}`;
+  } else {
+    el.textContent = '✨ Max Level';
   }
+
+  // บังคับให้มองเห็นเสมอ
+  el.style.opacity = '1';
+  el.classList.remove('hidden','d-none');   // เผื่อมีคลาสเดิมหลงเหลือ
 }
 
-// อัปเดต UI ทั้งหมดจากคะแนนเดียว
-// อัปเดต UI ทั้งหมดจากคะแนนเดียว
+// อัปเดต UI ทั้งหมดจาก "คะแนนเดียว"
 function setPoints(score){
   score = Number(score || 0);
 
-  // --- Tier & Theme ---
-  const tier = getTier(score);              // { key, name, min, next, progClass }
+  // ---- Tier / Theme ----
+  const tier = getTier(score); // { key, name, min, next, progClass }
+
   if (typeof applyPremiumTheme === 'function') applyPremiumTheme(tier.key);
   if (typeof setAvatarArc      === 'function') setAvatarArc(score);
 
-  // --- ชื่อ/ป้ายระดับ & Max tag ---
-  setTierUI(tier, score);
+  // ---- ชื่อ/ป้ายระดับ & ไอคอนต่าง ๆ ----
+  if (typeof setTierUI === 'function') setTierUI(tier, score);
 
-  // --- ตัวเลขคะแนน (เด้งนุ่ม ๆ) ---
+  // ---- ตัวเลขคะแนน (เด้งนุ่ม ๆ) ----
   if (els?.points){
-    const from = (typeof prevScore === 'number') ? prevScore : Number(els.points.textContent || 0);
+    const from = (typeof prevScore === 'number')
+      ? prevScore
+      : Number(els.points.textContent || 0);
+
     if (from !== score) animateCount(els.points, from, score, 600);
   }
   if (typeof bumpScoreFx === 'function') bumpScoreFx();
 
-  // --- Progress bar สี + ความกว้าง ---
+  // ---- Progress bar สี + ความกว้าง ----
   if (els?.progressBar){
     els.progressBar.classList.remove('prog-silver','prog-gold','prog-platinum');
     els.progressBar.classList.add(tier.progClass);
   }
   if (els?.progressFill){
-    const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
-    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct*100))}%`;
+    const pct = (tier.next === Infinity)
+      ? 1
+      : (score - tier.min) / (tier.next - tier.min);
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
   }
 
-  // --- คู่ตัวเลข XP ใต้แถบ ---
+  // ---- คู่ตัวเลข XP ใต้แถบ ----
   if (typeof setXpPair === 'function') setXpPair(score);
+  if (typeof bumpXpFill === 'function') bumpXpFill();
 
-  // --- ข้อความ "สะสมอีก X คะแนน → เลื่อนเป็น …" บนชิปสถานะกลางการ์ด ---
+  // ---- ชิป "สะสมอีก X คะแนน → เลื่อนเป็น ..." (โชว์ตลอด) ----
   if (typeof updateTierStatus === 'function') {
-    try { updateTierStatus(score); } catch {}
+    try { updateTierStatus(score); } catch(e) { console.warn(e); }
   }
 
-  // --- เอฟเฟกต์/ส่วนเสริม (มีอยู่แล้วในโปรเจกต์) ---
+  // ---- เอฟเฟกต์/ส่วนเสริมอื่น ๆ (ถ้ามีฟังก์ชัน) ----
   if (typeof applyXpThemeByTier === 'function') applyXpThemeByTier(tier.key);
   if (typeof updateLevelTrack   === 'function') updateLevelTrack(score);
   if (typeof updatePremiumBar   === 'function') updatePremiumBar(score);
-  if (typeof bumpXpFill         === 'function') bumpXpFill();
   if (typeof renderRewards      === 'function') renderRewards(score);
 
   // เปลี่ยนเลเวล → ปล่อยคอนเฟตติ
   if (typeof prevLevel !== 'undefined' && prevLevel && prevLevel !== tier.key){
     try { launchConfetti(); } catch {}
   }
-  // ---- แถบ/ธีม/ตัวเลขคู่ของ XP + motion ----
-if (typeof setXpPair === "function") setXpPair(score);
-if (typeof bumpXpFill === "function") bumpXpFill();
 
-// <<< เพิ่มบรรทัดนี้ให้แน่ใจว่าเรียกทุกครั้ง >>>
-updateTierStatus(score);
+  // ป้ายอันดับ (ถ้ามี)
+  if (typeof setRankBadge === 'function') setRankBadge(window.USER_RANK, tier.key);
 
-  // --- commit state ---
+  // ---- commit state ----
   prevLevel = tier.key;
   prevScore = score;
 }
