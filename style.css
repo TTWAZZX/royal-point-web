@@ -3332,3 +3332,61 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 /* เผื่อมี .hidden/.d-none เดิม */
 .rp-profile-card #tierTag.hidden{ display:none !important; }
+
+/* ========== Balance the two chips: #xpPair & #tierTag ========== */
+
+/* 1) ทำให้สองชิปมีมิติเดียวกัน */
+.rp-profile-card #xpPair,
+.rp-profile-card #tierTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;                /* ความสูงเท่ากัน */
+  line-height: 28px;
+  padding: 0 12px;             /* ระยะขอบเท่ากัน */
+  border-radius: 999px;        /* pill */
+  font-size: 12px;
+  font-weight: 700;
+  vertical-align: middle;
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 0 rgba(255,255,255,.7) inset;
+}
+
+/* 2) ไอคอนของชิป (เราใช้ data-ico ที่ JS ใส่ให้อยู่แล้ว) */
+.rp-profile-card #xpPair::before,
+.rp-profile-card #tierTag::before{
+  content: attr(data-ico);
+  font-size: 14px;
+  transform: translateY(-.5px);
+}
+
+/* 3) โทนพื้นหลังของแต่ละชิปให้กลมกลืนกัน */
+.rp-profile-card #xpPair{
+  background: linear-gradient(180deg,#f6f7fb,#edf1f7);
+  border: 1px solid rgba(51,65,85,.12);
+  color: #334155;
+}
+.rp-profile-card #tierTag{
+  border: 1px solid transparent;  /* สีกรอบมาจากคลาส chip-xxx ที่คุณใส่ไว้แล้ว */
+}
+
+/* 4) ระยะห่างแนวตั้งให้พอดี ๆ */
+.rp-profile-card #xpPair{ margin-top: 6px; }
+.rp-profile-card #tierTag{ margin-top: 6px; }
+
+/* 5) บนจอที่กว้างพอ (>576px) ให้สองชิปขึ้น "บรรทัดเดียว" กลางจอ */
+@media (min-width: 576px){
+  /* ถ้า #xpPair และ #tierTag อยู่ในกล่องเดียวกัน (เช่น .xp-wrap) โค้ดนี้จะจัดให้อยู่แถวเดียว */
+  .rp-profile-card .xp-wrap{ text-align: center; }
+  .rp-profile-card .xp-wrap #xpPair,
+  .rp-profile-card .xp-wrap #tierTag{
+    margin-top: 8px;
+  }
+  .rp-profile-card .xp-wrap #tierTag{ margin-left: 8px; } /* ระยะห่างระหว่างชิป */
+}
+
+/* 6) กรณี #tierTag อยู่คนนละบล็อกกับ #xpPair (ไม่สามารถอยู่บรรทัดเดียวได้)
+      ให้คงการจัดกึ่งกลาง + ระยะสายตาที่บาลานซ์ */
+.rp-profile-card #tierTag{
+  display: inline-flex;
+  /* ถ้าตัวมันอยู่นอก .xp-wrap ก็ให้ container หลักจัดกึ่งกลางแทน */
+}
