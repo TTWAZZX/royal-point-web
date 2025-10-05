@@ -82,19 +82,19 @@
     </div>
 
     <!-- Progress -->
-    <div class="rp-progress-area mt-2">
-      <div id="progressBar" class="rp-progress-line prog-silver">
-        <div id="progressFill" class="rp-progress-fill"></div>
-      </div>
-      <div class="text-center small rp-xp-pair">
-        <span id="xpPair">0 / 0 คะแนน</span>
-      </div>
-    </div>
+<div class="rp-progress-area mt-2">
+  <div id="progressBar" class="rp-progress-line prog-silver">
+    <div id="progressFill" class="rp-progress-fill"></div>
+  </div>
+  <div class="text-center small rp-xp-pair">
+    <span id="xpPair">0 / 0 คะแนน</span>
+  </div>
 
-    <!-- สถานะ -->
-    <div class="rp-status-center mt-1">
-  <span id="next-tier" class="rp-next-tier" aria-live="polite"></span>
-  <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+  <!-- ชิปสถานะระดับถัดไป (ใหม่) -->
+  <div class="rp-status-center">
+    <span id="tierStatus" class="rp-tag" data-ico="↗️"></span>
+    <span id="next-tier" class="visually-hidden"></span> <!-- ของเก่า (ซ่อนด้วย CSS) -->
+  </div>
 </div>
   </section>
 

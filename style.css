@@ -3311,3 +3311,24 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 /* Hide legacy next-tier chip – we use #tierStatus inside the progress area now */
 #next-tier,
 .rp-status-center { display: none !important; }
+
+/* ซ่อนเฉพาะชิปเก่า (#next-tier) แต่ให้คอนเทนเนอร์ยังแสดงได้ */
+#next-tier { display: none !important; }
+
+/* ทำให้ชิปใหม่ (#tierStatus) ชิดกลางสวย ๆ ใต้กล่อง XP pair */
+.rp-status-center{
+  display:flex; justify-content:center; align-items:center;
+  margin-top: .5rem;
+}
+
+#tierStatus.rp-tag{
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.35rem .65rem;
+  border-radius: 9999px;
+  font-weight: 600;
+  white-space: normal;           /* ให้ตัดบรรทัดได้ */
+  max-width: min(92%, 560px);    /* ไม่ล้นขอบการ์ด */
+  background: rgba(255,255,255,.85);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
