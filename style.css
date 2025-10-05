@@ -3794,3 +3794,77 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   .rp-tag{ padding:.35rem .6rem; font-size:.82rem; }
   .rp-score-head{ gap:.4rem; }
 }
+
+/* ===== Balanced / Premium score section ===== */
+.rp-score-area{
+  --stack-gap: 10px;             /* กำหนดช่องไฟบนล่างให้สมมาตร */
+  --chip-gap: 10px;
+}
+
+/* แถวหัว: Max Level + "คะแนนสะสม" */
+.rp-score-title{
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: var(--stack-gap);   /* ระยะก่อนตัวเลขคะแนน */
+  flex-wrap: wrap;                   /* มือถือจะขึ้นบรรทัดใหม่ได้ */
+}
+.rp-score-label{
+  font-weight: 700;
+  color: #64748b;                    /* เทาแบบพรีเมียม */
+}
+
+/* ชิป Max Level (อัตโนมัติตามความยาวข้อความ) */
+.rp-tag{
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .38rem .7rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg,#eef5ff,#e7f0ff);
+  color: #2b6af7;
+  font-weight: 600;
+  font-size: .85rem;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(43,106,247,.14), inset 0 1px 0 rgba(255,255,255,.8);
+}
+.rp-tag[data-ico]::before{ content: attr(data-ico); }
+
+/* ตัวเลขคะแนน (ใช้สไตล์เดิมของคุณอยู่แล้ว) */
+.rp-point-value{ margin-bottom: var(--stack-gap); }
+
+/* แถบความคืบหน้า */
+.rp-progress-area{
+  margin-block: var(--stack-gap);
+}
+
+/* แถวชิปใต้แถบ (xpPair) */
+.rp-score-chips{
+  display: flex;
+  justify-content: center;
+  gap: var(--chip-gap);
+  margin-top: var(--stack-gap);      /* = ระยะเหนือแถบ เพื่อให้สมมาตร */
+}
+
+/* ชิปทั่วไป (xpPair) */
+.rp-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  padding: .42rem .75rem;
+  border-radius: 999px;
+  background: #f7f8fa;
+  color: #0f172a;
+  font-weight: 600;
+  font-size: .86rem;
+  line-height: 1;
+  box-shadow: 0 1px 0 rgba(255,255,255,.8) inset, 0 1px 6px rgba(0,0,0,.06);
+}
+.rp-chip[data-ico]::before{ content: attr(data-ico); }
+
+/* มือถือ: ปรับสเกลนิดหน่อยให้บาลานซ์ */
+@media (max-width: 480px){
+  .rp-tag{ padding:.34rem .62rem; font-size:.82rem; }
+  .rp-chip{ padding:.36rem .66rem; font-size:.82rem; }
+  .rp-score-title{ gap:.5rem; }
+}
