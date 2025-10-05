@@ -655,15 +655,8 @@ function setPoints(score){
     });
   }
 
-  // ---- ข้อความเลเวลถัดไป ----
-  if (els.nextTier){
-    if (!nextTierObj){
-      els.nextTier.textContent = "คุณถึงระดับสูงสุดแล้ว ✨";
-    } else {
-      const need = Math.max(0, nextTierObj.min - score);
-      els.nextTier.textContent = `สะสมอีก ${need} คะแนน → เลื่อนเป็น ${nextTierObj.name} ${TIER_EMOJI[nextTierObj.name] || ""}`;
-    }
-  }
+  // ---- ข้อความเลเวลถัดไป (disabled; using #tierStatus instead) ----
+if (els.nextTier) { els.nextTier.textContent = ""; }
 
   // ---- รางวัล & เอฟเฟกต์เปลี่ยนเลเวล ----
   if (typeof renderRewards === "function") renderRewards(score);
