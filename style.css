@@ -3307,3 +3307,7 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 /* ให้ xpPair กับชิปดูเว้นระยะสมดุล */
 .rp-progress-area .rp-xp-pair{ margin-top: .25rem; }
+
+/* Hide legacy next-tier chip – we use #tierStatus inside the progress area now */
+#next-tier,
+.rp-status-center { display: none !important; }
