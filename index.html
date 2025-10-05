@@ -70,28 +70,37 @@
         <span id="tierPill" class="rp-tier-pill rp-tier-silver">
           <i class="fa-solid fa-medal me-1"></i><span id="tierName">Silver</span>
         </span>
-      <!-- ย้ายมาที่นี่ -->
-  <span id="tierTag" class="rp-tag d-none" data-ico="✨">Max Level</span>
-</div>
-    </div>
-
-    <!-- คะแนนสะสม -->
-    <div class="rp-score-stack mt-2">
-      <div class="rp-score-label">คะแนนสะสม</div>
-      <div class="rp-point-value">
-        <span id="points">0</span><span class="rp-point-unit"> pt</span>
       </div>
     </div>
 
-    <div class="rp-progress-area mt-2">
+    <!-- คะแนนสะสม -->
+<div class="rp-score-stack mt-2">
+
+  <!-- ✅ แถบหัวของคะแนนสะสม: วาง Max Level ไว้ก่อน แล้วตามด้วยป้าย "คะแนนสะสม" -->
+  <div class="rp-score-head">
+    <span id="tierTag" class="rp-tag d-none" data-ico="✨">Max Level</span>
+    <div class="rp-score-label">คะแนนสะสม</div>
+  </div>
+
+  <div class="rp-point-value">
+    <span id="points">0</span><span class="rp-point-unit"> pt</span>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="rp-progress-area mt-2">
   <div id="progressBar" class="rp-progress-line prog-silver">
     <div id="progressFill" class="rp-progress-fill"></div>
   </div>
-
-  <!-- แถวนี้เหลือเฉพาะ xpPair -->
-  <div class="text-center small rp-xp-pair xp-wrap">
+  <div class="text-center small rp-xp-pair">
     <span id="xpPair" data-ico="🎯">0 / 0 คะแนน</span>
   </div>
+</div>
+
+<!-- สถานะ (เก็บไว้เฉพาะตัวที่ JS ใช้) -->
+<div class="rp-status-center mt-1">
+  <span id="next-tier" class="visually-hidden"></span>
+</div>
 </div>
   </section>
 
