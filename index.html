@@ -91,10 +91,14 @@
     <span id="xpPair">0 / 0 คะแนน</span>
   </div>
 
-  <!-- ชิปสถานะระดับถัดไป (ใหม่) -->
-  <div class="rp-status-center">
-    <span id="tierStatus" class="rp-tag d-none" data-ico="↗️"></span>
-  </div>
+  <!-- สถานะ (วางใต้กล่อง 710 / 1200 คะแนน) -->
+<div class="rp-status-center mt-1">
+  <!-- กล่องบอกทางไปเลเวลถัดไป -->
+  <div id="tierStatus" class="rp-next-chip hidden" role="status" aria-live="polite"></div>
+
+  <!-- Max level tag (โชว์เฉพาะตอนถึงระดับสูงสุด) -->
+  <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+</div>
 </div>
   </section>
 

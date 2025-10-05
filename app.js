@@ -557,36 +557,34 @@ async function refreshUserScore(){
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
-// แสดงข้อความ "สะสมอีก X คะแนน → เลื่อนเป็น {NextTier}"
+// แสดง/ซ่อนข้อความ: “สะสมอีก X คะแนน → เลื่อนเป็น NextTier”
 function updateTierStatus(score){
-  const el = document.getElementById('tierStatus');
-  if (!el) return;
+  const chip = document.getElementById('tierStatus');
+  if (!chip) return;
 
-  try {
-    const s = Number(score || 0);
-    const tier = (typeof getTier === 'function') ? getTier(s) : null;
+  try{
+    const t = getTier(Number(score||0));     // tier ปัจจุบัน
+    const cur = Number(score||0);
 
-    // map อีโมจิของระดับถัดไป (ถ้ามี)
-    const EMOJI = { Silver:'🥈', Gold:'🥇', Platinum:'💎' };
-
-    if (tier && Number.isFinite(tier.next) && tier.next > s){
-      const remain = Math.max(0, tier.next - s);
-      const nextName =
-        (typeof getTier === 'function' ? (getTier(tier.next)?.name || getTier(tier.next)?.label) : '') || 'ระดับถัดไป';
-      const emoji = EMOJI[nextName] || '⭐';
-
-      el.textContent = `สะสมอีก ${remain.toLocaleString('th-TH')} คะแนน → เลื่อนเป็น ${nextName} ${emoji}`;
-      el.classList.remove('d-none');
+    // ถึงระดับสูงสุดแล้ว → ซ่อน chip นี้ (ให้ tierTag จัดการเอง)
+    if (!Number.isFinite(t.next) || t.next === Infinity || cur >= t.next){
+      chip.classList.add('hidden');
       return;
     }
 
-    // ถึงระดับสูงสุดแล้ว
-    el.textContent = '✨ Max Level';
-    el.classList.remove('d-none');
-  } catch (e){
-    // ผิดพลาด → ซ่อน
-    el.textContent = '';
-    el.classList.add('d-none');
+    // หา info ของระดับถัดไป (จาก TIERS)
+    const idx = TIERS.findIndex(x => x.key === t.key);
+    const next = TIERS[idx+1] || null;
+    const nextName = next?.name || 'ระดับถัดไป';
+    const need = Math.max(0, (next?.min ?? t.next) - cur);
+
+    // แสดงข้อความ
+    const emoji = TIER_EMOJI[nextName] || '';
+    chip.innerHTML = `🎯 สะสมอีก <b>${need.toLocaleString('th-TH')}</b> คะแนน → เลื่อนเป็น <b>${nextName}</b> ${emoji}`;
+    chip.classList.remove('hidden');
+  }catch(e){
+    // ผิดพลาดใด ๆ → ซ่อน
+    chip.classList.add('hidden');
   }
 }
 

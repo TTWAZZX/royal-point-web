@@ -3357,3 +3357,36 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 /* เผื่อเคยมี style ไปซ่อน container เดิม */
 #next-tier{ display:none !important; }
+
+/* กล่องบอก “สะสมอีก X คะแนน → เลื่อนเป็น …” */
+.rp-status-center{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+}
+
+.rp-next-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:.5rem;
+  margin-top:.25rem;
+  padding:.35rem .75rem;
+  border-radius:999px;
+  font-size:.9rem;
+  line-height:1.1;
+  background:rgba(17,24,39,.04);
+  border:1px solid rgba(17,24,39,.08);
+  box-shadow: 0 1px 0 rgba(255,255,255,.65) inset, 0 1px 8px rgba(0,0,0,.04);
+  max-width:92%;
+  white-space:nowrap;
+}
+
+.rp-next-chip b{ font-weight:600; }
+
+.hidden{ display:none !important; }
+
+/* โทนสีตามระดับ เพื่อความพรีเมียม */
+[data-tier="silver"]   .rp-next-chip{ background:rgba(180,180,180,.10); border-color:rgba(150,150,150,.25); }
+[data-tier="gold"]     .rp-next-chip{ background:rgba(255,183,3,.12);   border-color:rgba(255,183,3,.28); }
+[data-tier="platinum"] .rp-next-chip{ background:rgba(45,160,255,.12);  border-color:rgba(45,160,255,.28); }
