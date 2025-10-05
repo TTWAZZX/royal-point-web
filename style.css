@@ -3390,3 +3390,25 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 [data-tier="silver"]   .rp-next-chip{ background:rgba(180,180,180,.10); border-color:rgba(150,150,150,.25); }
 [data-tier="gold"]     .rp-next-chip{ background:rgba(255,183,3,.12);   border-color:rgba(255,183,3,.28); }
 [data-tier="platinum"] .rp-next-chip{ background:rgba(45,160,255,.12);  border-color:rgba(45,160,255,.28); }
+
+.rp-status-center{
+  display:flex; justify-content:center; margin-top:6px;
+}
+.status-chip{
+  display:inline-flex; align-items:center; gap:.35rem;
+  padding:.35rem .6rem; border-radius:999px;
+  background:rgba(255,255,255,.75);
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+  font-size:.85rem; backdrop-filter: blur(6px);
+}
+.status-chip.hidden{ display:none; }
+
+.rp-status-center{display:flex;justify-content:center}
+.status-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:.35rem .6rem;border-radius:999px;
+  background:var(--chip-bg,#f4f6f8);
+  box-shadow:0 1px 0 rgba(0,0,0,.05);
+  font-weight:600;font-size:.9rem;
+}
+.status-chip.hidden{display:none;}

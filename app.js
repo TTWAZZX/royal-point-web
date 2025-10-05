@@ -589,64 +589,56 @@ function updateTierStatus(score){
 }
 
 // อัปเดต UI ทั้งหมดจากคะแนนเดียว
+// อัปเดต UI ทั้งหมดจากคะแนนเดียว
 function setPoints(score){
   score = Number(score || 0);
 
-  // ---- Tier + Next tier ----
-  const tier = getTier(score);
+  // --- Tier & Theme ---
+  const tier = getTier(score);              // { key, name, min, next, progClass }
+  if (typeof applyPremiumTheme === 'function') applyPremiumTheme(tier.key);
+  if (typeof setAvatarArc      === 'function') setAvatarArc(score);
 
-  applyPremiumTheme(tier.key);   // ย้อมธีมการ์ดตามระดับ
-  setAvatarArc(score);           // วงแหวนรอบรูป
+  // --- ชื่อ/ป้ายระดับ & Max tag ---
+  setTierUI(tier, score);
 
-  // สปาร์คเคิล: ครั้งแรกครั้งเดียว + ตอนเลเวลเปลี่ยน
-  if (!AVATAR_SPARKLED_ONCE){ spawnAvatarSparkles(); AVATAR_SPARKLED_ONCE = true; }
-  if (prevLevel && prevLevel !== tier.key){ spawnAvatarSparkles(); try{ launchConfetti(); }catch{} }
-
-  bumpScoreFx();                 // เด้งตัวเลขทุกครั้ง
-
-  // ฟองคะแนน (delta)
-  const delta = score - Number(prevScore || 0);
-  if (delta) showScoreDelta(delta);
-
-  // คะแนนเด้งขึ้น
-  if (els.points){
-    const from = prevScore ?? Number(els.points.textContent || 0);
-    animateCount(els.points, from, score, 600);
+  // --- ตัวเลขคะแนน (เด้งนุ่ม ๆ) ---
+  if (els?.points){
+    const from = (typeof prevScore === 'number') ? prevScore : Number(els.points.textContent || 0);
+    if (from !== score) animateCount(els.points, from, score, 600);
   }
+  if (typeof bumpScoreFx === 'function') bumpScoreFx();
 
-  // Progress bar (สี + ความกว้าง)
-  if (els.progressBar){
-    els.progressBar.classList.remove("prog-silver", "prog-gold", "prog-platinum");
+  // --- Progress bar สี + ความกว้าง ---
+  if (els?.progressBar){
+    els.progressBar.classList.remove('prog-silver','prog-gold','prog-platinum');
     els.progressBar.classList.add(tier.progClass);
   }
-  if (els.progressFill){
+  if (els?.progressFill){
     const pct = tier.next === Infinity ? 1 : (score - tier.min) / (tier.next - tier.min);
-    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct * 100))}%`;
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, pct*100))}%`;
   }
 
-  // แถบ/ธีม/ตัวเลขคู่ของ XP + motion
-  applyXpThemeByTier?.(tier.key);
-  updateLevelTrack?.(score);
-  updatePremiumBar?.(score);
-  setXpPair?.(score);
-  bumpXpFill?.();
+  // --- คู่ตัวเลข XP ใต้แถบ ---
+  if (typeof setXpPair === 'function') setXpPair(score);
 
-  // Chips สรุปย่อใต้ชื่อ (มี/ไม่มีก็ไม่พัง)
-  updateStatChips?.({
-    tierName: tier.name,
-    points: score,
-    streakDays: window.USER_STREAK
-  });
+  // --- ข้อความ "สะสมอีก X คะแนน → เลื่อนเป็น …" บนชิปสถานะกลางการ์ด ---
+  if (typeof updateTierStatus === 'function') {
+    try { updateTierStatus(score); } catch {}
+  }
 
-  // ---- ข้อความเลเวลถัดไป (ใช้ตัวเดียว) ----
-  // แสดง "สะสมอีก X คะแนน → เลื่อนเป็น NextTier" ใต้กล่อง XP pair
-  try { updateTierStatus(score); } catch {}
+  // --- เอฟเฟกต์/ส่วนเสริม (มีอยู่แล้วในโปรเจกต์) ---
+  if (typeof applyXpThemeByTier === 'function') applyXpThemeByTier(tier.key);
+  if (typeof updateLevelTrack   === 'function') updateLevelTrack(score);
+  if (typeof updatePremiumBar   === 'function') updatePremiumBar(score);
+  if (typeof bumpXpFill         === 'function') bumpXpFill();
+  if (typeof renderRewards      === 'function') renderRewards(score);
 
-  // รางวัล & อื่น ๆ
-  renderRewards?.(score);
-  setRankBadge?.(window.USER_RANK, tier.key);
+  // เปลี่ยนเลเวล → ปล่อยคอนเฟตติ
+  if (typeof prevLevel !== 'undefined' && prevLevel && prevLevel !== tier.key){
+    try { launchConfetti(); } catch {}
+  }
 
-  // commit state
+  // --- commit state ---
   prevLevel = tier.key;
   prevScore = score;
 }
@@ -1276,11 +1268,10 @@ function setTierMedal(tier){
   const medal  = document.getElementById("tierMedal");
   if(!avatar || !medal || !tier) return;
 
-  // เคลียร์คลาสเดิม แล้วใส่คลาสตามระดับ
-  avatar.classList.remove("tier-silver","tier-gold","tier-platinum");
-  avatar.classList.add(`tier-${tier.key}`);
+  // ใช้คลาส rp-tier-* ให้ตรงกับ HTML/CSS ของหน้า
+  avatar.classList.remove("rp-tier-silver","rp-tier-gold","rp-tier-platinum");
+  avatar.classList.add(`rp-tier-${tier.key}`);
 
-  // ปรับไตเติล/aria
   medal.title = tier.name;
 }
 
@@ -1393,61 +1384,51 @@ function updateXpLabels(score){
   if (xpEnd)   xpEnd.textContent   = String(end);
 }
 
-// อัปเดต pill/dot/สถานะ ตามระดับ (เวอร์ชันพรีเมียม)
 function setTierUI(tier, score){
+  // อ้างอิง element ที่เกี่ยวข้อง
   const pill = document.getElementById('tierPill');
   const name = document.getElementById('tierName');
   const av   = document.getElementById('rpAvatar');
   const dot  = document.getElementById('tierDot');
-  const st   = document.getElementById('tierStatus');
-  const tag  = document.getElementById('tierTag');
+  const tag  = document.getElementById('tierTag');   // ป้าย Max Level (ถ้ามี)
+  const medal= document.getElementById('tierMedal'); // เหรียญซ้อนบนรูป (ถ้ามี)
 
-  // --- ชื่อ/ธีมพื้นฐานเดิม ---
-  pill?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
-  pill?.classList.add(`rp-tier-${tier.key}`);
+  // อัปเดตชื่อระดับ
   if (name) name.textContent = tier.name;
 
-  av?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
-  av?.classList.add(`rp-tier-${tier.key}`);
+  // เคลียร์แล้วใส่คลาสธีม rp-tier-*
+  [pill, av].forEach(el=>{
+    if (!el) return;
+    el.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
+    el.classList.add(`rp-tier-${tier.key}`);
+  });
 
+  // ไอคอนจุด/เหรียญกำกับระดับ
   if (dot){
-    const icon = tier.key === 'platinum' ? 'fa-gem' : (tier.key === 'gold' ? 'fa-star' : 'fa-circle');
-    dot.innerHTML = `<i class="fa-solid ${icon}"></i>`;
+    const ic = tier.key === 'platinum' ? 'fa-gem'
+             : tier.key === 'gold'     ? 'fa-star'
+             : 'fa-circle';
+    dot.innerHTML = `<i class="fa-solid ${ic}"></i>`;
   }
 
-  // --- ชิปพรีเมียม: โชว์ทุกระดับ ---
+  // เหรียญซ้อนบนอวาตาร์ (ถ้ามี setTierMedal ให้ใช้, ไม่มีก็ตั้ง title พอ)
+  if (typeof setTierMedal === 'function') {
+    try { setTierMedal(tier); } catch {}
+  } else if (medal){
+    medal.title = tier.name;
+  }
+
+  // โชว์/ซ่อน Max Level tag (ถ้ามี)
   if (tag){
-    // เคลียร์คลาสก่อน
-    tag.classList.remove('chip-silver','chip-gold','chip-platinum','d-none','hidden');
-    // คำนวณข้อความ/ไอคอน
-    const idx = TIERS.findIndex(t => t.key === tier.key);
-    const next = TIERS[idx + 1] || null;
-    let label = '';
-    let ico = '✨';
-
-    if (next){ // ยังมีระดับถัดไป
-      const need = Math.max(0, next.min - Number(score||0));
-      // 🥈 / 🥇 / 💎 นำหน้า + บอกทางไประดับถัดไปแบบหรู ๆ
-      ico = tier.key === 'gold' ? '🥇' : (tier.key === 'silver' ? '🥈' : '💎');
-      label = `${tier.name} Member • อีก ${need.toLocaleString('th-TH')} → ${next.name}`;
-    }else{
-      // สูงสุด
-      ico = '💎';
-      label = 'Max Level';
+    if (tier.next === Infinity){
+      tag.classList.remove('d-none');
+      tag.textContent = '✨ Max Level';
+    } else {
+      tag.classList.add('d-none');
     }
-
-    tag.textContent = label;
-    tag.setAttribute('data-ico', ico);
-    tag.classList.add(`chip-${tier.key}`); // เลือกโทนสีตามระดับ
-    tag.style.display = 'inline-flex';
   }
-
-  // — ซ่อนข้อความยาวใน #tierStatus (เราใช้ชิปแทนแล้ว ให้หน้าดูเนียน) —
-  if (st){ st.textContent = ''; st.classList.add('hidden'); }
-
-  // ย้อมธีม ambient ตามระดับ (ของเดิม)
-  applyPremiumTheme?.(tier.key);
 }
+
 
 function setXpPair(score){
   const pair = document.getElementById('xpPair');
