@@ -3538,3 +3538,131 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
     font-size: 11.5px;
   }
 }
+
+/* ====== Chips under the progress (mobile-first, multi-line) ====== */
+.rp-profile-card{
+  --chip-gap: 10px;                 /* ระยะห่างระหว่างสองบล็อก */
+}
+
+/* ให้สองบล็อกอยู่คนละแถว + จัดกึ่งกลาง */
+.rp-profile-card .rp-xp-pair,
+.rp-profile-card .rp-status-center{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: var(--chip-gap);
+}
+
+/* ทำให้ชิปกว้างตามเนื้อหา และ "พับบรรทัดได้" */
+.rp-profile-card #xpPair,
+.rp-profile-card #tierTag{
+  display: inline-block;            /* เปลี่ยนจาก inline-flex → ให้ขึ้นหลายบรรทัดได้ชัวร์ */
+  text-align: center;
+  white-space: normal;              /* ปล่อยให้พับบรรทัด */
+  overflow-wrap: anywhere;          /* ป้องกันคำ/ตัวเลขยาวล้น */
+  word-break: break-word;           /* เสริมความชัวร์บนบางเบราว์เซอร์ */
+  text-wrap: balance;               /* ช่วยจัดพับบรรทัดให้สวย (เบราว์เซอร์ที่รองรับ) */
+
+  padding: 6px 12px;
+  line-height: 1.25;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2px;
+
+  border-radius: 999px;
+  border: 1px solid rgba(51,65,85,.12);
+  background: linear-gradient(180deg,#f7f9fc,#edf1f7);
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(16,24,40,.06),
+              0 1px 0 rgba(255,255,255,.7) inset;
+
+  max-width: 92%;                   /* ให้ยืดได้เต็มการ์ดแต่ไม่ชนขอบ */
+}
+
+/* ไอคอนนำหน้าจาก data-ico ถ้ามี */
+.rp-profile-card #xpPair::before,
+.rp-profile-card #tierTag::before{
+  content: attr(data-ico);
+  margin-right: 6px;
+  font-size: 14px;
+  position: relative;
+  top: -1px;
+}
+
+/* ธีมสีสำหรับ tierTag (คงลุคพรีเมียมเดิม) */
+.rp-profile-card[data-tier="silver"] #tierTag{
+  background: linear-gradient(180deg,#f5f7fa,#e9eef6);
+  color:#334155;
+}
+.rp-profile-card[data-tier="gold"] #tierTag{
+  background: linear-gradient(180deg,#fff6ce,#ffe28c);
+  border-color: #ffd16680;
+  color:#7a5b00;
+}
+.rp-profile-card[data-tier="platinum"] #tierTag{
+  background: linear-gradient(180deg,#e8f7ff,#d8f1ff);
+  border-color:#90cdf480;
+  color:#005c8a;
+}
+
+/* จอเล็ก — ลดตัวอักษร/เพิ่มพื้นที่หายใจเล็กน้อย */
+@media (max-width: 480px){
+  .rp-profile-card #xpPair,
+  .rp-profile-card #tierTag{
+    font-size: 11.5px;
+    line-height: 1.3;
+    padding: 6px 11px;
+    max-width: 94%;
+  }
+}
+
+/* บังคับให้ xpPair และ tierTag เรียง 'คนละบรรทัด' ในกล่องเดียวกัน */
+.rp-profile-card .rp-xp-pair{
+  display: flex;
+  flex-direction: column;        /* ← สลับเป็นแนวตั้ง */
+  align-items: center;
+  gap: var(--chip-gap, 10px);    /* ระยะห่างเท่ากัน */
+  margin-top: var(--chip-gap, 10px);
+}
+
+/* ให้ชิปยืดตามข้อความและพับบรรทัดได้ (กันข้อความยาวบนมือถือ) */
+.rp-profile-card #xpPair,
+.rp-profile-card #tierTag{
+  display: inline-block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-align: center;
+
+  padding: 6px 12px;
+  line-height: 1.25;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid rgba(51,65,85,.12);
+  background: linear-gradient(180deg,#f7f9fc,#edf1f7);
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 0 rgba(255,255,255,.7) inset;
+  max-width: 92%;
+}
+
+/* ไอคอนจาก data-ico */
+.rp-profile-card #xpPair::before,
+.rp-profile-card #tierTag::before{
+  content: attr(data-ico);
+  margin-right: 6px;
+  font-size: 14px;
+  position: relative;
+  top: -1px;
+}
+
+/* จอเล็ก: จูนขนาดให้อ่านง่าย */
+@media (max-width: 480px){
+  .rp-profile-card #xpPair,
+  .rp-profile-card #tierTag{
+    font-size: 11.5px;
+    line-height: 1.3;
+    padding: 6px 11px;
+    max-width: 94%;
+  }
+}
