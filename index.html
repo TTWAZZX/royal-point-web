@@ -73,38 +73,29 @@
       </div>
     </div>
 
-    <!-- ===== Score Area (balanced/premium) ===== -->
-<section class="rp-score-area mt-2">
-
-  <!-- แถวหัว: Max Level + ป้าย "คะแนนสะสม" (ชิดซ้าย, wrap ได้) -->
-  <div class="rp-score-title">
-    <span id="tierTag" class="rp-tag d-none" data-ico="💎">Max Level</span>
-    <div class="rp-score-label">คะแนนสะสม</div>
-  </div>
-
-  <!-- ตัวเลขคะแนน -->
-  <div class="rp-point-value">
-    <span id="points">0</span><span class="rp-point-unit"> pt</span>
-  </div>
-
-  <!-- แถบความคืบหน้า -->
-  <div class="rp-progress-area">
-    <div id="progressBar" class="rp-progress-line prog-silver">
-      <div id="progressFill" class="rp-progress-fill"></div>
+    <!-- คะแนนสะสม -->
+    <div class="rp-score-stack mt-2">
+      <div class="rp-score-label">คะแนนสะสม</div>
+      <div class="rp-point-value">
+        <span id="points">0</span><span class="rp-point-unit"> pt</span>
+      </div>
     </div>
-  </div>
 
-  <!-- แถวชิปใต้แถบ (จัดกึ่งกลาง) -->
-  <div class="rp-score-chips">
-    <span id="xpPair" class="rp-chip" data-ico="🎯">0 / 0 คะแนน</span>
-  </div>
-</section>
+    <!-- Progress -->
+    <div class="rp-progress-area mt-2">
+      <div id="progressBar" class="rp-progress-line prog-silver">
+        <div id="progressFill" class="rp-progress-fill"></div>
+      </div>
+      <div class="text-center small rp-xp-pair">
+        <span id="xpPair">0 / 0 คะแนน</span>
+      </div>
+    </div>
 
-<!-- status ที่ JS ใช้อยู่เดิม (อย่าลบ) -->
-<div class="rp-status-center">
-  <span id="next-tier" class="visually-hidden"></span>
-</div>
-</div>
+    <!-- สถานะ -->
+    <div class="rp-status-center mt-1">
+      <span id="tierTag" class="rp-tag d-none">✨ Max Level</span>
+      <span id="next-tier" class="visually-hidden"></span>
+    </div>
   </section>
 
   <!-- Actions -->
