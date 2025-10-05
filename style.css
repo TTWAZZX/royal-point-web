@@ -3272,3 +3272,63 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 }
 .dot-green{background:#16a34a}
 .dot-red{background:#ef4444}
+
+/* ===== Premium Tier Chip (ทุกระดับ) ===== */
+.rp-profile-card #tierTag{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+  margin: 8px auto 0;            /* อยู่กึ่งกลาง */
+  box-shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 0 rgba(255,255,255,.7) inset;
+  border: 1px solid transparent; /* จะถูกเปลี่ยนตาม tier */
+  position: relative;
+  overflow: hidden;
+}
+
+/* ไอคอนนำหน้า (ใช้จาก data-ico ใน JS) */
+.rp-profile-card #tierTag::before{
+  content: attr(data-ico);
+  font-size: 14px;
+  transform: translateY(-.5px);
+}
+
+/* เงาวิบ ๆ เบา ๆ ให้ดูพรีเมียม */
+.rp-profile-card #tierTag::after{
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.0), rgba(255,255,255,.35), rgba(255,255,255,.0));
+  transform: translateX(-120%);
+  animation: rpChipShine 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes rpChipShine{
+  0%{ transform: translateX(-120%); }
+  45%{ transform: translateX(120%); }
+  100%{ transform: translateX(120%); }
+}
+
+/* ——— โทนต่อระดับ ——— */
+.rp-profile-card .chip-silver{
+  background: linear-gradient(180deg,#f8fafc,#eef2f7);
+  border-color: rgba(51,65,85,.18);
+  color: #334155;
+}
+.rp-profile-card .chip-gold{
+  background: linear-gradient(180deg,#fff7d6,#ffe6a7);
+  border-color: rgba(245,158,11,.35);
+  color: #7c4b00;
+}
+.rp-profile-card .chip-platinum{
+  background: linear-gradient(180deg,#ecfeff,#e7f5ff);
+  border-color: rgba(13,148,136,.25);
+  color: #0b8b6f;
+}
+
+/* เผื่อมี .hidden/.d-none เดิม */
+.rp-profile-card #tierTag.hidden{ display:none !important; }

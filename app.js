@@ -1436,7 +1436,7 @@ function updateXpLabels(score){
   if (xpEnd)   xpEnd.textContent   = String(end);
 }
 
-// อัปเดต pill/dot/สถานะ ตามระดับ
+// อัปเดต pill/dot/สถานะ ตามระดับ (เวอร์ชันพรีเมียม)
 function setTierUI(tier, score){
   const pill = document.getElementById('tierPill');
   const name = document.getElementById('tierName');
@@ -1445,7 +1445,7 @@ function setTierUI(tier, score){
   const st   = document.getElementById('tierStatus');
   const tag  = document.getElementById('tierTag');
 
-  // Pill / Avatar theme
+  // --- ชื่อ/ธีมพื้นฐานเดิม ---
   pill?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   pill?.classList.add(`rp-tier-${tier.key}`);
   if (name) name.textContent = tier.name;
@@ -1453,27 +1453,42 @@ function setTierUI(tier, score){
   av?.classList.remove('rp-tier-silver','rp-tier-gold','rp-tier-platinum');
   av?.classList.add(`rp-tier-${tier.key}`);
 
-  // เหรียญ: icon ตามระดับ
   if (dot){
     const icon = tier.key === 'platinum' ? 'fa-gem' : (tier.key === 'gold' ? 'fa-star' : 'fa-circle');
     dot.innerHTML = `<i class="fa-solid ${icon}"></i>`;
   }
 
-  // ชิปสถานะ/แท็ก
-  if (tier.next === Infinity){
-    tag?.classList.remove('d-none');
-    tag && (tag.textContent = '✨ Max Level');
-    if (st){ st.textContent = ''; st.setAttribute('data-ico',''); }
-  } else {
-    tag?.classList.add('d-none');
-    const need = Math.max(0, tier.next - Number(score||0));
-    if (st){
-      st.textContent = `สะสมอีก ${need.toLocaleString()} คะแนน → เลื่อนเป็น ${TIERS.find(t=>t.min===tier.next)?.name || 'Level ถัดไป'}`;
-      st.setAttribute('data-ico','↗️');  // ใช้กับ ::before
+  // --- ชิปพรีเมียม: โชว์ทุกระดับ ---
+  if (tag){
+    // เคลียร์คลาสก่อน
+    tag.classList.remove('chip-silver','chip-gold','chip-platinum','d-none','hidden');
+    // คำนวณข้อความ/ไอคอน
+    const idx = TIERS.findIndex(t => t.key === tier.key);
+    const next = TIERS[idx + 1] || null;
+    let label = '';
+    let ico = '✨';
+
+    if (next){ // ยังมีระดับถัดไป
+      const need = Math.max(0, next.min - Number(score||0));
+      // 🥈 / 🥇 / 💎 นำหน้า + บอกทางไประดับถัดไปแบบหรู ๆ
+      ico = tier.key === 'gold' ? '🥇' : (tier.key === 'silver' ? '🥈' : '💎');
+      label = `${tier.name} Member • อีก ${need.toLocaleString('th-TH')} → ${next.name}`;
+    }else{
+      // สูงสุด
+      ico = '💎';
+      label = 'Max Level';
     }
+
+    tag.textContent = label;
+    tag.setAttribute('data-ico', ico);
+    tag.classList.add(`chip-${tier.key}`); // เลือกโทนสีตามระดับ
+    tag.style.display = 'inline-flex';
   }
 
-  // ย้อมธีมการ์ด (progress/ambient) ตามระดับ
+  // — ซ่อนข้อความยาวใน #tierStatus (เราใช้ชิปแทนแล้ว ให้หน้าดูเนียน) —
+  if (st){ st.textContent = ''; st.classList.add('hidden'); }
+
+  // ย้อมธีม ambient ตามระดับ (ของเดิม)
   applyPremiumTheme?.(tier.key);
 }
 
