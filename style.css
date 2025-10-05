@@ -3332,3 +3332,28 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   backdrop-filter: blur(6px);
   box-shadow: 0 2px 10px rgba(0,0,0,.06);
 }
+
+/* ให้แสดงเฉพาะชิปใหม่ แล้วจัดกึ่งกลาง */
+.rp-status-center{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin-top:.5rem;
+}
+
+#tierStatus.rp-tag{
+  display:inline-flex;
+  align-items:center;
+  gap:.4rem;
+  padding:.35rem .65rem;
+  border-radius:9999px;
+  font-weight:600;
+  white-space:normal;            /* ตัดบรรทัดได้บนจอเล็ก */
+  max-width:min(92%,560px);      /* ไม่ล้นการ์ด */
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(6px);
+  box-shadow:0 2px 10px rgba(0,0,0,.06);
+}
+
+/* เผื่อเคยมี style ไปซ่อน container เดิม */
+#next-tier{ display:none !important; }
