@@ -3272,3 +3272,38 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 }
 .dot-green{background:#16a34a}
 .dot-red{background:#ef4444}
+
+/* === Next-tier chip: center under XP pair === */
+.rp-status-center{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  margin-top: 6px;            /* เว้นระยะเท่ากันกับ xpPair */
+}
+
+/* ชิปแสดงข้อความ "Gold Member • อีก xxx → Platinum" */
+.rp-next-tier,
+.rp-tag{                       /* ใช้กับ Max Level เดิมให้กลมกลืนกัน */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  padding: .38rem .75rem;
+  border-radius: 999px;
+  border: 1px solid var(--rp-border);
+  background: var(--rp-soft);
+  color: var(--rp-text);
+  font-weight: 800;
+  font-size: .85rem;
+  line-height: 1.1;
+  box-shadow: 0 6px 16px rgba(2,120,87,.06);
+  /* ป้องกันล้นขอบการ์ดบนจอเล็ก */
+  max-width: calc(100% - 48px);
+  text-align: center;
+  white-space: normal;         /* อนุญาตให้ตัดบรรทัดถ้าจำเป็น */
+  text-wrap: balance;
+  word-break: break-word;
+}
+
+/* ให้ xpPair กับชิปดูเว้นระยะสมดุล */
+.rp-progress-area .rp-xp-pair{ margin-top: .25rem; }
