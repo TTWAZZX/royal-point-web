@@ -104,7 +104,6 @@ window.USER_RANK   = window.USER_RANK   ?? null; // อันดับ (อา�
 window.USER_STREAK = window.USER_STREAK ?? 0;    // จำนวนวันติด (อาจไม่มีจาก API)
 
 // ---- Scan / redeem guards ----
-let SCANNING = false;          // กล้องกำลังทำงานอยู่หรือไม่
 let REDEEM_IN_FLIGHT = false;  // กำลังเรียก /api/redeem อยู่หรือไม่
 let LAST_DECODE = "";          // ค่าที่สแกนได้ล่าสุด
 let LAST_DECODE_AT = 0;        // เวลา (ms) ที่สแกนได้ล่าสุด
@@ -241,40 +240,45 @@ async function initApp(ctx = {}) {
     }
 
     // 6) one-time binds
-    if (!window.__MAIN_BOUND) {
-      window.__MAIN_BOUND = true;
+if (!window.__MAIN_BOUND) {
+  window.__MAIN_BOUND = true;
 
-      document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-        try {
-          await ensureLiffInit(liffId);
-          await fetch(GET_SCORE(window.__UID), { method:'GET', cache:'no-store' });
-          if (typeof refreshUserScore === 'function') await refreshUserScore();
-          if (typeof loadRewards === 'function') await loadRewards();
-          if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
-        } catch (e) {
-          console.error(e);
-          window.Swal ? Swal.fire('ผิดพลาด', 'โหลดข้อมูลไม่สำเร็จ', 'error') : alert('โหลดข้อมูลไม่สำเร็จ');
-        }
-      });
-
-      document.getElementById('historyBtn')?.addEventListener('click', () => {
-        if (typeof openHistoryModal === 'function') return openHistoryModal();
-        const m = bootstrap.Modal.getOrCreateInstance(document.getElementById('historyModal'));
-        m.show();
-        if (typeof loadHistory === 'function') loadHistory();
-      });
-
-      document.getElementById('startScanBtn')?.addEventListener('click', async () => {
-        await ensureLiffInit(LIFF_ID);
-        if (typeof startScanner === 'function') startScanner();
-      });
-      document.getElementById('stopScanBtn')?.addEventListener('click', () => { if (typeof stopScanner === 'function') stopScanner(); });
-      document.getElementById('submitCodeBtn')?.addEventListener('click', () => {
-        const code = (document.getElementById('secretCode')?.value || '').trim();
-        if (!code) return;
-        if (typeof submitSecretCode === 'function') submitSecretCode(code);
-      });
+  // รีเฟรชข้อมูล
+  document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+    try {
+      await ensureLiffInit(liffId);
+      await fetch(`/api/get-score?uid=${encodeURIComponent(window.__UID)}`, { method:'GET', cache:'no-store' });
+      if (typeof refreshUserScore === 'function') await refreshUserScore();
+      if (typeof loadRewards === 'function') await loadRewards();
+      if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
+    } catch (e) {
+      console.error(e);
+      window.Swal ? Swal.fire('ผิดพลาด', 'โหลดข้อมูลไม่สำเร็จ', 'error') : alert('โหลดข้อมูลไม่สำเร็จ');
     }
+  });
+
+  // ✅ ปุ่ม "ประวัติ" → เรียก openHistory (ของเรา)
+  document.getElementById('historyBtn')?.addEventListener('click', () => {
+    openHistory();
+  });
+
+  // ✅ ปุ่มควบคุมกล้อง + lifecycle โมดัล (ใช้ #scoreModal)
+  document.getElementById('startScanBtn')?.addEventListener('click', () => startScanner());
+  document.getElementById('stopScanBtn') ?.addEventListener('click', () => stopScanner());
+  const scanModalEl = document.getElementById('scoreModal');
+  if (scanModalEl) {
+    scanModalEl.addEventListener('shown.bs.modal',  () => startScanner());
+    scanModalEl.addEventListener('hide.bs.modal',   () => stopScanner());
+    scanModalEl.addEventListener('hidden.bs.modal', () => stopScanner());
+  }
+
+  // ✅ ปุ่ม "ยืนยันรับคะแนน" → เรียก redeemCode (ไม่ใช้ submitSecretCode)
+  document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
+    const code = (document.getElementById('secretCode')?.value || '').trim();
+    if (!code) return toastErr('กรอกรหัสลับก่อน');
+    await redeemCode(code, 'MANUAL');
+  });
+}
 
     if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
 
@@ -283,6 +287,11 @@ async function initApp(ctx = {}) {
     window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
   }
 }
+
+// ===== QR Scanner (html5-qrcode) =====
+let QR_INSTANCE = null;
+let SCANNING = false;
+let TORCH_ON = false;
 
 async function ensureCameraPermission() {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -297,6 +306,86 @@ async function ensureCameraPermission() {
   } catch (err) {
     err.userMessage = 'ไม่ได้รับสิทธิ์ใช้งานกล้อง';
     throw err;
+  }
+}
+
+async function startScanner() {
+  try { await ensureCameraPermission(); }
+  catch (e) { return toastErr(e.userMessage || 'ใช้กล้องไม่ได้'); }
+
+  const hostId = 'qr-reader';
+  const el = document.getElementById(hostId);
+  if (!el) return;
+
+  if (!QR_INSTANCE) QR_INSTANCE = new Html5Qrcode(hostId);
+  if (SCANNING) return;
+
+  // เลือกกล้องหลังถ้ามี
+  let cameraId = undefined;
+  try {
+    const cams = await Html5Qrcode.getCameras();
+    const back = cams.find(c => /back|หลัง|environment/i.test(c.label)) || cams[0];
+    cameraId = back?.id || back?.deviceId;
+  } catch {}
+
+  const config = {
+    fps: 10,
+    qrbox: { width: 280, height: 280 },
+    rememberLastUsedCamera: true,
+    aspectRatio: 1.0
+  };
+
+  const onScanSuccess = async (text /*, result */) => {
+    const now = Date.now();
+    if (text === window.LAST_DECODE && now - (window.LAST_DECODE_AT||0) < 2500) return;
+    window.LAST_DECODE = text; window.LAST_DECODE_AT = now;
+    await redeemCode(text, 'SCAN');
+  };
+  const onScanError = () => {};
+
+  try {
+    await QR_INSTANCE.start(cameraId || { facingMode: "environment" }, config, onScanSuccess, onScanError);
+    SCANNING = true;
+
+    // ตั้งค่าไฟฉาย (ถ้าอุปกรณ์รองรับ)
+    const torchBtn = document.getElementById('torchBtn');
+    try {
+      const caps = QR_INSTANCE.getRunningTrackCapabilities?.();
+      if (torchBtn) torchBtn.disabled = !(caps && 'torch' in caps);
+    } catch { if (torchBtn) torchBtn.disabled = true; }
+  } catch (err) {
+    console.error('startScanner failed:', err);
+    toastErr('เปิดกล้องไม่สำเร็จ');
+  }
+}
+
+async function stopScanner() {
+  try {
+    const torchBtn = document.getElementById('torchBtn');
+    if (torchBtn) torchBtn.disabled = true;
+    TORCH_ON = false;
+
+    if (QR_INSTANCE) {
+      await QR_INSTANCE.stop();
+      await QR_INSTANCE.clear();
+    }
+  } catch (e) {
+    console.warn('stopScanner:', e);
+  } finally {
+    SCANNING = false;
+  }
+}
+
+async function toggleTorch(on) {
+  try {
+    const ok = await QR_INSTANCE?.applyVideoConstraints?.({ advanced: [{ torch: !!on }] });
+    TORCH_ON = !!on;
+    const torchBtn = document.getElementById('torchBtn');
+    if (torchBtn) torchBtn.classList.toggle('active', TORCH_ON);
+    return ok;
+  } catch (e) {
+    console.warn('toggleTorch:', e);
+    throw e;
   }
 }
 
@@ -476,6 +565,8 @@ async function refreshUserScore(){
     try { window.setLastUpdated?.(true); } catch {}
     return;
   }
+
+  
 
   // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
@@ -1133,31 +1224,29 @@ async function openHistory(){
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
-  // ใส่ชื่อบนหัว
-  try { setHistoryUserName(); } catch {}
+  // ชื่อบนหัว
+  try { setHistoryUserName?.(); } catch {}
 
-  const modalEl   = document.getElementById('historyModal');
-  const listWrap  = document.getElementById('historyListWrap');      // ห่อรายการจริง (ถูกซ่อนด้วย skeleton-hide-when-loading)
-  const listEl    = document.getElementById('historyList');          // ul/div รายการ
-  const skelEl    = modalEl?.querySelector('.history-skeleton');     // ส่วน skeleton
-  const modal     = new bootstrap.Modal(modalEl);
+  const modalEl  = document.getElementById('historyModal');
+  const listWrap = document.getElementById('historyListWrap');
+  const listEl   = document.getElementById('historyList');
+  const skelEl   = modalEl?.querySelector('.history-skeleton');
+  const modal    = new bootstrap.Modal(modalEl);
 
-  // --- เริ่มโหลด: โชว์ skeleton / ซ่อนรายการจริง ---
+  // เริ่มโหลด: เปิด skeleton
   if (skelEl) skelEl.style.display = '';
   if (listWrap) listWrap.classList.add('skeleton-hide-when-loading');
   listEl && (listEl.innerHTML = '');
 
-  UiOverlay.show('กำลังโหลดประวัติ…');
-
   try{
-    const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
+    const resp = await fetch(`/api/score-history?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
     const json = await resp.json().catch(()=> ({}));
     const items = Array.isArray(json) ? json
       : Array.isArray(json.items) ? json.items
       : Array.isArray(json.data)  ? json.data
       : [];
 
-    // เรียงล่าสุดอยู่บน
+    // เรียงใหม่ (ล่าสุดก่อน)
     items.sort((a,b)=>{
       const ta = new Date(a.created_at || a.time || 0).getTime();
       const tb = new Date(b.created_at || b.time || 0).getTime();
@@ -1165,41 +1254,28 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // formatter/escape
-    const esc = (s)=>String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const fmtThai = (v)=>{
-      const d = new Date(v); if (Number.isNaN(d.getTime())) return '';
-      const pad = x=>x.toString().padStart(2,'0');
-      return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()+543} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    };
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const fmt = v => { const d = new Date(v); if (isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()+543} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
-    // เรนเดอร์แบบ compact
     listEl.classList.add('hist-compact');
     listEl.innerHTML = items.map(it=>{
       const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
-      const when = fmtThai(it.created_at || it.time || '');
+      const when = fmt(it.created_at || it.time || '');
       return `
         <div class="hc-row">
           <div class="hc-at">${esc(when)}</div>
           <div class="hc-amt ${amt>=0?'plus':'minus'}">${sign}${amt}</div>
-        </div>
-      `;
+        </div>`;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
-
-    // --- โหลดเสร็จ: ซ่อน skeleton / โชว์รายการ ---
-    if (skelEl) skelEl.style.display = 'none';
-    if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
-
-    modal.show();
   } catch (e){
     console.error(e);
     toastErr('โหลดประวัติไม่สำเร็จ');
-    // แสดงลิสต์ (แม้พัง) เพื่อให้คนกดปิดได้
+  } finally {
+    // ปิด skeleton แล้วโชว์รายการ
     if (skelEl) skelEl.style.display = 'none';
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
-  } finally {
-    UiOverlay.hide();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
 }
 
@@ -1462,7 +1538,6 @@ function getTier(score){
 
 // ==== Torch / Low-light scan ====
 let ACTIVE_VIDEO_TRACK = null;
-let TORCH_ON = false;
 
 function getActiveVideoTrack(){
   try{
