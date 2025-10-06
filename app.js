@@ -182,10 +182,8 @@ window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
 // ===== REPLACE WHOLE FUNCTION: initApp =====
 async function initApp(ctx = {}) {
   try {
-    const LIFF_ID = 'YOUR_LIFF_ID'; // <<< เปลี่ยนเป็นของจริง
-
-    // 1) ensure LIFF is ready
-    await ensureLiffInit(LIFF_ID);
+    const liffId = (typeof window.LIFF_ID === 'string' && window.LIFF_ID) || (typeof LIFF_ID !== 'undefined' ? LIFF_ID : null);
+    await ensureLiffInit(liffId);
 
     // 2) resolve UID/PROFILE
     let uid = ctx.uid || window.__UID || sessionStorage.getItem('uid');
@@ -238,7 +236,7 @@ async function initApp(ctx = {}) {
 
       document.getElementById('refreshBtn')?.addEventListener('click', async () => {
         try {
-          await ensureLiffInit(LIFF_ID);
+          await ensureLiffInit(liffId);
           await fetch(GET_SCORE(window.__UID), { method:'GET', cache:'no-store' });
           if (typeof refreshUserScore === 'function') await refreshUserScore();
           if (typeof loadRewards === 'function') await loadRewards();
