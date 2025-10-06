@@ -1125,6 +1125,7 @@ function setHistoryUserName() {
 }
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
+// ===== REPLACE WHOLE FUNCTION: openHistory =====
 async function openHistory(){
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -1132,18 +1133,21 @@ async function openHistory(){
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
-  // ใส่ชื่อบนหัว (ถ้ามี)
+  // ใส่ชื่อบนหัว
   try { setHistoryUserName(); } catch {}
 
-  const listWrap = document.getElementById('historyListWrap'); // มี class skeleton-hide-when-loading
-  const listEl   = document.getElementById('historyList');
-  const modalEl  = document.getElementById('historyModal');
-  const skelEl   = modalEl?.querySelector('.history-skeleton');
-  const modal    = new bootstrap.Modal(modalEl);
+  const modalEl   = document.getElementById('historyModal');
+  const listWrap  = document.getElementById('historyListWrap');      // ห่อรายการจริง (ถูกซ่อนด้วย skeleton-hide-when-loading)
+  const listEl    = document.getElementById('historyList');          // ul/div รายการ
+  const skelEl    = modalEl?.querySelector('.history-skeleton');     // ส่วน skeleton
+  const modal     = new bootstrap.Modal(modalEl);
 
-  // เปิด skeleton ระหว่างโหลด
+  // --- เริ่มโหลด: โชว์ skeleton / ซ่อนรายการจริง ---
   if (skelEl) skelEl.style.display = '';
   if (listWrap) listWrap.classList.add('skeleton-hide-when-loading');
+  listEl && (listEl.innerHTML = '');
+
+  UiOverlay.show('กำลังโหลดประวัติ…');
 
   try{
     const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
@@ -1161,19 +1165,20 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // วาดแบบมินิมอล: เวลา + แต้ม
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const fmt = (v) => {
+    // formatter/escape
+    const esc = (s)=>String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const fmtThai = (v)=>{
       const d = new Date(v); if (Number.isNaN(d.getTime())) return '';
       const pad = x=>x.toString().padStart(2,'0');
       return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()+543} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
 
+    // เรนเดอร์แบบ compact
     listEl.classList.add('hist-compact');
     listEl.innerHTML = items.map(it=>{
       const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
-      const when = fmt(it.created_at || it.time || '');
+      const when = fmtThai(it.created_at || it.time || '');
       return `
         <div class="hc-row">
           <div class="hc-at">${esc(when)}</div>
@@ -1182,17 +1187,19 @@ async function openHistory(){
       `;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
-    // ปิด skeleton แล้วโชว์ลิสต์
+    // --- โหลดเสร็จ: ซ่อน skeleton / โชว์รายการ ---
     if (skelEl) skelEl.style.display = 'none';
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
 
     modal.show();
-  }catch(e){
+  } catch (e){
     console.error(e);
     toastErr('โหลดประวัติไม่สำเร็จ');
-    // ปิด skeleton แม้พัง
+    // แสดงลิสต์ (แม้พัง) เพื่อให้คนกดปิดได้
     if (skelEl) skelEl.style.display = 'none';
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
+  } finally {
+    UiOverlay.hide();
   }
 }
 
