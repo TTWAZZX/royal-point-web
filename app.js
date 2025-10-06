@@ -154,82 +154,92 @@ function setAppLoading(on){
 document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
 document.addEventListener("DOMContentLoaded", initApp);
 
+// ===== LIFF bootstrap helper =====
+window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
+  if (!window.liff) throw new Error('LIFF SDK not loaded');
+  if (window.__LIFF_INITED) return true;
+
+  // กันเรียกซ้ำซ้อนหลายที่พร้อมกัน
+  if (window.__LIFF_INITING) { 
+    await window.__LIFF_INITING; 
+    return true; 
+  }
+
+  if (!LIFF_ID || typeof LIFF_ID !== 'string') {
+    throw new Error('Missing LIFF_ID');
+  }
+
+  window.__LIFF_INITING = (async () => {
+    await liff.init({ liffId: LIFF_ID });
+    window.__LIFF_INITED = true;
+  })();
+
+  await window.__LIFF_INITING;
+  return true;
+};
+
 // ⬇️ วางทับของเดิมทั้งหมด
 // ===== REPLACE WHOLE FUNCTION: initApp =====
-// ===== REPLACE WHOLE FUNCTION: initApp (no redirect to /register.html) =====
 async function initApp(ctx = {}) {
   try {
-    // --- Resolve UID ---
+    const LIFF_ID = 'YOUR_LIFF_ID'; // <<< เปลี่ยนเป็นของจริง
+
+    // 1) ensure LIFF is ready
+    await ensureLiffInit(LIFF_ID);
+
+    // 2) resolve UID/PROFILE
     let uid = ctx.uid || window.__UID || sessionStorage.getItem('uid');
-    if (!uid && window.liff?.isLoggedIn?.()) {
-      // ดึงจาก LIFF เผื่อยังไม่ได้ตั้ง
-      try { const prof = ctx.profile || await liff.getProfile(); uid = prof?.userId || ''; } catch {}
+    let prof = ctx.profile || null;
+
+    if (liff.isLoggedIn()) {
+      if (!prof) prof = await liff.getProfile().catch(()=>null);
+      if (!uid)  uid  = prof?.userId || '';
+    } else {
+      liff.login(); return;
     }
+
     if (uid) { window.__UID = uid; sessionStorage.setItem('uid', uid); }
 
-    // --- Helpers ---
+    // 3) preflight check
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
-    const apiFetch = (input, init, opts) => (window.Loading?.apiFetch
-      ? window.Loading.apiFetch(input, init, opts || { scope: 'page' })
-      : fetch(input, init).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }));
-
-    // --- Preflight: เช็คผู้ใช้ ---
-    if (!uid) {
-      // ไม่มี uid เลย → เปิด modal ลงทะเบียน (ไม่ redirect)
-      const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
-      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-      console.warn('showRegisterModal() not found');
-      return;
-    }
-
-    const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
+    const resp = await fetch(GET_SCORE(uid), { method:'GET', cache:'no-store' });
     if (resp.status === 404) {
-      // ผู้ใช้ใหม่ → เปิด modal เท่านั้น
-      const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
       if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-      console.warn('showRegisterModal() not found');
-      return;
+      console.warn('showRegisterModal() not found'); return;
     }
     if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
 
-    const scorePayload = await resp.json(); // { status, uid?, data:{ user, score, updated_at } }
-    if (scorePayload?.uid && scorePayload.uid !== uid) {
-      uid = scorePayload.uid;
-      window.__UID = uid;
-      sessionStorage.setItem('uid', uid);
+    const payload = await resp.json(); // { status, uid?, data:{ user, score, updated_at } }
+    if (payload?.uid && payload.uid !== uid) {
+      uid = payload.uid; window.__UID = uid; sessionStorage.setItem('uid', uid);
     }
 
-    // --- เติมโปรไฟล์เบื้องต้น (ไม่ทับฟังก์ชันเดิม) ---
-    if (ctx.profile) {
+    // 4) seed UI with profile (ไม่ทับโค้ดเดิม)
+    if (prof) {
       const nameEl = document.getElementById('username');
-      if (nameEl && !nameEl.dataset.locked) nameEl.textContent = ctx.profile.displayName || nameEl.textContent;
+      if (nameEl && !nameEl.dataset.locked) nameEl.textContent = prof.displayName || nameEl.textContent;
       const picEl = document.getElementById('profilePic');
-      if (picEl && ctx.profile.pictureUrl) picEl.src = ctx.profile.pictureUrl;
+      if (picEl && prof.pictureUrl) picEl.src = prof.pictureUrl;
     }
 
-    // --- โหลดคะแนน/ของรางวัล ตามฟังก์ชันเดิมของคุณ ---
-    if (typeof refreshUserScore === 'function') await refreshUserScore(); else {
-      const pointsEl = document.getElementById('points');
-      if (pointsEl && typeof scorePayload?.data?.score !== 'undefined') {
-        pointsEl.textContent = Number(scorePayload.data.score || 0);
-      }
-    }
-
+    // 5) call your existing flows
+    if (typeof refreshUserScore === 'function') await refreshUserScore();
     if (typeof loadRewards === 'function') await loadRewards();
     if (typeof renderRewards === 'function') {
       const s = (typeof window.prevScore === 'number')
         ? window.prevScore
-        : (typeof scorePayload?.data?.score !== 'undefined' ? Number(scorePayload.data.score || 0) : 0);
+        : (typeof payload?.data?.score !== 'undefined' ? Number(payload.data.score || 0) : 0);
       renderRewards(s);
     }
 
-    // --- Bind ปุ่มครั้งเดียว ---
+    // 6) one-time binds
     if (!window.__MAIN_BOUND) {
       window.__MAIN_BOUND = true;
 
       document.getElementById('refreshBtn')?.addEventListener('click', async () => {
         try {
-          await apiFetch(GET_SCORE(window.__UID), { method: 'GET' }, { scope: 'page', msg: 'กำลังรีเฟรช...' });
+          await ensureLiffInit(LIFF_ID);
+          await fetch(GET_SCORE(window.__UID), { method:'GET', cache:'no-store' });
           if (typeof refreshUserScore === 'function') await refreshUserScore();
           if (typeof loadRewards === 'function') await loadRewards();
           if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
@@ -246,7 +256,10 @@ async function initApp(ctx = {}) {
         if (typeof loadHistory === 'function') loadHistory();
       });
 
-      document.getElementById('startScanBtn')?.addEventListener('click', () => { if (typeof startScanner === 'function') startScanner(); });
+      document.getElementById('startScanBtn')?.addEventListener('click', async () => {
+        await ensureLiffInit(LIFF_ID);
+        if (typeof startScanner === 'function') startScanner();
+      });
       document.getElementById('stopScanBtn')?.addEventListener('click', () => { if (typeof stopScanner === 'function') stopScanner(); });
       document.getElementById('submitCodeBtn')?.addEventListener('click', () => {
         const code = (document.getElementById('secretCode')?.value || '').trim();
@@ -256,6 +269,7 @@ async function initApp(ctx = {}) {
     }
 
     if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
+
   } catch (err) {
     console.error('[initApp] error:', err);
     window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
