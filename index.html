@@ -257,7 +257,7 @@
   .app-overlay__box{ background:#111827; color:#fff; padding:.8rem 1rem; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.35) }
 </style>
 
-<!-- ===== Register Modal ===== -->
+<!-- ===== Register Modal (REPLACE THIS WHOLE BLOCK) ===== -->
 <div class="modal fade" id="registerModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form id="registerForm" class="modal-content">
@@ -265,32 +265,84 @@
         <h5 class="modal-title"><i class="fa-regular fa-id-badge me-2"></i>ลงทะเบียนผู้ใช้ใหม่</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
       </div>
+
       <div class="modal-body">
         <p class="text-muted small mb-3">
-          พบว่า LINE ของคุณยังไม่มีในระบบ กรุณากรอกข้อมูลพื้นฐานเพื่อสร้างบัญชีใหม่
+          พบว่า LINE ของคุณยังไม่มีในระบบ กรุณากรอกข้อมูลเพื่อสมัครใช้งาน
         </p>
 
+        <!-- เก็บ UID จาก LIFF -->
         <input type="hidden" id="regUid" name="uid" />
+
+        <!-- ชื่อ - นามสกุล -->
         <div class="mb-3">
-          <label class="form-label">ชื่อ-สกุล</label>
-          <input type="text" id="regName" name="name" class="form-control" placeholder="ชื่อ-สกุล" required />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">แผนก/หน่วยงาน</label>
-          <input type="text" id="regRoom" name="room" class="form-control" placeholder="เช่น Production 1 / HR" />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">เบอร์โทร</label>
-          <input type="tel" id="regTel" name="tel" class="form-control" placeholder="0xxxxxxxxx" />
+          <label for="regName" class="form-label">ชื่อ - นามสกุล</label>
+          <input type="text" class="form-control" id="regName" name="name" required />
         </div>
 
-        <!-- field เสริม (เผื่อใช้ภายหลัง) -->
-        <input type="hidden" id="regDob" name="dob" />
-        <input type="hidden" id="regPassport" name="passport" />
+        <!-- Section -->
+        <div class="mb-3">
+          <label for="regRoom" class="form-label">Section</label>
+          <select class="form-control" id="regRoom" name="room" required>
+            <option value="" disabled selected>เลือก</option>
+            <option value="ACC">ACC</option>
+            <option value="C&amp;FA">C&amp;FA</option>
+            <option value="CS">CS</option>
+            <option value="CIC">CIC</option>
+            <option value="DIR">DIR</option>
+            <option value="ENG">ENG</option>
+            <option value="FIN">FIN</option>
+            <option value="GR">GR</option>
+            <option value="HP">HP</option>
+            <option value="HCM">HCM</option>
+            <option value="HRD">HRD</option>
+            <option value="HRM">HRM</option>
+            <option value="IT">IT</option>
+            <option value="L&amp;S">L&amp;S</option>
+            <option value="MTN">MTN</option>
+            <option value="MKT">MKT</option>
+            <option value="MC">MC</option>
+            <option value="OS">OS</option>
+            <option value="PD">PD</option>
+            <option value="PD1">PD1</option>
+            <option value="PD2">PD2</option>
+            <option value="PC">PC</option>
+            <option value="PE">PE</option>
+            <option value="PUR">PUR</option>
+            <option value="QA">QA</option>
+            <option value="QC">QC</option>
+            <option value="RDPP">RDPP</option>
+            <option value="R&amp;D">R&amp;D</option>
+            <option value="SHE">SHE</option>
+            <option value="SCM">SCM</option>
+            <option value="SYS-ENG">SYS-ENG</option>
+            <option value="TSH CENTER">TSH CENTER</option>
+            <option value="WH">WH</option>
+          </select>
+        </div>
+
+        <!-- วันเกิด -->
+        <div class="mb-3">
+          <label for="regDob" class="form-label">วันเกิด</label>
+          <input type="date" class="form-control" id="regDob" name="dob" required />
+        </div>
+
+        <!-- เลขประจำตัวพนักงาน/Passport -->
+        <div class="mb-3">
+          <label for="regPassport" class="form-label">เลขประจำตัวพนักงาน/Passport</label>
+          <input type="text" class="form-control" id="regPassport" name="passport" required />
+        </div>
+
+        <!-- เบอร์โทรศัพท์ -->
+        <div class="mb-3">
+          <label for="regTel" class="form-label">เบอร์โทรศัพท์</label>
+          <input type="tel" class="form-control" id="regTel" name="tel" required inputmode="tel" placeholder="0xxxxxxxxx" />
+        </div>
       </div>
+
       <div class="modal-footer">
-        <button type="submit" id="btnRegister" class="btn btn-primary">
-          <i class="fa-solid fa-check me-2"></i>บันทึกการลงทะเบียน
+        <button type="submit" id="btnRegister" class="btn btn-primary btn-lg w-100">
+          สมัครใช้งาน
         </button>
       </div>
     </form>
