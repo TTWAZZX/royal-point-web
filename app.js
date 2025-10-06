@@ -721,51 +721,52 @@ const IMAGE_BY_ID = {
 /** ใส่รูปตามลำดับ “ช่อง” 1–44 (index เริ่ม 0)
  *  ด้านล่างเป็น URL จำลองด้วย placehold.co — เปลี่ยนเป็นลิงก์จริงของคุณเมื่อพร้อม
  */
+// วางแทน const IMAGE_BY_INDEX = [ ... ] เดิมทั้งหมด
 const IMAGE_BY_INDEX = [
-  "https://lh3.googleusercontent.com/d/1o_VHWrIuc9o56MCRuzjrycB8W5w_dT5d", // ช่อง 1 (40 pt)
-  "https://lh3.googleusercontent.com/d/1vEP5DqyX0vgkv3_XDAyLxJpLm3zUtrqR", // ช่อง 2 (50 pt)
-  "https://lh3.googleusercontent.com/d/1Ve6_BNWlL59BdQXaTLdxdvX4iLYomUyX", // ช่อง 3 (60 pt)
-  "https://placehold.co/640x480?text=Gift+04", // 70
-  "https://placehold.co/640x480?text=Gift+05", // 80
-  "https://placehold.co/640x480?text=Gift+06", // 100
-  "https://placehold.co/640x480?text=Gift+07", // 100
-  "https://placehold.co/640x480?text=Gift+08", // 100
-  "https://placehold.co/640x480?text=Gift+09", // 100
-  "https://placehold.co/640x480?text=Gift+10", // 120
-  "https://placehold.co/640x480?text=Gift+11", // 120
-  "https://placehold.co/640x480?text=Gift+12", // 120
-  "https://placehold.co/640x480?text=Gift+13", // 120
-  "https://placehold.co/640x480?text=Gift+14", // 150
-  "https://placehold.co/640x480?text=Gift+15", // 180
-  "https://placehold.co/640x480?text=Gift+16", // 200
-  "https://placehold.co/640x480?text=Gift+17", // 150
-  "https://placehold.co/640x480?text=Gift+18", // 180
-  "https://placehold.co/640x480?text=Gift+19", // 200
-  "https://placehold.co/640x480?text=Gift+20", // 200
-  "https://placehold.co/640x480?text=Gift+21", // 220
-  "https://placehold.co/640x480?text=Gift+22", // 230
-  "https://placehold.co/640x480?text=Gift+23", // 250
-  "https://placehold.co/640x480?text=Gift+24", // 250
-  "https://placehold.co/640x480?text=Gift+25", // 250
-  "https://placehold.co/640x480?text=Gift+26", // 250
-  "https://placehold.co/640x480?text=Gift+27", // 250
-  "https://placehold.co/640x480?text=Gift+28", // 250
-  "https://placehold.co/640x480?text=Gift+29", // 350
-  "https://placehold.co/640x480?text=Gift+30", // 380
-  "https://placehold.co/640x480?text=Gift+31", // 400
-  "https://placehold.co/640x480?text=Gift+32", // 400
-  "https://placehold.co/640x480?text=Gift+33", // 400
-  "https://placehold.co/640x480?text=Gift+34", // 400
-  "https://placehold.co/640x480?text=Gift+35", // 400
-  "https://placehold.co/640x480?text=Gift+36", // 400
-  "https://placehold.co/640x480?text=Gift+37", // 450
-  "https://placehold.co/640x480?text=Gift+38", // 500
-  "https://placehold.co/640x480?text=Gift+39", // 500
-  "https://placehold.co/640x480?text=Gift+40", // 600
-  "https://placehold.co/640x480?text=Gift+41", // 700
-  "https://placehold.co/640x480?text=Gift+42", // 800
-  "https://placehold.co/640x480?text=Gift+43", // 900
-  "https://placehold.co/640x480?text=Gift+44"  // 1000
+  "https://lh3.googleusercontent.com/d/1tzYzZvuVWNiXT2wccYMI0UFh6lRTkbJ6", // 01 → 40 pt
+  "https://lh3.googleusercontent.com/d/1uom60jA2Ro0Yy-OGVaedm8mdKULxCFEE", // 02 → 50 pt
+  "https://lh3.googleusercontent.com/d/1ewIghQ5BclphzBErZuozCv7Z7BCyT2lN", // 03 → 60 pt
+  "https://lh3.googleusercontent.com/d/14QUnoEEuIjhlOP2z-BD40lGUXuzCSB3r", // 04 → 70 pt
+  "https://lh3.googleusercontent.com/d/1XolP2GN-VZHe89TEGBIzw-w0Ryy_aYAc", // 05 → 80 pt
+  "https://lh3.googleusercontent.com/d/1aT21MZZNHdS3CRfkrLjna1JiX4A9Rn-M", // 06 → 100 pt
+  "https://lh3.googleusercontent.com/d/1lhcANAqeHQ13XEkL467_yC7omadhcZZn", // 07 → 100 pt
+  "https://lh3.googleusercontent.com/d/1t6B9XMNuUvaBBjo818ZKqhc5nmCx2vdO", // 08 → 100 pt
+  "https://lh3.googleusercontent.com/d/1Ky0gv6_m61S49_KHqNQE_2X30RmcDLj8", // 09 → 100 pt
+  "https://lh3.googleusercontent.com/d/19T7uXQVgQgLwT0VQ117PdMFSgyuzqOVI", // 10 → 120 pt
+  "https://lh3.googleusercontent.com/d/1TXLYFAu9ZvCko0360qxJTi1Pd4GKdIWb", // 11 → 120 pt
+  "https://lh3.googleusercontent.com/d/1svMqu3Ge2GjalHmqVllY-ndA-heXpYIX", // 12 → 120 pt
+  "https://lh3.googleusercontent.com/d/1zemY7NwelAuduqvM3e0Wi8WmXBndHwB-", // 13 → 120 pt
+  "https://lh3.googleusercontent.com/d/1D4GGczCWdRrHbmP7A_3Gfs6_fr_KS90i", // 14 → 150 pt
+  "https://lh3.googleusercontent.com/d/1y9KbZYWmj53QF2_OPj7lid8HRvsUxJe3", // 15 → 180 pt
+  "https://lh3.googleusercontent.com/d/1WodL4DLw45xdPb6pg28d_mXVOldOpvjN", // 16 → 200 pt
+  "https://lh3.googleusercontent.com/d/1zoQBfcoJ_xXXz5CEWTTMJbXH6jw0RXWq", // 17 → 150 pt
+  "https://lh3.googleusercontent.com/d/12SMtYCokS2X8WhwS2J0azlDlA-iphZYO", // 18 → 180 pt
+  "https://lh3.googleusercontent.com/d/13M8mpNwCeEWL_kRJ-xHvwTQHUS4H0CON", // 19 → 200 pt
+  "https://lh3.googleusercontent.com/d/1psxmP2KcMddkRJ0CXHus19DZvMTedev_", // 20 → 200 pt
+  "https://lh3.googleusercontent.com/d/1twHwdnz0s71pvRjETIA9cooAxFONQdtz", // 21 → 220 pt
+  "https://lh3.googleusercontent.com/d/1lYz3T8FwFGQBEo5oBlEbx598klaRwwEe", // 22 → 230 pt
+  "https://lh3.googleusercontent.com/d/1fW2MftUbOncqpandHSglzTzzD3DaX8HD", // 23 → 250 pt
+  "https://lh3.googleusercontent.com/d/1X59mn0tSd3nK6KTOltbNcmqeVlTnEB-S", // 24 → 250 pt
+  "https://lh3.googleusercontent.com/d/19_UOzuEjbI9DeYqdrp6Rt_WRgpR7ncrf", // 25 → 250 pt
+  "https://lh3.googleusercontent.com/d/1UUuLYzIePqrfU08HPT30o6JxtBpGr8m7", // 26 → 250 pt
+  "https://lh3.googleusercontent.com/d/1YgutbniKKkjsGOCs4u2S3ThvAELzse9r", // 27 → 250 pt
+  "https://lh3.googleusercontent.com/d/1NQy15RAK0qLu267rAFRiRR-uMtBATSr_", // 28 → 250 pt
+  "https://lh3.googleusercontent.com/d/1VGi5BEfa2-Bk5WZw_Wf_EDCHT52x_l55", // 29 → 350 pt
+  "https://lh3.googleusercontent.com/d/1PGbkV97OS_wkGz7vWmB59a2paKjgULZF", // 30 → 380 pt
+  "https://lh3.googleusercontent.com/d/1_pARo-iiyA68pDqOp6TSLCRj33TN6x-d", // 31 → 400 pt
+  "https://lh3.googleusercontent.com/d/1epsk3teYcJw0uL4o3OwIywUsZw2CiCHW", // 32 → 400 pt
+  "https://lh3.googleusercontent.com/d/1LDYALZaa0Swo-SjknugAztmw2YQT3iq2", // 33 → 400 pt
+  "https://lh3.googleusercontent.com/d/1pxVisHXsJtvX6uqpx5hmiBTSHl92vLW3", // 34 → 400 pt
+  "https://lh3.googleusercontent.com/d/1WpUh8FY7cWlhTp8BKnC40ScOJ2IhQkUR", // 35 → 400 pt
+  "https://lh3.googleusercontent.com/d/1jWzvazjQdfGipCkGaKZVDA3NuzwjBK0x", // 36 → 400 pt
+  "https://lh3.googleusercontent.com/d/1ZqlCs9QjejQJ3e-Ikxd3hce4SX3CXZOQ", // 37 → 450 pt
+  "https://lh3.googleusercontent.com/d/1aur2qx_cR23DNTHQo5MRsJLuG0V0Jo7J", // 38 → 500 pt
+  "https://lh3.googleusercontent.com/d/1pxapISLJkRMGmcOL3Vj7DmANop-As2Pe", // 39 → 500 pt
+  "https://lh3.googleusercontent.com/d/1RC5G_HntHj8K1XEQfzLyA-N1w8vO4IIO", // 40 → 600 pt
+  "https://lh3.googleusercontent.com/d/12237FMpOJ-bODwOCmJWXCxEzugRWiGZh", // 41 → 700 pt
+  "https://lh3.googleusercontent.com/d/18L16KpZuaJTpio4CVD-IHuZFeFlLmXjm", // 42 → 800 pt
+  "https://lh3.googleusercontent.com/d/10SVEtB7e1xrYsTIEjfc2kLMFyPIay1Tq", // 43 → 900 pt
+  "https://lh3.googleusercontent.com/d/1uPg2s7N5QCg6He6_8563tfoTuu-jlBew"  // 44 → 1000 pt
 ];
 
 /** เลือกรูปตามลำดับ: ID → INDEX → r.img จาก API → placeholder */
