@@ -311,11 +311,10 @@
 <!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
 <script>
 (function(){
-  const LIFF_ID = "2007053300-QoEvbXyn";          // ใช้ค่าเดียวกับฝั่งแอดมิน
+  const LIFF_ID = "2007053300-QoEvbXyn";
   const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
   const REG_URL   = "/api/register";
 
-  // ใช้ helper ของคุณ (อยู่ใน loader.js) ให้ท็อปบาร์/overlay แสดงผลอย่างเนียน
   const apiFetch = (input, init, opts) => (window.Loading?.apiFetch
       ? window.Loading.apiFetch(input, init, opts || { scope:'page' })
       : fetch(input, init).then(r=>r.json()));
@@ -331,24 +330,33 @@
       const uid  = prof.userId;
       window.__UID = uid;
 
-      // พยายามโหลดข้อมูลผู้ใช้
+      // 1) ตรวจว่ามีผู้ใช้หรือยัง ด้วย fetch ตรง ๆ เพื่ออ่านสถานะ 404 ได้แน่นอน
+      let needRegister = false;
       try {
-        const data = await apiFetch(GET_SCORE(uid), { method:'GET' }, { scope:'page' });
-        // ถ้าสำเร็จ: สามารถเรียก init UI เดิมของคุณต่อได้ หากมีฟังก์ชัน
-        // initUserUI && initUserUI(data);
-      } catch (e) {
-        const message = (e && e.message) || '';
-        // ถ้าเป็น user_not_found → เปิดฟอร์มสมัคร
-        if (/user_not_found/i.test(message)) {
-          return showRegisterModal(prof);
+        const resp = await fetch(GET_SCORE(uid), { method:'GET' });
+        if (resp.status === 404) {
+          needRegister = true;
+        } else if (!resp.ok) {
+          // สถานะอื่นที่ไม่ใช่ 200/404
+          throw new Error('get-score failed with status ' + resp.status);
+        } else {
+          // 200 → ผู้ใช้เก่า ไปต่อได้เลย (ถ้ามี initUserUI ให้เรียกต่อ)
+          // const data = await resp.json();
+          // initUserUI && initUserUI(data);
         }
-        // ถ้าเป็นรูปแบบ error อื่นที่ยังไม่ได้ serialize message
-        if (e && e.status === 'error' && /user_not_found/i.test(e.message || '')) {
-          return showRegisterModal(prof);
-        }
-        console.error('Load user failed:', e);
-        window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถโหลดข้อมูลผู้ใช้ได้","error") : alert("ไม่สามารถโหลดข้อมูลผู้ใช้ได้");
+      } catch (err) {
+        console.warn('Direct fetch get-score error:', err);
+        // ถ้าอยาก fallback เป็นข้อความ error ก็ใช้ Swal ด้านล่าง
       }
+
+      // 2) ถ้าไม่พบผู้ใช้ → เปิดฟอร์มลงทะเบียน
+      if (needRegister) {
+        return showRegisterModal(prof);
+      }
+
+      // ถ้าต้องการโหลดข้อมูลอีกครั้งแบบมี overlay ก็ทำได้:
+      // await apiFetch(GET_SCORE(uid), { method:'GET' }, { scope:'page' });
+
     } catch (err) {
       console.error(err);
       window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถเริ่มระบบ LIFF ได้","error") : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
@@ -394,9 +402,11 @@
       window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
       bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
 
-      // ลงทะเบียนเสร็จ → โหลดข้อมูลผู้ใช้อีกครั้ง
+      // ลงทะเบียนเสร็จ → โหลดข้อมูลผู้ใช้อีกครั้ง (แสดงผลตามโฟลว์หน้าเดิม)
       await apiFetch(GET_SCORE(payload.uid), { method:'GET' }, { scope:'page' });
+      // ถ้ามี initUserUI อยู่แล้ว ให้เรียกต่อได้:
       // initUserUI && initUserUI(data);
+
     } catch(err){
       console.error(err);
       window.Swal ? Swal.fire("ผิดพลาด","บันทึกข้อมูลไม่สำเร็จ","error") : alert("บันทึกข้อมูลไม่สำเร็จ");
