@@ -6,26 +6,26 @@
   <title>Royal Point</title>
 
   <link rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%2322c55e'/%3E%3Ctext x='50%25' y='57%25' text-anchor='middle' dominant-baseline='middle' font-size='80' fill='white'%3E★%3C/text%3E%3C/svg%3E">
+        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%2322c55e'/%3E%3Ctext x='50%25' y='57%25' text-anchor='middle' dominant-baseline='middle' font-size='80' fill='white'%3E★%3C/text%3E%3C/svg%3E">
 
   <!-- Fonts & Icons -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Noto+Sans+Thai:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
 
-  <!-- Bootstrap -->
+  <!-- Bootstrap CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"/>
 
-  <!-- Styles -->
+  <!-- App Styles -->
   <link rel="stylesheet" href="/style.css"/>
 </head>
 <body>
 
-<!-- Top progress bar (統一) -->
+<!-- Top progress bar -->
 <div id="topProgress" class="top-progress" aria-hidden="true">
   <div class="top-progress__bar" id="topProgressBar"></div>
 </div>
 
-<!-- ออฟไลน์แบนเนอร์ (ของเดิม) -->
+<!-- Offline banner -->
 <div id="offlineBanner" class="offline-banner d-none" role="status" aria-live="polite">
   <i class="fa-solid fa-cloud-slash"></i> ออฟไลน์ — แสดงข้อมูลจากแคช
 </div>
@@ -34,21 +34,15 @@
   <!-- ===== Profile Card ===== -->
   <section class="rp-glass rp-card rp-profile-card p-3 p-sm-4 mb-3 hover-lift">
     <span id="lastUpdated" class="hidden text-xs text-muted"></span>
-    <!-- มุมขวาบนของการ์ด -->
+
     <div class="rp-top-right">
-      <button id="refreshBtn"
-              class="btn btn-outline-secondary btn-icon mini"
-              aria-label="รีเฟรช"
-              data-bs-toggle="tooltip"
-              data-bs-placement="left"
-              title="อัปเดตล่าสุด: —">
+      <button id="refreshBtn" class="btn btn-outline-secondary btn-icon mini" aria-label="รีเฟรช"
+              data-bs-toggle="tooltip" data-bs-placement="left" title="อัปเดตล่าสุด: —">
         <i class="fa-solid fa-rotate"></i>
       </button>
     </div>
 
-    <!-- หัวการ์ด: รูป + ชื่อ + Badge -->
     <div class="rp-left">
-      <!-- ซ้าย: Avatar + mini chips ใต้รูป -->
       <div class="rp-left-col">
         <div class="rp-avatar-wrap rp-tier-silver" id="rpAvatar" aria-label="User avatar">
           <img id="profilePic" class="rp-avatar-circle" src="https://placehold.co/120" alt="Profile picture">
@@ -64,7 +58,6 @@
         </div>
       </div>
 
-      <!-- ขวา: ชื่อ + ระดับ -->
       <div class="rp-title">
         <h1 id="username" class="rp-username">—</h1>
         <span id="tierPill" class="rp-tier-pill rp-tier-silver">
@@ -80,38 +73,33 @@
         <span id="points">0</span><span class="rp-point-unit"> pt</span>
       </div>
     </div>
-<!-- Progress -->
-<div class="rp-progress-area mt-2">
-  <div id="progressBar" class="rp-progress-line prog-silver">
-    <div id="progressFill" class="rp-progress-fill"></div>
-  </div>
 
-  <div class="text-center small rp-xp-pair">
-    <span id="xpPair">0 / 0 คะแนน</span>
-  </div>
-</div>
+    <!-- Progress -->
+    <div class="rp-progress-area mt-2">
+      <div id="progressBar" class="rp-progress-line prog-silver">
+        <div id="progressFill" class="rp-progress-fill"></div>
+      </div>
+      <div class="text-center small rp-xp-pair">
+        <span id="xpPair">0 / 0 คะแนน</span>
+      </div>
+    </div>
 
-<!-- กล่องบอกทางไปเลเวลถัดไป (อยู่กึ่งกลางใต้ #xpPair) -->
-<div class="rp-status-center mt-1">
-  <span id="tierStatus" class="status-chip hidden"></span>
-</div>
-</div>
+    <div class="rp-status-center mt-1">
+      <span id="tierStatus" class="status-chip hidden"></span>
+    </div>
   </section>
 
   <!-- Actions -->
   <section id="rpActions" class="rp-actions-wide d-grid gap-2 mb-3">
-    <button id="primaryAction"
-            class="btn rp-primary act-btn tap-20"
-            data-bs-toggle="modal" data-bs-target="#scoreModal">
+    <button id="primaryAction" class="btn rp-primary act-btn tap-20" data-bs-toggle="modal" data-bs-target="#scoreModal">
       <i class="fa-solid fa-qrcode me-2"></i> สแกนเพื่อรับคะแนน
     </button>
-
     <button id="historyBtn" class="btn btn-outline-secondary act-btn tap-20">
       <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
     </button>
   </section>
 
-  <!-- ===== Ads Carousel ===== -->
+  <!-- Ads -->
   <section class="rp-glass rp-card p-0 mb-3 hover-lift">
     <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="3500">
       <div class="carousel-indicators">
@@ -145,31 +133,12 @@
     </div>
   </section>
 
-  <!-- Skeleton card (หน้าแรก) -->
-  <section id="appSkeleton" class="rp-card p-4 mb-3" style="display:none">
-    <div class="d-flex align-items-center gap-3">
-      <div class="skel" style="width:80px;height:80px;border-radius:50%"></div>
-      <div class="flex-grow-1">
-        <div class="skel skel-line" style="width:40%"></div>
-        <div class="skel skel-line" style="width:30%"></div>
-        <div class="skel skel-line" style="width:60%"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ===== Rewards ===== -->
+  <!-- Skeleton (rewards) -->
   <section class="rp-glass rp-card p-3 p-sm-4 hover-lift">
     <h5 class="mb-2">ของรางวัล</h5>
-
-    <!-- ครอบด้วย rewardsSection เพื่อสลับ skeleton -->
     <div id="rewardsSection" class="skeleton-hide-when-loading">
-      <!-- reward rail ที่คุณเรนเดอร์รายการจริง -->
-      <div id="rewardRail" class="rp-reward-rail">
-        <!-- JS จะ render การ์ดให้ -->
-      </div>
+      <div id="rewardRail" class="rp-reward-rail"></div>
     </div>
-
-    <!-- Skeleton สำหรับโซนของรางวัล -->
     <div class="card my-2 reward-skeleton">
       <div class="card-body d-flex gap-3">
         <div class="skeleton skel-thumb"></div>
@@ -234,16 +203,14 @@
   <div class="modal-dialog modal-dialog-scrollable modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-  <h5 class="modal-title">ประวัติพ้อยท์</h5>
-  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-</div>
+        <h5 class="modal-title">ประวัติพ้อยท์</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
 
-      <!-- ครอบ body ด้วย historyListWrap เพื่อสลับ skeleton -->
       <div id="historyListWrap" class="modal-body pt-0 skeleton-hide-when-loading">
         <div id="historyList" class="list-group list-group-flush"></div>
       </div>
 
-      <!-- Skeleton ของโมดัลประวัติ -->
       <div class="modal-body history-skeleton pt-0">
         <div class="skeleton skel-line" style="width:80%"></div>
         <div class="skeleton skel-line" style="width:60%"></div>
@@ -252,8 +219,8 @@
       </div>
 
       <div class="modal-footer justify-content-center">
-  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-</div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
+      </div>
     </div>
   </div>
 </div>
@@ -278,27 +245,165 @@
   </button>
 </div>
 
-<!-- ===== Blocking Overlay (統一) ===== -->
-<div id="appOverlay" class="loading-overlay" role="alert" aria-live="assertive" aria-busy="true">
-  <div class="box">
-    <div class="loading-spinner"></div>
+<!-- ===== App Overlay (ใช้ร่วมกับ Loading.apiFetch) ===== -->
+<div id="appOverlay" class="app-overlay" role="alert" aria-live="assertive" aria-busy="true">
+  <div class="app-overlay__box">
     <div id="overlayMsg">กำลังดำเนินการ...</div>
   </div>
 </div>
+<style>
+  .app-overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:2000; background:rgba(0,0,0,.45) }
+  .app-overlay.active{ display:flex }
+  .app-overlay__box{ background:#111827; color:#fff; padding:.8rem 1rem; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.35) }
+</style>
 
-<!-- Scripts -->
+<!-- ===== Register Modal ===== -->
+<div class="modal fade" id="registerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="registerForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fa-regular fa-id-badge me-2"></i>ลงทะเบียนผู้ใช้ใหม่</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          พบว่า LINE ของคุณยังไม่มีในระบบ กรุณากรอกข้อมูลพื้นฐานเพื่อสร้างบัญชีใหม่
+        </p>
+
+        <input type="hidden" id="regUid" name="uid" />
+        <div class="mb-3">
+          <label class="form-label">ชื่อ-สกุล</label>
+          <input type="text" id="regName" name="name" class="form-control" placeholder="ชื่อ-สกุล" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">แผนก/หน่วยงาน</label>
+          <input type="text" id="regRoom" name="room" class="form-control" placeholder="เช่น Production 1 / HR" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">เบอร์โทร</label>
+          <input type="tel" id="regTel" name="tel" class="form-control" placeholder="0xxxxxxxxx" />
+        </div>
+
+        <!-- field เสริม (เผื่อใช้ภายหลัง) -->
+        <input type="hidden" id="regDob" name="dob" />
+        <input type="hidden" id="regPassport" name="passport" />
+      </div>
+      <div class="modal-footer">
+        <button type="submit" id="btnRegister" class="btn btn-primary">
+          <i class="fa-solid fa-check me-2"></i>บันทึกการลงทะเบียน
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== JS: Bootstrap bundle ===== -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
-<!-- จำเป็นสำหรับ app.js -->
+<!-- ===== Core app scripts ===== -->
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-
-<!-- App -->
-<script src="/app.js"></script>
-<!-- Unified loader manager (ต้องมี) -->
 <script src="/loader.js"></script>
+<script src="/app.js"></script>
+
+<!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
+<script>
+(function(){
+  const LIFF_ID = "2007053300-QoEvbXyn";          // ใช้ค่าเดียวกับฝั่งแอดมิน
+  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
+  const REG_URL   = "/api/register";
+
+  // ใช้ helper ของคุณ (อยู่ใน loader.js) ให้ท็อปบาร์/overlay แสดงผลอย่างเนียน
+  const apiFetch = (input, init, opts) => (window.Loading?.apiFetch
+      ? window.Loading.apiFetch(input, init, opts || { scope:'page' })
+      : fetch(input, init).then(r=>r.json()));
+
+  document.addEventListener('DOMContentLoaded', boot);
+
+  async function boot(){
+    try{
+      await liff.init({ liffId: LIFF_ID });
+      if (!liff.isLoggedIn()) { liff.login(); return; }
+
+      const prof = await liff.getProfile();
+      const uid  = prof.userId;
+      window.__UID = uid;
+
+      // พยายามโหลดข้อมูลผู้ใช้
+      try {
+        const data = await apiFetch(GET_SCORE(uid), { method:'GET' }, { scope:'page' });
+        // ถ้าสำเร็จ: สามารถเรียก init UI เดิมของคุณต่อได้ หากมีฟังก์ชัน
+        // initUserUI && initUserUI(data);
+      } catch (e) {
+        const message = (e && e.message) || '';
+        // ถ้าเป็น user_not_found → เปิดฟอร์มสมัคร
+        if (/user_not_found/i.test(message)) {
+          return showRegisterModal(prof);
+        }
+        // ถ้าเป็นรูปแบบ error อื่นที่ยังไม่ได้ serialize message
+        if (e && e.status === 'error' && /user_not_found/i.test(e.message || '')) {
+          return showRegisterModal(prof);
+        }
+        console.error('Load user failed:', e);
+        window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถโหลดข้อมูลผู้ใช้ได้","error") : alert("ไม่สามารถโหลดข้อมูลผู้ใช้ได้");
+      }
+    } catch (err) {
+      console.error(err);
+      window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถเริ่มระบบ LIFF ได้","error") : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
+    }
+  }
+
+  function showRegisterModal(profile){
+    document.getElementById('regUid').value  = window.__UID || '';
+    document.getElementById('regName').value = profile?.displayName || '';
+
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('registerModal'));
+    modal.show();
+
+    const form = document.getElementById('registerForm');
+    if (!form.dataset.bound){
+      form.dataset.bound = '1';
+      form.addEventListener('submit', onSubmitRegister);
+    }
+  }
+
+  async function onSubmitRegister(ev){
+    ev.preventDefault();
+    const payload = {
+      uid:  document.getElementById('regUid').value.trim(),
+      name: document.getElementById('regName').value.trim(),
+      room: document.getElementById('regRoom').value.trim(),
+      dob:  document.getElementById('regDob').value.trim(),
+      passport: document.getElementById('regPassport').value.trim(),
+      tel:  document.getElementById('regTel').value.trim(),
+    };
+
+    if (!payload.uid || !payload.name){
+      return window.Swal ? Swal.fire("กรอกข้อมูลไม่ครบ","กรุณากรอก ชื่อ-สกุล ให้ครบถ้วน","warning") : alert("กรุณากรอก ชื่อ-สกุล");
+    }
+
+    try{
+      await apiFetch(REG_URL, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify(payload)
+      }, { scope:'overlay', msg:'กำลังบันทึกข้อมูลลงทะเบียน...' });
+
+      window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
+      bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
+
+      // ลงทะเบียนเสร็จ → โหลดข้อมูลผู้ใช้อีกครั้ง
+      await apiFetch(GET_SCORE(payload.uid), { method:'GET' }, { scope:'page' });
+      // initUserUI && initUserUI(data);
+    } catch(err){
+      console.error(err);
+      window.Swal ? Swal.fire("ผิดพลาด","บันทึกข้อมูลไม่สำเร็จ","error") : alert("บันทึกข้อมูลไม่สำเร็จ");
+    }
+  }
+})();
+</script>
 
 </body>
 </html>
