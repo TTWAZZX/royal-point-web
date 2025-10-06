@@ -156,57 +156,50 @@ document.addEventListener("DOMContentLoaded", initApp);
 
 // ⬇️ วางทับของเดิมทั้งหมด
 // ===== REPLACE WHOLE FUNCTION: initApp =====
+// ===== REPLACE WHOLE FUNCTION: initApp (no redirect to /register.html) =====
 async function initApp(ctx = {}) {
   try {
     // --- Resolve UID ---
     let uid = ctx.uid || window.__UID || sessionStorage.getItem('uid');
-    if (!uid) {
-      // ถ้ายังไม่มี UID (เผื่อถูกเรียกตรง ๆ)
-      const back = encodeURIComponent(location.pathname + location.search);
-      if (typeof window.showRegisterModal === 'function' && window.liff?.isLoggedIn?.()) {
-        // ถ้ามี modal ลงทะเบียนในหน้า ให้เปิด modal
-        const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
-        window.__UID = prof?.userId || '';
-        return window.showRegisterModal(prof || null);
-      }
-      // fallback ไปหน้า register แยกไฟล์ (ถ้ามี)
-      location.replace(`/register.html?from=${back}`);
-      return;
+    if (!uid && window.liff?.isLoggedIn?.()) {
+      // ดึงจาก LIFF เผื่อยังไม่ได้ตั้ง
+      try { const prof = ctx.profile || await liff.getProfile(); uid = prof?.userId || ''; } catch {}
     }
-    window.__UID = uid;
-    sessionStorage.setItem('uid', uid);
+    if (uid) { window.__UID = uid; sessionStorage.setItem('uid', uid); }
 
     // --- Helpers ---
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
     const apiFetch = (input, init, opts) => (window.Loading?.apiFetch
       ? window.Loading.apiFetch(input, init, opts || { scope: 'page' })
-      : fetch(input, init).then(r => {
-          if (!r.ok) return Promise.reject(new Error(`HTTP ${r.status}`));
-          return r.json();
-        }));
+      : fetch(input, init).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); }));
 
-    // --- Preflight ตรวจว่ามีผู้ใช้นี้จริง (กันเข้าหน้าหลักสำหรับผู้ใช้ใหม่) ---
+    // --- Preflight: เช็คผู้ใช้ ---
+    if (!uid) {
+      // ไม่มี uid เลย → เปิด modal ลงทะเบียน (ไม่ redirect)
+      const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
+      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
+      console.warn('showRegisterModal() not found');
+      return;
+    }
+
     const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
     if (resp.status === 404) {
-      // ยังไม่ลงทะเบียน → เปิด modal/เด้งไปหน้า register
-      if (typeof window.showRegisterModal === 'function') {
-        const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
-        return window.showRegisterModal(prof || null);
-      }
-      const back = encodeURIComponent(location.pathname + location.search);
-      location.replace(`/register.html?from=${back}&uid=${encodeURIComponent(uid)}`);
+      // ผู้ใช้ใหม่ → เปิด modal เท่านั้น
+      const prof = ctx.profile || (window.liff && await liff.getProfile().catch(()=>null));
+      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
+      console.warn('showRegisterModal() not found');
       return;
     }
     if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
 
-    const scorePayload = await resp.json(); // { uid, score, ... } (ตาม API ของคุณ)
+    const scorePayload = await resp.json(); // { status, uid?, data:{ user, score, updated_at } }
     if (scorePayload?.uid && scorePayload.uid !== uid) {
       uid = scorePayload.uid;
       window.__UID = uid;
       sessionStorage.setItem('uid', uid);
     }
 
-    // --- เติมโปรไฟล์เบื้องต้น (ถ้ามี) โดยไม่ทับฟังก์ชันเดิม ---
+    // --- เติมโปรไฟล์เบื้องต้น (ไม่ทับฟังก์ชันเดิม) ---
     if (ctx.profile) {
       const nameEl = document.getElementById('username');
       if (nameEl && !nameEl.dataset.locked) nameEl.textContent = ctx.profile.displayName || nameEl.textContent;
@@ -214,33 +207,27 @@ async function initApp(ctx = {}) {
       if (picEl && ctx.profile.pictureUrl) picEl.src = ctx.profile.pictureUrl;
     }
 
-    // --- โหลด/อัปเดตคะแนนตามฟังก์ชันเดิมของคุณ (ถ้ามี) ---
-    if (typeof refreshUserScore === 'function') {
-      await refreshUserScore(); // ฟังก์ชันเดิมของโปรเจกต์
-    } else {
-      // fallback แบบเบา ๆ เผื่อไม่มี refreshUserScore
+    // --- โหลดคะแนน/ของรางวัล ตามฟังก์ชันเดิมของคุณ ---
+    if (typeof refreshUserScore === 'function') await refreshUserScore(); else {
       const pointsEl = document.getElementById('points');
-      if (pointsEl && typeof scorePayload?.score !== 'undefined') {
-        pointsEl.textContent = Number(scorePayload.score || 0);
+      if (pointsEl && typeof scorePayload?.data?.score !== 'undefined') {
+        pointsEl.textContent = Number(scorePayload.data.score || 0);
       }
     }
 
-    // --- โหลดของรางวัล + เรนเดอร์ (รักษาของเดิม) ---
     if (typeof loadRewards === 'function') await loadRewards();
     if (typeof renderRewards === 'function') {
       const s = (typeof window.prevScore === 'number')
         ? window.prevScore
-        : (typeof scorePayload?.score !== 'undefined' ? Number(scorePayload.score || 0) : 0);
+        : (typeof scorePayload?.data?.score !== 'undefined' ? Number(scorePayload.data.score || 0) : 0);
       renderRewards(s);
     }
 
-    // --- Bind ปุ่ม/อีเวนต์สำคัญ (ทำครั้งเดียว) ---
+    // --- Bind ปุ่มครั้งเดียว ---
     if (!window.__MAIN_BOUND) {
       window.__MAIN_BOUND = true;
 
-      // ปุ่มรีเฟรช
-      const refreshBtn = document.getElementById('refreshBtn');
-      refreshBtn && refreshBtn.addEventListener('click', async () => {
+      document.getElementById('refreshBtn')?.addEventListener('click', async () => {
         try {
           await apiFetch(GET_SCORE(window.__UID), { method: 'GET' }, { scope: 'page', msg: 'กำลังรีเฟรช...' });
           if (typeof refreshUserScore === 'function') await refreshUserScore();
@@ -252,42 +239,23 @@ async function initApp(ctx = {}) {
         }
       });
 
-      // ปุ่มประวัติ
-      const historyBtn = document.getElementById('historyBtn');
-      historyBtn && historyBtn.addEventListener('click', async () => {
+      document.getElementById('historyBtn')?.addEventListener('click', () => {
         if (typeof openHistoryModal === 'function') return openHistoryModal();
-        // fallback: เปิด modal อย่างน้อย
         const m = bootstrap.Modal.getOrCreateInstance(document.getElementById('historyModal'));
         m.show();
         if (typeof loadHistory === 'function') loadHistory();
       });
 
-      // QR scan controls (ถ้าโปรเจกต์มีฟังก์ชันอยู่แล้ว)
-      const startBtn = document.getElementById('startScanBtn');
-      const stopBtn  = document.getElementById('stopScanBtn');
-      const submitBtn = document.getElementById('submitCodeBtn');
-
-      startBtn && startBtn.addEventListener('click', () => {
-        if (typeof startScanner === 'function') startScanner();
-      });
-      stopBtn && stopBtn.addEventListener('click', () => {
-        if (typeof stopScanner === 'function') stopScanner();
-      });
-      submitBtn && submitBtn.addEventListener('click', () => {
+      document.getElementById('startScanBtn')?.addEventListener('click', () => { if (typeof startScanner === 'function') startScanner(); });
+      document.getElementById('stopScanBtn')?.addEventListener('click', () => { if (typeof stopScanner === 'function') stopScanner(); });
+      document.getElementById('submitCodeBtn')?.addEventListener('click', () => {
         const code = (document.getElementById('secretCode')?.value || '').trim();
         if (!code) return;
         if (typeof submitSecretCode === 'function') submitSecretCode(code);
       });
     }
 
-    // --- แสดงปุ่ม Admin ถ้ามีสิทธิ์ (คงพฤติกรรมเดิมถ้ามี) ---
-    if (typeof showAdminFabIfAuthorized === 'function') {
-      showAdminFabIfAuthorized();
-    } else {
-      // ถ้าไม่มีฟังก์ชัน ก็ซ่อนไว้ตามเดิม
-      // document.getElementById('btnAdmin')?.classList.add('d-none');
-    }
-
+    if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
   } catch (err) {
     console.error('[initApp] error:', err);
     window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
