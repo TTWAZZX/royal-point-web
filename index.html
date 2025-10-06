@@ -340,23 +340,17 @@
           // สถานะอื่นที่ไม่ใช่ 200/404
           throw new Error('get-score failed with status ' + resp.status);
         } else {
-          // 200 → ผู้ใช้เก่า ไปต่อได้เลย (ถ้ามี initUserUI ให้เรียกต่อ)
-          // const data = await resp.json();
-          // initUserUI && initUserUI(data);
+          // *** ผู้ใช้เก่า: เริ่มระบบต่อทันที ***
+          if (typeof initApp === 'function') initApp({ profile: prof, uid });
         }
       } catch (err) {
         console.warn('Direct fetch get-score error:', err);
-        // ถ้าอยาก fallback เป็นข้อความ error ก็ใช้ Swal ด้านล่าง
       }
 
       // 2) ถ้าไม่พบผู้ใช้ → เปิดฟอร์มลงทะเบียน
       if (needRegister) {
         return showRegisterModal(prof);
       }
-
-      // ถ้าต้องการโหลดข้อมูลอีกครั้งแบบมี overlay ก็ทำได้:
-      // await apiFetch(GET_SCORE(uid), { method:'GET' }, { scope:'page' });
-
     } catch (err) {
       console.error(err);
       window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถเริ่มระบบ LIFF ได้","error") : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
@@ -402,10 +396,8 @@
       window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
       bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
 
-      // ลงทะเบียนเสร็จ → โหลดข้อมูลผู้ใช้อีกครั้ง (แสดงผลตามโฟลว์หน้าเดิม)
-      await apiFetch(GET_SCORE(payload.uid), { method:'GET' }, { scope:'page' });
-      // ถ้ามี initUserUI อยู่แล้ว ให้เรียกต่อได้:
-      // initUserUI && initUserUI(data);
+      // *** หลังลงทะเบียนสำเร็จ: เริ่มระบบแอปต่อทันที ***
+      if (typeof initApp === 'function') initApp({ uid: payload.uid });
 
     } catch(err){
       console.error(err);
