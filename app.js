@@ -304,24 +304,26 @@ function bindUI(){
   // ปุ่มรีเฟรชคะแนน
   els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
 
-  // ปุ่มประวัติ — ผูกที่เดียวพอ
+  // ปุ่มประวัติ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // ควบคุมกล้องในโมดัล (ใช้ id ที่มีจริง: #scoreModal)
-const scanModalEl = document.getElementById('scoreModal');
-if (scanModalEl) {
-  scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
-  scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
-  scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
-}
+  // ✅ ควบคุมกล้องในโมดัล (ใช้ id ที่ถูกต้อง: #scoreModal)
+  const scanModalEl = document.getElementById('scoreModal');
+  if (scanModalEl) {
+    // เปิดโมดัลแล้วเริ่มกล้องอัตโนมัติ
+    scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
+    // ปิด/กำลังปิด → หยุดกล้อง
+    scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
+    scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
+  }
 
-// ปุ่ม start/stop (ควบคุมเองได้)
-const startBtn = document.getElementById("startScanBtn");
-const stopBtn  = document.getElementById("stopScanBtn");
-startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
-stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
+  // ปุ่ม start/stop (ควบคุมมือได้)
+  const startBtn = document.getElementById("startScanBtn");
+  const stopBtn  = document.getElementById("stopScanBtn");
+  startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
+  stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
 
-  // ปุ่มไฟฉายตามเดิม
+  // ปุ่มไฟฉาย
   const torchBtn = document.getElementById("torchBtn");
   if (torchBtn){
     torchBtn.addEventListener("click", async ()=>{
@@ -334,112 +336,7 @@ stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner
     });
   }
 
-  async function startScanner(){
-  if (!els?.qrReader) return toastErr('ไม่พบพื้นที่สแกน');
-  if (SCANNING) return;
-
-  // ต้องเป็น HTTPS/localhost
-  const secure = (location.protocol === 'https:' ||
-                  location.hostname === 'localhost' ||
-                  location.hostname === '127.0.0.1');
-  if (!secure || !isSecureContext) {
-    return toastErr('กล้องถูกบล็อก: กรุณาเปิดผ่าน HTTPS หรือ localhost');
-  }
-
-  // ขอสิทธิ์กล้อง (เพื่อให้ enumerate ได้ label)
-  try { await ensureCameraPermission(); }
-  catch (e) { console.warn(e); return toastErr(e.userMessage || 'อนุญาตกล้องก่อนใช้งาน'); }
-
-  // เตรียมพื้นที่สแกน
-  els.qrReader.innerHTML = '';
-  els.qrReader.style.minHeight = '320px';
-
-  // เคลียร์ตัวเก่า
-  try { if (html5qrcode) { await stopScanner(); } } catch {}
-  html5qrcode = new Html5Qrcode(els.qrReader.id, { verbose: false });
-
-  const onScan = async (decodedText) => {
-    const code = String(decodedText || '').trim();
-    const now  = Date.now();
-    if (!code) return;
-    if (REDEEM_IN_FLIGHT) return;
-    if (code && code === LAST_DECODE && (now - LAST_DECODE_AT) < DUP_COOLDOWN) return;
-    LAST_DECODE = code; LAST_DECODE_AT = now;
-
-    REDEEM_IN_FLIGHT = true;
-    try {
-      await stopScanner();
-      await redeemCode(code, 'SCAN');
-    } finally {
-      setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
-    }
-  };
-  const onScanFailure = (_err) => {};
-
-  const qrbox = (() => {
-    const size = Math.min(320, Math.floor(Math.min(window.innerWidth, 480) - 32));
-    return { width: size, height: size };
-  })();
-
-  // ไม่จำ device เดิม เพื่อกันติดกล้องหน้าที่เคยใช้
-  const config = { fps: 10, qrbox, aspectRatio: 1.7778, rememberLastUsedCamera: false };
-
-  async function startWithEnvironment(strict){
-    const constraint = strict
-      ? { facingMode: { exact: "environment" } }
-      : { facingMode: "environment" };
-    await html5qrcode.start(constraint, config, onScan, onScanFailure);
-  }
-
-  SCANNING = true;
-  try {
-    // 1) บังคับ environment แบบ strict ก่อน
-    await startWithEnvironment(true);
-    afterCameraStarted?.();
-  } catch (e1) {
-    try {
-      // 2) ผ่อนเงื่อนไขลง (บางเบราว์เซอร์)
-      await startWithEnvironment(false);
-      afterCameraStarted?.();
-    } catch (e2) {
-      // 3) เลือกจากรายการอุปกรณ์ โดยพยายามเล็ง “กล้องหลัง”
-      let devices = [];
-      try { devices = await Html5Qrcode.getCameras(); } catch {}
-      if (!devices?.length) {
-        SCANNING = false;
-        console.warn('no camera devices', e2);
-        return toastErr('ไม่พบกล้องในอุปกรณ์นี้');
-      }
-
-      const backRe  = /(back|rear|environment|world|main|wide|triple)/i;
-      const frontRe = /(front|user|selfie|face)/i;
-
-      let chosen = devices.find(d => backRe.test(d.label));
-      if (!chosen) {
-        // บางเครื่องเรียงกล้องหน้าไว้ก่อน → ลองจากท้ายก่อน
-        chosen = [...devices].reverse().find(d => !frontRe.test(d.label)) || devices[devices.length - 1];
-      }
-
-      await html5qrcode.start(chosen.id, config, onScan, onScanFailure);
-      afterCameraStarted?.();
-
-      // 4) ยืนยันอีกชั้นว่าไม่ได้เผลอเปิดกล้องหน้า
-      const track = getActiveVideoTrack();
-      const fm = track?.getSettings?.().facingMode || '';
-      const lbl = track?.label || '';
-      if (/^user$/i.test(fm) || frontRe.test(lbl)) {
-        await stopScanner();
-        await startWithEnvironment(false);
-        afterCameraStarted?.();
-      }
-    }
-  }
-
-  // อัปเดตสถานะ track สำหรับไฟฉาย
-  ACTIVE_VIDEO_TRACK = getActiveVideoTrack();
-}
-
-  // ยืนยันรหัสลับ (กรณีกรอกมือ)
+  // ✅ ปุ่ม “ยืนยันรับคะแนน” (กรอกรหัสลับ)
   els.submitBtn && els.submitBtn.addEventListener("click", async ()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
@@ -456,9 +353,10 @@ stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner
       setTimeout(()=>{ REDEEM_IN_FLIGHT = false; }, 300);
     }
   });
-  // === ปิดท้าย bindUI: ค่อย export เป็น global ตรงนี้ ===
-window.startScanner = startScanner;
-window.stopScanner  = stopScanner;
+
+  // export ฟังก์ชันกล้องให้เรียกได้จากภายนอกด้วย (เช่นใน HTML)
+  window.startScanner = startScanner;
+  window.stopScanner  = stopScanner;
 }
 
 // === Last updated (หนึ่งเดียว ใช้ได้ทั้งปุ่มรีเฟรช และ #lastUpdated) ===
@@ -1173,32 +1071,9 @@ function mapRedeemError(res, json) {
 }
 
 function resumeScanIfNeeded(source){
-  const scanOpen = !!document.getElementById('scanModal')?.classList.contains('show');
+  const scanOpen = !!document.getElementById('scoreModal')?.classList.contains('show');
   if (source === 'SCAN' && scanOpen) {
     setTimeout(() => { try { startScanner?.(); } catch {} }, 400);
-  }
-}
-
-// เดิมคุณอาจมี redeemCoupon แยก: ให้เรียกผ่าน redeemCode เพื่อรวม logic เดียวกัน
-async function redeemCoupon(code, uid) {
-  // uid ไม่จำเป็นต้องส่งเข้ามาแล้ว เพราะ redeemCode จะดึง UID เอง
-  return redeemCode(code, 'MANUAL');
-}
-
-async function stopScanner(){
-  try{
-    try{ if (TORCH_ON) await toggleTorch(false); }catch{}
-    ACTIVE_VIDEO_TRACK = null; TORCH_ON = false;
-
-    if (html5qrcode){
-      await html5qrcode.stop();
-      await html5qrcode.clear();
-      html5qrcode = null;
-    }
-  }catch(e){ console.warn("stopScanner error", e); }
-  finally{
-    els.qrReader && (els.qrReader.innerHTML = "");
-    SCANNING = false;
   }
 }
 
