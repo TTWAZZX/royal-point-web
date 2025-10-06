@@ -51,8 +51,11 @@ function h(str) {
 }
 
 
-/** Admin gate */
-const ADMIN_UIDS = ["Ucadb3c0f63ada96c0432a0aede267ff9"];
+// ===== Admin allowlist (วางบนสุดของ app.js) =====
+const ADMIN_UIDS = [
+  "Ucadb3c0f63ada96c0432a0aede267ff9", // ← UID ของคุณ
+  // เพิ่ม UID คนอื่น ๆ ได้ที่นี่
+];
 
 /** Elements */
 const $ = (x)=>document.getElementById(x);
@@ -196,7 +199,11 @@ async function initApp(ctx = {}) {
       liff.login(); return;
     }
 
-    if (uid) { window.__UID = uid; sessionStorage.setItem('uid', uid); }
+    if (uid) { 
+      window.__UID = uid; 
+      sessionStorage.setItem('uid', uid);
+    }
+   showAdminEntry(); // ← เรียกเช็กสิทธิ์หลังรู้ UID
 
     // 3) preflight check
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
@@ -209,8 +216,11 @@ async function initApp(ctx = {}) {
 
     const payload = await resp.json(); // { status, uid?, data:{ user, score, updated_at } }
     if (payload?.uid && payload.uid !== uid) {
-      uid = payload.uid; window.__UID = uid; sessionStorage.setItem('uid', uid);
+      uid = payload.uid;
+      window.__UID = uid;
+      sessionStorage.setItem('uid', uid);
     }
+    showAdminEntry(); // ← เรียกอีกรอบหลัง payload ยืนยัน UID
 
     // 4) seed UI with profile (ไม่ทับโค้ดเดิม)
     if (prof) {
@@ -297,21 +307,19 @@ function bindUI(){
   // ปุ่มประวัติ — ผูกที่เดียวพอ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // ควบคุมกล้องในโมดัล
-  const scanModalEl = document.getElementById('scanModal');
-  if (scanModalEl) {
-    // เริ่มอัตโนมัติเมื่อโมดัลแสดง
-    scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
-    // หยุดเมื่อจะปิด/ปิดแล้ว
-    scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
-    scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
-  }
+  // ควบคุมกล้องในโมดัล (ใช้ id ที่มีจริง: #scoreModal)
+const scanModalEl = document.getElementById('scoreModal');
+if (scanModalEl) {
+  scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
+  scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
+  scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
+}
 
-  // ปุ่ม start/stop (ไว้สำหรับควบคุมมือ)
-  const startBtn = document.getElementById("startScanBtn");
-  const stopBtn  = document.getElementById("stopScanBtn");
-  startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
-  stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
+// ปุ่ม start/stop (ควบคุมเองได้)
+const startBtn = document.getElementById("startScanBtn");
+const stopBtn  = document.getElementById("stopScanBtn");
+startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
+stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
 
   // ปุ่มไฟฉายตามเดิม
   const torchBtn = document.getElementById("torchBtn");
@@ -528,7 +536,28 @@ window.setLastUpdated = setLastUpdated;
   };
 })();
 
-function showAdminEntry(isAdmin){ const b=$("btnAdmin"); if(b) b.classList.toggle("d-none", !isAdmin); }
+// ===== REPLACE WHOLE FUNCTION: showAdminEntry =====
+function showAdminEntry(isAdmin) {
+  try {
+    // ถ้าไม่ได้ส่ง isAdmin มา ให้คำนวณจาก UID ปัจจุบันเอง
+    if (typeof isAdmin === 'undefined') {
+      const uid =
+        (typeof UID !== 'undefined' && UID) ||
+        window.__UID ||
+        localStorage.getItem('uid') || '';
+      isAdmin = ADMIN_UIDS.includes(uid);
+    }
+
+    const btn = document.getElementById('btnAdmin');
+    if (!btn) return; // ไม่มีปุ่มก็ข้าม
+
+    btn.classList.toggle('d-none', !isAdmin);
+  } catch (e) {
+    console.warn('[admin-gate] error:', e);
+  }
+}
+
+
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
@@ -981,17 +1010,27 @@ function renderRewards(currentScore){
 let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
-  if (!UID) return toastErr("ยังไม่พร้อมใช้งาน");
+
+  // ✅ ดึง uid แบบกันพลาด
+  const curUid = (typeof UID !== 'undefined' && UID) ||
+                 window.__UID ||
+                 localStorage.getItem('uid') || '';
+  if (!curUid) return toastErr("ยังไม่พร้อมใช้งาน");
 
   const id   = reward?.id;
   const cost = Math.max(0, Number(reward?.cost) || 0);
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
+  // กันคะแนนไม่พอ
   const scoreNow = Number(prevScore || 0);
   if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
+  // ยืนยัน
   const confirmed = window.Swal
-    ? (await Swal.fire({ title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost} pt</b> แลกรางวัล <b>${escapeHtml(id)}</b>`, icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย" })).isConfirmed
+    ? (await Swal.fire({
+        title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost}</b> pt`,
+        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
+      })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
   if (!confirmed) return;
 
@@ -1003,34 +1042,34 @@ async function redeemReward(reward, btn){
     const res = await fetch(API_SPEND, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: UID, cost, rewardId: id })
+      body: JSON.stringify({ uid: curUid, cost, rewardId: id }),
+      cache: 'no-store'
     });
     const payload = await safeJson(res);
     if (payload?.status !== "success") throw new Error(payload?.message || "spend failed");
 
-    await refreshUserScore(); // คะแนนจะถูกหักแล้วอัปเดต UI
+    await refreshUserScore();
     UiOverlay.hide();
     if (window.Swal){
-      await Swal.fire({ title:"แลกสำเร็จ ✅", html:`ใช้ไป <b>${cost} pt</b><br><small>กรุณาแคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`, icon:"success" });
+      await Swal.fire({
+        title:"แลกสำเร็จ ✅",
+        html:`ใช้ไป <b>${cost}</b> pt<br><small>แคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
+        icon:"success"
+      });
     }else{
       alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
     }
   }catch(err){
     console.error(err);
     UiOverlay.hide();
-    toastErr(err.message || "แลกรางวัลไม่สำเร็จ");
+    toastErr("แลกไม่สำเร็จ");
   }finally{
-    REDEEMING = false;
     setBtnLoading(btn, false);
+    REDEEMING = false;
   }
 }
 
 /* ================= Redeem code / Scanner ================= */
-// ใช้แทนฟังก์ชันเดิมทั้งหมด
-// แก้ทั้งฟังก์ชัน redeemCode ให้แนบ uid เสมอ
-// ใช้แค่ /api/redeem ที่เดียว และส่งฟิลด์ให้ครบ
-// แลกคูปอง + แจ้งจำนวนคะแนนที่ได้รับ (รองรับ manual และ SCAN)
-// แลกคูปอง: robust ต่อ status code + json.code และ auto-resume กล้องเมื่อคูปองใช้แล้ว
 // ===== Redeem code (unified) — Overlay เฉพาะ SCAN + จัดการทุกเคสครบ =====
 async function redeemCode(input, source = 'manual') {
   const code = String(
@@ -1211,8 +1250,6 @@ function setHistoryUserName() {
 }
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
-// ประวัติพ้อยท์ (มินิมอล: แสดงเฉพาะคะแนน + วันเวลา)
-// ประวัติพ้อยท์ (มินิมอล: วันเวลา + คะแนน) + หัวโมดัลเป็นชื่อผู้ใช้
 async function openHistory(){
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -1220,38 +1257,19 @@ async function openHistory(){
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
-  setHistoryUserName(); // <-- ใส่บรรทัดนี้setHistoryUserName(); // <-- ใส่บรรทัดนี้
-  setHistoryUserName(); // <-- ใส่บรรทัดนี้
+  // ใส่ชื่อบนหัว (ถ้ามี)
+  try { setHistoryUserName(); } catch {}
 
-  const listEl  = document.getElementById('historyList');
-  const modalEl = document.getElementById('historyModal');
-  const modal   = new bootstrap.Modal(modalEl);
+  const listWrap = document.getElementById('historyListWrap'); // มี class skeleton-hide-when-loading
+  const listEl   = document.getElementById('historyList');
+  const modalEl  = document.getElementById('historyModal');
+  const skelEl   = modalEl?.querySelector('.history-skeleton');
+  const modal    = new bootstrap.Modal(modalEl);
 
-  // helper ไม่ชนชื่อเดิม
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-  const getDisplayName = () =>
-    (window.DISPLAY_NAME ||
-     window.__DISPLAY_NAME ||
-     localStorage.getItem('displayName') ||
-     document.querySelector('#profileName, [data-profile-name], .profile-name, .user-name, .profile-title')?.textContent?.trim() ||
-     uid || 'ผู้ใช้');
+  // เปิด skeleton ระหว่างโหลด
+  if (skelEl) skelEl.style.display = '';
+  if (listWrap) listWrap.classList.add('skeleton-hide-when-loading');
 
-  // ใส่ชื่อผู้ใช้ที่หัวโมดัล
-  const titleEl = modalEl.querySelector('.modal-title');
-  if (titleEl) titleEl.innerHTML = `ประวัติพ้อยท์ — <span class="text-primary fw-semibold">${esc(getDisplayName())}</span>`;
-
-  // formatter เวลาแบบไทย
-  const fmtThaiDateTime = (v) => {
-    const d = new Date(v);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleString('th-TH', {
-      timeZone: 'Asia/Bangkok',
-      year:'numeric', month:'short', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
-    }) + ' น.';
-  };
-
-  UiOverlay.show('กำลังโหลดประวัติ…');
   try{
     const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
     const json = await resp.json().catch(()=> ({}));
@@ -1260,7 +1278,7 @@ async function openHistory(){
       : Array.isArray(json.data)  ? json.data
       : [];
 
-    // ล่าสุดอยู่บน
+    // เรียงล่าสุดอยู่บน
     items.sort((a,b)=>{
       const ta = new Date(a.created_at || a.time || 0).getTime();
       const tb = new Date(b.created_at || b.time || 0).getTime();
@@ -1268,12 +1286,19 @@ async function openHistory(){
       return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
     });
 
-    // โหมดมินิมอล: เวลา + คะแนน
+    // วาดแบบมินิมอล: เวลา + แต้ม
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    const fmt = (v) => {
+      const d = new Date(v); if (Number.isNaN(d.getTime())) return '';
+      const pad = x=>x.toString().padStart(2,'0');
+      return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()+543} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    };
+
     listEl.classList.add('hist-compact');
     listEl.innerHTML = items.map(it=>{
       const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
       const sign = amt > 0 ? '+' : '';
-      const when = fmtThaiDateTime(it.created_at || it.time || '');
+      const when = fmt(it.created_at || it.time || '');
       return `
         <div class="hc-row">
           <div class="hc-at">${esc(when)}</div>
@@ -1282,12 +1307,17 @@ async function openHistory(){
       `;
     }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
 
+    // ปิด skeleton แล้วโชว์ลิสต์
+    if (skelEl) skelEl.style.display = 'none';
+    if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
+
     modal.show();
   }catch(e){
     console.error(e);
     toastErr('โหลดประวัติไม่สำเร็จ');
-  }finally{
-    UiOverlay.hide();
+    // ปิด skeleton แม้พัง
+    if (skelEl) skelEl.style.display = 'none';
+    if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
   }
 }
 
