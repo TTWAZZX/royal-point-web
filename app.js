@@ -155,7 +155,6 @@ function setAppLoading(on){
   if (sk) sk.style.display = on ? 'block' : 'none';
 }
 document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
-document.addEventListener("DOMContentLoaded", initApp);
 
 // ==== Admin FAB control (copy-paste) ====
 // ตั้ง whitelist ไว้ในไฟล์นี้ก่อน (เพิ่ม/ลบได้ตามต้องการ)

@@ -360,100 +360,52 @@
 <script src="/loader.js"></script>
 <script src="/app.js"></script>
 
-<!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
-<!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
+<!-- ===== Auto-register flow (single gate) ===== -->
 <script>
-(function(){
+(() => {
   const LIFF_ID = "2007053300-QoEvbXyn";
   const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
-  const REG_URL   = "/api/register";
 
-  const apiFetch = (input, init, opts) => (window.Loading?.apiFetch
-      ? window.Loading.apiFetch(input, init, opts || { scope:'page' })
-      : fetch(input, init).then(r=>r.json()));
+  // บอก app.js ว่า "ห้าม auto init เอง"
+  window.__SKIP_AUTO_INIT__ = true;
 
-  document.addEventListener('DOMContentLoaded', boot);
+  document.addEventListener('DOMContentLoaded', gate);
 
-  async function boot(){
-    try{
+  async function gate() {
+    try {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login(); return; }
 
       const prof = await liff.getProfile();
       const uid  = prof.userId;
       window.__UID = uid;
+      sessionStorage.setItem('uid', uid);
 
-      // 1) เช็คว่ามีผู้ใช้แล้วหรือยัง
-      let needRegister = false;
-      try {
-        const resp = await fetch(GET_SCORE(uid), { method:'GET' });
-        if (resp.status === 404) {
-          needRegister = true;
-        } else if (!resp.ok) {
-          throw new Error('get-score failed with status ' + resp.status);
+      // เช็คว่ามีผู้ใช้หรือยัง
+      const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
+
+      if (resp.status === 404) {
+        // == ผู้ใช้ใหม่ ==
+        // ซ่อน skeleton ที่ทำให้ดูเหมือนค้าง
+        document.querySelectorAll('.skeleton-hide-when-loading').forEach(el => el.classList.add('d-none'));
+        // เปิดฟอร์มลงทะเบียน
+        if (typeof showRegisterModal === 'function') {
+          showRegisterModal(prof);
         } else {
-          // ★ ผู้ใช้เก่า → เรียก initApp ให้แอปเริ่มโหลดข้อมูลต่อ
-          if (typeof initApp === 'function') initApp({ profile: prof, uid });
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('registerModal')).show();
         }
-      } catch (err) {
-        console.warn('Direct fetch get-score error:', err);
+        return; // สำคัญ: ไม่ให้ initApp ทำงานต่อ
       }
 
-      // 2) ถ้าไม่พบผู้ใช้ → เปิดฟอร์มสมัคร
-      if (needRegister) {
-        return showRegisterModal(prof);
+      if (!resp.ok) throw new Error('get-score failed: ' + resp.status);
+
+      // == ผู้ใช้เก่า ==
+      if (typeof initApp === 'function') {
+        initApp({ profile: prof, uid });
       }
     } catch (err) {
-      console.error(err);
-      window.Swal ? Swal.fire("ผิดพลาด","ไม่สามารถเริ่มระบบ LIFF ได้","error") : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
-    }
-  }
-
-  function showRegisterModal(profile){
-    document.getElementById('regUid').value  = window.__UID || '';
-    document.getElementById('regName').value = profile?.displayName || '';
-
-    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('registerModal'));
-    modal.show();
-
-    const form = document.getElementById('registerForm');
-    if (!form.dataset.bound){
-      form.dataset.bound = '1';
-      form.addEventListener('submit', onSubmitRegister);
-    }
-  }
-
-  async function onSubmitRegister(ev){
-    ev.preventDefault();
-    const payload = {
-      uid:  document.getElementById('regUid').value.trim(),
-      name: document.getElementById('regName').value.trim(),
-      room: document.getElementById('regRoom').value.trim(),
-      dob:  document.getElementById('regDob').value.trim(),
-      passport: document.getElementById('regPassport').value.trim(),
-      tel:  document.getElementById('regTel').value.trim(),
-    };
-
-    if (!payload.uid || !payload.name){
-      return window.Swal ? Swal.fire("กรอกข้อมูลไม่ครบ","กรุณากรอก ชื่อ-สกุล ให้ครบถ้วน","warning") : alert("กรุณากรอก ชื่อ-สกุล");
-    }
-
-    try{
-      await apiFetch(REG_URL, {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify(payload)
-      }, { scope:'overlay', msg:'กำลังบันทึกข้อมูลลงทะเบียน...' });
-
-      window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
-      bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
-
-      // ★ ผู้ใช้ใหม่ → หลังสมัครเสร็จให้ initApp ต่อทันที
-      if (typeof initApp === 'function') initApp({ uid: payload.uid });
-
-    } catch(err){
-      console.error(err);
-      window.Swal ? Swal.fire("ผิดพลาด","บันทึกข้อมูลไม่สำเร็จ","error") : alert("บันทึกข้อมูลไม่สำเร็จ");
+      console.error('[gate] error:', err);
+      window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
     }
   }
 })();
