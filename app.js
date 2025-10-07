@@ -154,7 +154,11 @@ function setAppLoading(on){
   const sk = document.getElementById('appSkeleton');
   if (sk) sk.style.display = on ? 'block' : 'none';
 }
-document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
+document.addEventListener("DOMContentLoaded", () => {
+  // ถ้า index ตั้ง __SKIP_AUTO_INIT__ แปลว่าให้รอบูตผ่านสคริปต์ auto-register
+  if (window.__SKIP_AUTO_INIT__) return;
+  initApp();
+});
 
 // ==== Admin FAB control (copy-paste) ====
 // ตั้ง whitelist ไว้ในไฟล์นี้ก่อน (เพิ่ม/ลบได้ตามต้องการ)
@@ -231,9 +235,11 @@ window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
 
 // ===== REPLACE WHOLE FUNCTION: initApp =====
 async function initApp(ctx = {}) {
+  if (window.__SKIP_AUTO_INIT__ && !ctx.force) return;
   try {
     // ใช้ค่า LIFF_ID ตัวจริงที่ประกาศไว้ตอนบนไฟล์ (ไม่ต้องประกาศใหม่ในฟังก์ชันนี้)
-    await ensureLiffInit(LIFF_ID);
+    const liffId = (typeof LIFF_ID !== 'undefined' ? LIFF_ID : window.LIFF_ID);
+    await ensureLiffInit(liffId);
 
     // 2) resolve UID/PROFILE
     let uid  = ctx.uid || window.__UID || sessionStorage.getItem('uid');
@@ -256,9 +262,11 @@ async function initApp(ctx = {}) {
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
     const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
     if (resp.status === 404) {
-      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-      console.warn('showRegisterModal() not found');
-      return;
+     document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
+       .forEach(el => el.classList.add('d-none'));
+     if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
+     console.warn('showRegisterModal() not found');
+     return;
     }
     if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
 
@@ -1893,3 +1901,9 @@ try{
     refreshUserScore?.();
   });
 })();
+
+// app.js (วางท้ายไฟล์)
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.__SKIP_AUTO_INIT__) return;
+  initApp();
+});

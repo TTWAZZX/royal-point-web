@@ -358,20 +358,28 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <script src="/loader.js"></script>
-<script src="/app.js"></script>
+<!-- index.html (ให้มาก่อน <script src="/app.js">) -->
+<script>window.__SKIP_AUTO_INIT__ = true;</script>
+<script src="/app.js" defer></script>
 
 <!-- ===== Auto-register flow (single gate) ===== -->
 <script>
-(() => {
-  const LIFF_ID = "2007053300-QoEvbXyn";
-  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
-
-  // บอก app.js ว่า "ห้าม auto init เอง"
+(function () {
+  // สำคัญ: กัน app.js ไม่ให้ auto-init ซ้ำ
   window.__SKIP_AUTO_INIT__ = true;
 
-  document.addEventListener('DOMContentLoaded', gate);
+  const LIFF_ID  = "2007053300-QoEvbXyn";
+  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
+  const REG_URL   = "/api/register";
 
-  async function gate() {
+  const apiFetch = (input, init, opts) =>
+    (window.Loading?.apiFetch
+      ? window.Loading.apiFetch(input, init, opts || { scope: "page" })
+      : fetch(input, init).then((r) => r.json()));
+
+  document.addEventListener("DOMContentLoaded", boot);
+
+  async function boot() {
     try {
       await liff.init({ liffId: LIFF_ID });
       if (!liff.isLoggedIn()) { liff.login(); return; }
@@ -379,33 +387,88 @@
       const prof = await liff.getProfile();
       const uid  = prof.userId;
       window.__UID = uid;
-      sessionStorage.setItem('uid', uid);
 
-      // เช็คว่ามีผู้ใช้หรือยัง
-      const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
-
-      if (resp.status === 404) {
-        // == ผู้ใช้ใหม่ ==
-        // ซ่อน skeleton ที่ทำให้ดูเหมือนค้าง
-        document.querySelectorAll('.skeleton-hide-when-loading').forEach(el => el.classList.add('d-none'));
-        // เปิดฟอร์มลงทะเบียน
-        if (typeof showRegisterModal === 'function') {
-          showRegisterModal(prof);
+      // เช็คว่ามีผู้ใช้แล้วหรือยัง โดยดู status 404 ตรงๆ
+      let needRegister = false;
+      try {
+        const resp = await fetch(GET_SCORE(uid), { method: "GET" });
+        if (resp.status === 404) {
+          needRegister = true;
+        } else if (!resp.ok) {
+          throw new Error("get-score failed with status " + resp.status);
         } else {
-          bootstrap.Modal.getOrCreateInstance(document.getElementById('registerModal')).show();
+          // ผู้ใช้เก่า → บูตแอปต่อเลย
+          if (typeof initApp === "function") initApp({ profile: prof, uid, force: true });
         }
-        return; // สำคัญ: ไม่ให้ initApp ทำงานต่อ
+      } catch (err) {
+        console.warn("Direct fetch get-score error:", err);
       }
 
-      if (!resp.ok) throw new Error('get-score failed: ' + resp.status);
-
-      // == ผู้ใช้เก่า ==
-      if (typeof initApp === 'function') {
-        initApp({ profile: prof, uid });
+      // ผู้ใช้ใหม่ → เปิดฟอร์ม + ซ่อนสเกเลตันที่ค้าง
+      if (needRegister) {
+        hideSkeletons();
+        window.showRegisterModal(prof);
       }
     } catch (err) {
-      console.error('[gate] error:', err);
-      window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
+      console.error(err);
+      window.Swal
+        ? Swal.fire("ผิดพลาด", "ไม่สามารถเริ่มระบบ LIFF ได้", "error")
+        : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
+    }
+  }
+
+  function hideSkeletons() {
+    document.querySelectorAll(".skeleton-hide-when-loading").forEach(el => el.classList.add("d-none"));
+    document.querySelectorAll(".reward-skeleton, .history-skeleton").forEach(el => el.classList.add("d-none"));
+  }
+
+  // ผูกไว้กับ window เพื่อให้ที่อื่นเรียกได้ด้วย
+  window.showRegisterModal = function (profile) {
+    document.getElementById("regUid").value  = window.__UID || "";
+    document.getElementById("regName").value = profile?.displayName || "";
+
+    const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById("registerModal"));
+    modal.show();
+
+    const form = document.getElementById("registerForm");
+    if (!form.dataset.bound) {
+      form.dataset.bound = "1";
+      form.addEventListener("submit", onSubmitRegister);
+    }
+  };
+
+  async function onSubmitRegister(ev) {
+    ev.preventDefault();
+    const payload = {
+      uid:  document.getElementById("regUid").value.trim(),
+      name: document.getElementById("regName").value.trim(),
+      room: document.getElementById("regRoom").value.trim(),
+      dob:  document.getElementById("regDob").value.trim(),
+      passport: document.getElementById("regPassport").value.trim(),
+      tel:  document.getElementById("regTel").value.trim(),
+    };
+
+    if (!payload.uid || !payload.name) {
+      return (window.Swal
+        ? Swal.fire("กรอกข้อมูลไม่ครบ", "กรุณากรอก ชื่อ-สกุล ให้ครบถ้วน", "warning")
+        : alert("กรุณากรอก ชื่อ-สกุล"));
+    }
+
+    try {
+      await apiFetch(REG_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }, { scope: "overlay", msg: "กำลังบันทึกข้อมูลลงทะเบียน..." });
+
+      window.Swal ? Swal.fire("สำเร็จ", "ลงทะเบียนเรียบร้อย", "success") : alert("ลงทะเบียนเรียบร้อย");
+      bootstrap.Modal.getInstance(document.getElementById("registerModal"))?.hide();
+
+      // หลังสมัครสำเร็จ → บูตแอปต่อทันที (force = true เพื่อข้ามตัวกันซ้ำ)
+      if (typeof initApp === "function") initApp({ uid: payload.uid, force: true });
+    } catch (err) {
+      console.error(err);
+      window.Swal ? Swal.fire("ผิดพลาด", "บันทึกข้อมูลไม่สำเร็จ", "error") : alert("บันทึกข้อมูลไม่สำเร็จ");
     }
   }
 })();
