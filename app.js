@@ -9,6 +9,7 @@ const API_SPEND     = "/api/spend";      // หักแต้มเมื่อ
 let REWARDS_CACHE = [];
 let rewardRailBound = false;
 let AVATAR_SPARKLED_ONCE = false;
+
 // ===== Helpers: pick UID + try multiple endpoints + render safe =====
 let CURRENT_UID =
   window.__UID ||
@@ -155,6 +156,55 @@ function setAppLoading(on){
 }
 document.addEventListener("DOMContentLoaded", () => { setAppLoading(true); });
 document.addEventListener("DOMContentLoaded", initApp);
+
+// ==== Admin FAB control (copy-paste) ====
+// ตั้ง whitelist ไว้ในไฟล์นี้ก่อน (เพิ่ม/ลบได้ตามต้องการ)
+const LOCAL_ADMIN_UIDS = [
+  'Ucadb3c0f63ada96c0432a0aede267ff9', // <- UID ของคุณ
+  // 'Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // เพิ่มคนอื่นได้
+];
+
+// ตัวช่วย: ตรวจสิทธิ์จาก server ถ้ามี endpoint ให้ใช้ (optional)
+async function checkAdminFromServer(uid) {
+  try {
+    // ถ้ามี endpoint จริงให้แก้ URL ตรงนี้ เช่น /api/admin-check?uid=
+    const r = await fetch(`/api/admin-check?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
+    if (!r.ok) return false;
+    const j = await r.json();
+    // รองรับหลายรูปแบบผลลัพธ์
+    return !!(j?.isAdmin || j?.data?.isAdmin || j?.role === 'admin' || j?.status === 'ok' && j?.admin === true);
+  } catch (_) {
+    return false;
+  }
+}
+
+// ฟังก์ชันหลัก: แสดง/ซ่อนปุ่ม Admin
+async function showAdminFabIfAuthorized() {
+  const btn = document.getElementById('btnAdmin');
+  if (!btn) return;
+
+  const uid = window.__UID || sessionStorage.getItem('uid') || '';
+  if (!uid) { btn.classList.add('d-none'); return; }
+
+  // 1) เช็คจาก whitelist ในไฟล์ก่อน
+  let ok = LOCAL_ADMIN_UIDS.includes(uid);
+
+  // 2) ถ้าไม่ผ่าน whitelist ลองขอจาก server (ถ้ามี)
+  if (!ok) ok = await checkAdminFromServer(uid);
+
+  // 3) แสดง/ซ่อนปุ่ม
+  if (ok) {
+    btn.classList.remove('d-none');
+    btn.style.display = '';         // เผื่อมี style display:none ที่อื่น
+    btn.href = '/admin.html';       // ย้ำ path
+    btn.title = 'ไปหน้าแอดมิน';
+  } else {
+    btn.classList.add('d-none');
+  }
+}
+
+// (เผื่อโค้ดเก่าของคุณเรียกชื่อเดิม)
+window.showAdminEntry = showAdminFabIfAuthorized;
 
 // ===== LIFF bootstrap helper =====
 window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
@@ -560,8 +610,6 @@ async function refreshUserScore(){
     try { window.setLastUpdated?.(true); } catch {}
     return;
   }
-
-  
 
   // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
