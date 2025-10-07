@@ -184,102 +184,137 @@ window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
 // ===== REPLACE WHOLE FUNCTION: initApp =====
 async function initApp(ctx = {}) {
   try {
-    const liffId = (typeof window.LIFF_ID === 'string' && window.LIFF_ID) || (typeof LIFF_ID !== 'undefined' ? LIFF_ID : null);
-    await ensureLiffInit(liffId);
+    // 1) เตรียม LIFF
+    const liffId =
+      (typeof window.LIFF_ID === 'string' && window.LIFF_ID) ||
+      (typeof LIFF_ID !== 'undefined' ? LIFF_ID : null);
+    if (typeof ensureLiffInit === 'function') {
+      await ensureLiffInit(liffId);
+    } else {
+      // fallback เผื่อไม่มี helper
+      await liff.init({ liffId });
+    }
 
-    // 2) resolve UID/PROFILE
-    let uid = ctx.uid || window.__UID || sessionStorage.getItem('uid');
+    // 2) หา UID/PROFILE ให้ชัด
+    let uid  = ctx.uid || window.__UID || sessionStorage.getItem('uid') || '';
     let prof = ctx.profile || null;
 
-    if (liff.isLoggedIn()) {
-      if (!prof) prof = await liff.getProfile().catch(()=>null);
-      if (!uid)  uid  = prof?.userId || '';
+    if (liff.isLoggedIn && liff.isLoggedIn()) {
+      if (!prof && liff.getProfile) prof = await liff.getProfile().catch(() => null);
+      if (!uid) uid = prof?.userId || '';
     } else {
       liff.login(); return;
     }
 
-    if (uid) { 
-      window.__UID = uid; 
-      sessionStorage.setItem('uid', uid);
-    }
-   showAdminEntry(); // ← เรียกเช็กสิทธิ์หลังรู้ UID
+    if (!uid) throw new Error('no UID');
+    window.__UID = uid;
+    try { sessionStorage.setItem('uid', uid); } catch {}
 
-    // 3) preflight check
+    // แสดงปุ่มแอดมินถ้ามีสิทธิ์ (ถ้ามี helper ตัวนี้)
+    if (typeof showAdminEntry === 'function') showAdminEntry();
+    if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
+
+    // 3) ตรวจว่าเป็นผู้ใช้ใหม่หรือเก่า
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
-    const resp = await fetch(GET_SCORE(uid), { method:'GET', cache:'no-store' });
+    const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
+
     if (resp.status === 404) {
-      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-      console.warn('showRegisterModal() not found'); return;
+      // ผู้ใช้ใหม่ → เปิดฟอร์มสมัครแล้วหยุด
+      if (typeof window.showRegisterModal === 'function') {
+        return window.showRegisterModal(prof || null);
+      }
+      console.warn('showRegisterModal() not found'); 
+      return;
     }
     if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
 
-    const payload = await resp.json(); // { status, uid?, data:{ user, score, updated_at } }
+    const payload = await resp.json(); // { status, data:{ user, score, updated_at }, uid? }
     if (payload?.uid && payload.uid !== uid) {
       uid = payload.uid;
       window.__UID = uid;
-      sessionStorage.setItem('uid', uid);
+      try { sessionStorage.setItem('uid', uid); } catch {}
+      if (typeof showAdminEntry === 'function') showAdminEntry();
+      if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
     }
-    showAdminEntry(); // ← เรียกอีกรอบหลัง payload ยืนยัน UID
 
-    // 4) seed UI with profile (ไม่ทับโค้ดเดิม)
+    // 4) เติม UI จากโปรไฟล์ (ไม่ทับของเดิมหากมี)
     if (prof) {
       const nameEl = document.getElementById('username');
-      if (nameEl && !nameEl.dataset.locked) nameEl.textContent = prof.displayName || nameEl.textContent;
+      if (nameEl && !nameEl.dataset.locked) {
+        nameEl.textContent = prof.displayName || nameEl.textContent;
+      }
       const picEl = document.getElementById('profilePic');
       if (picEl && prof.pictureUrl) picEl.src = prof.pictureUrl;
     }
 
-    // 5) call your existing flows
-    if (typeof refreshUserScore === 'function') await refreshUserScore();
-    if (typeof loadRewards === 'function') await loadRewards();
-    if (typeof renderRewards === 'function') {
-      const s = (typeof window.prevScore === 'number')
-        ? window.prevScore
-        : (typeof payload?.data?.score !== 'undefined' ? Number(payload.data.score || 0) : 0);
-      renderRewards(s);
-    }
+    // helper ปิดสเกเลตัน rewards
+    const hideRewardSkeleton = () => {
+      document.querySelectorAll('.reward-skeleton').forEach(el => el.style.display = 'none');
+      document.getElementById('rewardsSection')?.classList.remove('skeleton-hide-when-loading');
+    };
+
+    // 5) โหลดข้อมูลหลัก
+    try {
+      if (typeof refreshUserScore === 'function') await refreshUserScore();
+    } catch (e) { console.warn('refreshUserScore failed:', e); }
+
+    try {
+      if (typeof loadRewards === 'function') await loadRewards();
+      if (typeof renderRewards === 'function') {
+        const s = (typeof window.prevScore === 'number')
+          ? window.prevScore
+          : Number(payload?.data?.score || 0);
+        renderRewards(s);
+      }
+    } catch (e) { console.warn('loadRewards/renderRewards failed:', e); }
+    finally { hideRewardSkeleton(); }
 
     // 6) one-time binds
-if (!window.__MAIN_BOUND) {
-  window.__MAIN_BOUND = true;
+    if (!window.__MAIN_BOUND) {
+      window.__MAIN_BOUND = true;
 
-  // รีเฟรชข้อมูล
-  document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-    try {
-      await ensureLiffInit(liffId);
-      await fetch(`/api/get-score?uid=${encodeURIComponent(window.__UID)}`, { method:'GET', cache:'no-store' });
-      if (typeof refreshUserScore === 'function') await refreshUserScore();
-      if (typeof loadRewards === 'function') await loadRewards();
-      if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
-    } catch (e) {
-      console.error(e);
-      window.Swal ? Swal.fire('ผิดพลาด', 'โหลดข้อมูลไม่สำเร็จ', 'error') : alert('โหลดข้อมูลไม่สำเร็จ');
+      // รีเฟรชข้อมูล
+      document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+        try {
+          if (typeof ensureLiffInit === 'function') await ensureLiffInit(liffId);
+          await fetch(GET_SCORE(window.__UID), { method: 'GET', cache: 'no-store' });
+          if (typeof refreshUserScore === 'function') await refreshUserScore();
+          if (typeof loadRewards === 'function') await loadRewards();
+          if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
+        } catch (e) {
+          console.error(e);
+          window.Swal ? Swal.fire('ผิดพลาด','โหลดข้อมูลไม่สำเร็จ','error') : alert('โหลดข้อมูลไม่สำเร็จ');
+        }
+      });
+
+      // ประวัติ
+      document.getElementById('historyBtn')?.addEventListener('click', () => {
+        if (typeof openHistory === 'function') openHistory();
+      });
+
+      // กล้อง/สแกนในโมดัลรับคะแนน
+      document.getElementById('startScanBtn')?.addEventListener('click', () => {
+        if (typeof startScanner === 'function') startScanner();
+      });
+      document.getElementById('stopScanBtn')?.addEventListener('click', () => {
+        if (typeof stopScanner === 'function') stopScanner();
+      });
+      const scanModalEl = document.getElementById('scoreModal');
+      if (scanModalEl) {
+        scanModalEl.addEventListener('shown.bs.modal',  () => { if (typeof startScanner === 'function') startScanner(); });
+        scanModalEl.addEventListener('hide.bs.modal',   () => { if (typeof stopScanner  === 'function') stopScanner(); });
+        scanModalEl.addEventListener('hidden.bs.modal', () => { if (typeof stopScanner  === 'function') stopScanner(); });
+      }
+
+      // ยืนยันรหัสลับ
+      document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
+        const code = (document.getElementById('secretCode')?.value || '').trim();
+        if (!code) return (window.toastErr ? toastErr('กรอกรหัสลับก่อน') : alert('กรอกรหัสลับก่อน'));
+        if (typeof redeemCode === 'function') await redeemCode(code, 'MANUAL');
+      });
     }
-  });
 
-  // ✅ ปุ่ม "ประวัติ" → เรียก openHistory (ของเรา)
-  document.getElementById('historyBtn')?.addEventListener('click', () => {
-    openHistory();
-  });
-
-  // ✅ ปุ่มควบคุมกล้อง + lifecycle โมดัล (ใช้ #scoreModal)
-  document.getElementById('startScanBtn')?.addEventListener('click', () => startScanner());
-  document.getElementById('stopScanBtn') ?.addEventListener('click', () => stopScanner());
-  const scanModalEl = document.getElementById('scoreModal');
-  if (scanModalEl) {
-    scanModalEl.addEventListener('shown.bs.modal',  () => startScanner());
-    scanModalEl.addEventListener('hide.bs.modal',   () => stopScanner());
-    scanModalEl.addEventListener('hidden.bs.modal', () => stopScanner());
-  }
-
-  // ✅ ปุ่ม "ยืนยันรับคะแนน" → เรียก redeemCode (ไม่ใช้ submitSecretCode)
-  document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
-    const code = (document.getElementById('secretCode')?.value || '').trim();
-    if (!code) return toastErr('กรอกรหัสลับก่อน');
-    await redeemCode(code, 'MANUAL');
-  });
-}
-
+    // ซ้ำอีกรอบ (กันเคสโหลดก่อน): ปุ่มแอดมิน
     if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
 
   } catch (err) {
@@ -900,8 +935,31 @@ function orderRewardsBySequence(list, sequence){
   return out;
 }
 
-function hideRewardSkeletons(){
+function hideRewardSkeleton() {
   document.querySelectorAll('.reward-skeleton').forEach(el => el.style.display = 'none');
+  document.getElementById('rewardsSection')?.classList.remove('skeleton-hide-when-loading');
+}
+
+async function kickOffUI() {
+  try {
+    // โหลดคะแนน/โปรไฟล์
+    if (typeof refreshUserScore === 'function') await refreshUserScore();
+  } catch (e) {
+    console.warn('refreshUserScore failed:', e);
+  }
+
+  try {
+    // โหลดของรางวัล แล้ววาดการ์ด
+    if (typeof loadRewards === 'function') await loadRewards();
+    if (typeof renderRewards === 'function') {
+      const score = Number(window.prevScore || 0);
+      renderRewards(score);
+    }
+  } catch (e) {
+    console.warn('loadRewards/renderRewards failed:', e);
+  } finally {
+    hideRewardSkeleton();
+  }
 }
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */

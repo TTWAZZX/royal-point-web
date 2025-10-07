@@ -361,6 +361,7 @@
 <script src="/app.js"></script>
 
 <!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
+<!-- ===== Auto-register flow (LIFF SSO → register if new) ===== -->
 <script>
 (function(){
   const LIFF_ID = "2007053300-QoEvbXyn";
@@ -382,24 +383,23 @@
       const uid  = prof.userId;
       window.__UID = uid;
 
-      // 1) ตรวจว่ามีผู้ใช้หรือยัง ด้วย fetch ตรง ๆ เพื่ออ่านสถานะ 404 ได้แน่นอน
+      // 1) เช็คว่ามีผู้ใช้แล้วหรือยัง
       let needRegister = false;
       try {
         const resp = await fetch(GET_SCORE(uid), { method:'GET' });
         if (resp.status === 404) {
           needRegister = true;
         } else if (!resp.ok) {
-          // สถานะอื่นที่ไม่ใช่ 200/404
           throw new Error('get-score failed with status ' + resp.status);
         } else {
-          // *** ผู้ใช้เก่า: เริ่มระบบต่อทันที ***
+          // ★ ผู้ใช้เก่า → เรียก initApp ให้แอปเริ่มโหลดข้อมูลต่อ
           if (typeof initApp === 'function') initApp({ profile: prof, uid });
         }
       } catch (err) {
         console.warn('Direct fetch get-score error:', err);
       }
 
-      // 2) ถ้าไม่พบผู้ใช้ → เปิดฟอร์มลงทะเบียน
+      // 2) ถ้าไม่พบผู้ใช้ → เปิดฟอร์มสมัคร
       if (needRegister) {
         return showRegisterModal(prof);
       }
@@ -448,7 +448,7 @@
       window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
       bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
 
-      // *** หลังลงทะเบียนสำเร็จ: เริ่มระบบแอปต่อทันที ***
+      // ★ ผู้ใช้ใหม่ → หลังสมัครเสร็จให้ initApp ต่อทันที
       if (typeof initApp === 'function') initApp({ uid: payload.uid });
 
     } catch(err){
