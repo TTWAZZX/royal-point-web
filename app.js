@@ -180,134 +180,101 @@ window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
   return true;
 };
 
-// ⬇️ วางทับของเดิมทั้งหมด
-// ===== REPLACE WHOLE FUNCTION: initApp =====
 // ===== REPLACE WHOLE FUNCTION: initApp =====
 async function initApp(ctx = {}) {
   try {
-    // *** อย่า init LIFF ที่นี่ — index.html ทำให้แล้ว ***
-
-    // 1) หา UID/PROFILE
+    // 1) เอา UID/โปรไฟล์จาก boot() ใน index.html ที่ส่งเข้ามา หรือจาก session
     let uid  = ctx.uid || window.__UID || sessionStorage.getItem('uid') || '';
     let prof = ctx.profile || null;
 
-    if (liff.isLoggedIn && !liff.isLoggedIn()) {
-      // เผื่อถูกเรียกตรง ๆ โดยยังไม่ล็อกอิน
-      if (!window.__LOGIN_REDIRECTING) {
-        window.__LOGIN_REDIRECTING = true;
-        liff.login(); 
-      }
+    // ถ้าเปิดหน้าตรง ๆ และยังไม่ได้ login จาก index.html
+    if (typeof liff?.isLoggedIn === 'function' && !liff.isLoggedIn()) {
+      liff.login(); 
       return;
     }
 
-    if (!prof && liff.getProfile) prof = await liff.getProfile().catch(() => null);
+    if (!prof && typeof liff?.getProfile === 'function') {
+      prof = await liff.getProfile().catch(() => null);
+    }
     if (!uid) uid = prof?.userId || '';
     if (!uid) throw new Error('no UID');
 
+    // เก็บ UID ไว้ใช้ต่อ
     window.__UID = uid;
     try { sessionStorage.setItem('uid', uid); } catch {}
 
-    // ปุ่มแอดมิน (ถ้ามี helper)
+    // โชว์ชื่อ/รูปเบื้องต้น
+    const nameEl = document.getElementById('username');
+    if (nameEl && prof?.displayName) nameEl.textContent = prof.displayName;
+    const picEl = document.getElementById('profilePic');
+    if (picEl && prof?.pictureUrl) picEl.src = prof.pictureUrl;
+
+    // ปุ่มแอดมิน (มี helper อยู่แล้ว)
     if (typeof showAdminEntry === 'function') showAdminEntry();
     if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
 
-    // 2) ตรวจว่าผู้ใช้มีในระบบหรือไม่
-    const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
-    const resp = await fetch(GET_SCORE(uid), { method:'GET', cache:'no-store' });
+    // โหลดคะแนน + ของรางวัล
+    if (typeof refreshUserScore === 'function') await refreshUserScore();
+    if (typeof loadRewards      === 'function') await loadRewards();
 
-    if (resp.status === 404) {
-      if (typeof window.showRegisterModal === 'function') {
-        return window.showRegisterModal(prof || null);
-      }
-      console.warn('showRegisterModal() not found');
-      return;
-    }
-    if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
-
-    const payload = await resp.json(); // { status, data:{ user, score, updated_at }, uid? }
-    if (payload?.uid && payload.uid !== uid) {
-      uid = payload.uid;
-      window.__UID = uid;
-      try { sessionStorage.setItem('uid', uid); } catch {}
-      if (typeof showAdminEntry === 'function') showAdminEntry();
-      if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
+    // render ของรางวัล (ถ้ามีตัวแปรคะแนนก่อนหน้า)
+    if (typeof renderRewards === 'function') {
+      const s = (typeof window.prevScore === 'number') ? window.prevScore : 0;
+      renderRewards(Number(s || 0));
     }
 
-    // 3) seed UI ด้วย profile ถ้ามี
-    if (prof) {
-      const nameEl = document.getElementById('username');
-      if (nameEl && !nameEl.dataset.locked) nameEl.textContent = prof.displayName || nameEl.textContent;
-      const picEl = document.getElementById('profilePic');
-      if (picEl && prof.pictureUrl) picEl.src = prof.pictureUrl;
-    }
-
-    // helper ปิดสเกเลตัน rewards
-    const hideRewardSkeleton = () => {
-      document.querySelectorAll('.reward-skeleton').forEach(el => el.style.display = 'none');
-      document.getElementById('rewardsSection')?.classList.remove('skeleton-hide-when-loading');
-    };
-
-    // 4) โหลดข้อมูลหลัก
-    try { if (typeof refreshUserScore === 'function') await refreshUserScore(); } 
-    catch (e) { console.warn('refreshUserScore failed:', e); }
-
-    try {
-      if (typeof loadRewards === 'function') await loadRewards();
-      if (typeof renderRewards === 'function') {
-        const s = (typeof window.prevScore === 'number')
-          ? window.prevScore
-          : Number(payload?.data?.score || 0);
-        renderRewards(s);
-      }
-    } catch (e) { console.warn('loadRewards/renderRewards failed:', e); }
-    finally { hideRewardSkeleton(); }
-
-    // 5) one-time binds
+    // === bind event (กันผูกซ้ำ) ===
     if (!window.__MAIN_BOUND) {
       window.__MAIN_BOUND = true;
 
-      // รีเฟรชข้อมูล (ไม่ init LIFF ซ้ำ)
+      // ปุ่มรีเฟรช
       document.getElementById('refreshBtn')?.addEventListener('click', async () => {
         try {
-          await fetch(GET_SCORE(window.__UID), { method:'GET', cache:'no-store' });
-          if (typeof refreshUserScore === 'function') await refreshUserScore();
-          if (typeof loadRewards === 'function') await loadRewards();
-          if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
+          await fetch(`/api/get-score?uid=${encodeURIComponent(window.__UID)}`, { method: 'GET', cache: 'no-store' });
+          await refreshUserScore?.();
+          await loadRewards?.();
+          renderRewards?.(Number(window.prevScore || 0));
         } catch (e) {
           console.error(e);
-          window.Swal ? Swal.fire('ผิดพลาด','โหลดข้อมูลไม่สำเร็จ','error') : alert('โหลดข้อมูลไม่สำเร็จ');
+          Swal ? Swal.fire('ผิดพลาด', 'โหลดข้อมูลไม่สำเร็จ', 'error') : alert('โหลดข้อมูลไม่สำเร็จ');
         }
       });
 
-      // ประวัติ
+      // ปุ่ม "ประวัติ"
       document.getElementById('historyBtn')?.addEventListener('click', () => {
-        if (typeof openHistory === 'function') openHistory();
+        typeof openHistory === 'function' ? openHistory() : null;
       });
 
-      // สแกน/กล้อง
-      document.getElementById('startScanBtn')?.addEventListener('click', () => { if (typeof startScanner === 'function') startScanner(); });
-      document.getElementById('stopScanBtn') ?.addEventListener('click', () => { if (typeof stopScanner  === 'function') stopScanner(); });
+      // ปุ่มควบคุมกล้อง + lifecycle ของ modal (ใช้ id="scoreModal")
+      document.getElementById('startScanBtn')?.addEventListener('click', () => { 
+        typeof startScanner === 'function' && startScanner();
+      });
+      document.getElementById('stopScanBtn')?.addEventListener('click', () => { 
+        typeof stopScanner === 'function' && stopScanner();
+      });
+
       const scanModalEl = document.getElementById('scoreModal');
       if (scanModalEl) {
-        scanModalEl.addEventListener('shown.bs.modal',  () => { if (typeof startScanner === 'function') startScanner(); });
-        scanModalEl.addEventListener('hide.bs.modal',   () => { if (typeof stopScanner  === 'function') stopScanner(); });
-        scanModalEl.addEventListener('hidden.bs.modal', () => { if (typeof stopScanner  === 'function') stopScanner(); });
+        scanModalEl.addEventListener('shown.bs.modal',  () => { typeof startScanner === 'function' && startScanner(); });
+        scanModalEl.addEventListener('hide.bs.modal',   () => { typeof stopScanner  === 'function' && stopScanner(); });
+        scanModalEl.addEventListener('hidden.bs.modal', () => { typeof stopScanner  === 'function' && stopScanner(); });
       }
 
-      // ยืนยันรหัสลับ
+      // ปุ่ม “ยืนยันรับคะแนน”
       document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
         const code = (document.getElementById('secretCode')?.value || '').trim();
-        if (!code) return (window.toastErr ? toastErr('กรอกรหัสลับก่อน') : alert('กรอกรหัสลับก่อน'));
-        if (typeof redeemCode === 'function') await redeemCode(code, 'MANUAL');
+        if (!code) return Swal?.fire('กรุณากรอกรหัส', '', 'warning');
+        if (typeof redeemCode === 'function') {
+          await redeemCode(code, 'MANUAL');
+        } else if (typeof submitSecretCode === 'function') {
+          // fallback เดิม
+          submitSecretCode(code);
+        }
       });
     }
-
-    // ย้ำอีกครั้งสำหรับปุ่มแอดมิน
-    if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
-
   } catch (err) {
     console.error('[initApp] error:', err);
-    window.Swal ? Swal.fire('ผิดพลาด', 'เริ่มต้นระบบไม่สำเร็จ', 'error') : alert('เริ่มต้นระบบไม่สำเร็จ');
+    Swal ? Swal.fire('ผิดพลาด','เริ่มต้นระบบไม่สำเร็จ','error') : alert('เริ่มต้นระบบไม่สำเร็จ');
   }
 }
 
@@ -948,6 +915,11 @@ async function kickOffUI() {
   } finally {
     hideRewardSkeleton();
   }
+}
+
+// ซ่อน card skeleton ของของรางวัล
+function hideRewardSkeletons() {
+  document.querySelectorAll('.reward-skeleton').forEach(el => el.remove());
 }
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
