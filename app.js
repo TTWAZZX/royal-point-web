@@ -340,6 +340,51 @@ async function initApp(ctx = {}) {
   }
 }
 
+// เรียกหลังสมัครสำเร็จ เพื่อบังคับโหลดทุกอย่างให้ครบแบบเต็มหน้า
+async function hydrateAfterRegister(uid) {
+  try {
+    // เก็บ uid ไว้ให้ชัดเจน
+    if (uid) {
+      window.__UID = uid;
+      sessionStorage.setItem('uid', uid);
+    }
+
+    // 1) อัปคะแนนขึ้นหน้าหลัก
+    if (typeof refreshUserScore === 'function') {
+      await refreshUserScore();
+    }
+
+    // 2) โหลดของรางวัลทั้งหมด (รวม inactive)
+    if (typeof loadRewards === 'function') {
+      // ถ้าฟังก์ชัน loadRewards รองรับ options
+      try { await loadRewards({ include: 1 }); }
+      catch { await loadRewards(); }
+    }
+
+    // 3) เรนเดอร์ของรางวัลทันทีด้วยคะแนนปัจจุบัน
+    if (typeof renderRewards === 'function') {
+      const s = Number(
+        (typeof window.prevScore === 'number' ? window.prevScore : 0)
+      );
+      renderRewards(s);
+    }
+
+    // 4) โชว์ปุ่มแอดมินถ้าเป็นแอดมิน
+    if (typeof showAdminFabIfAuthorized === 'function') {
+      showAdminFabIfAuthorized();
+    }
+
+    // 5) เก็บกวาด skeleton ให้หายไป (ถ้ามีฟังก์ชันช่วย)
+    try {
+      document.querySelectorAll('.reward-skeleton').forEach(el => el.classList.add('d-none'));
+      document.querySelectorAll('.skeleton-hide-when-loading').forEach(el => el.classList.remove('d-none'));
+    } catch {}
+  } catch (e) {
+    console.error('hydrateAfterRegister error:', e);
+    window.Swal ? Swal.fire('ผิดพลาด','โหลดหน้าหลังสมัครไม่สำเร็จ','error') : alert('โหลดหน้าหลังสมัครไม่สำเร็จ');
+  }
+}
+
 // ===== QR Scanner (html5-qrcode) =====
 let QR_INSTANCE = null;
 let SCANNING = false;
@@ -986,17 +1031,50 @@ window.hideRewardSkeletons = hideRewardSkeletons;
 window.hideRewardsSkeletons = hideRewardSkeletons;
 
 /** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
-async function loadRewards() {
-  const rail = document.getElementById('rewardRail');
-  const section = document.getElementById('rewardsSection');
+// โหลดของรางวัล (รองรับ include=1 ให้โชว์ของ inactive ด้วย และแนบ uid)
+// - opts.include: 1 | 0  (default = 1 -> โชว์ทั้งหมด)
+// - opts.uid: ระบุ uid เองได้ (default = window.__UID)
+async function loadRewards(opts = {}) {
+  const rail     = document.getElementById('rewardRail');
+  const section  = document.getElementById('rewardsSection');
+
+  // สร้าง query string
+  const include = (opts.include ?? 1);                 // ✅ โชว์ inactive เป็นค่าเริ่มต้น
+  const uid     = (opts.uid || window.__UID || '');
+
+  const qs = new URLSearchParams();
+  if (include != null) qs.set('include', String(include));
+  if (uid)            qs.set('uid', uid);
+
+  const suffix = qs.toString() ? `?${qs}` : '';
+
+  // เตรียมสำรอง endpoint หลายตัว
+  const endpoints = [
+    `/api/rewards${suffix}`,
+    `/api/list-rewards${suffix}`,
+    `/api/reward-list${suffix}`,
+  ];
 
   try {
-    const { items } = await tryEndpoints(
-      ['/api/rewards', '/api/list-rewards', '/api/reward-list'],
+    // เรียกผ่านตัวช่วยเดิมของคุณ (แสดง skeleton ระหว่างโหลด)
+    const resp = await tryEndpoints(
+      endpoints,
       {},
       { scope: 'page', skeletonOf: section }
     );
 
+    // รองรับหลายทรงตอบกลับ: {items:[]}, {data:[]}, [] ตรง ๆ
+    const items =
+      (Array.isArray(resp) ? resp :
+        (Array.isArray(resp?.items) ? resp.items :
+          (Array.isArray(resp?.data) ? resp.data : []))) || [];
+
+    // ฟังก์ชัน escape HTML สั้น ๆ (ถ้าในโปรเจ็กต์คุณมี h() อยู่แล้ว ใช้ของเดิมได้เลย)
+    const h = (s) => String(s ?? '').replace(/[&<>"']/g, m =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])
+    );
+
+    // เรนเดอร์
     rail.innerHTML = items.length
       ? items.map(r => {
           const title = r.name || r.title || r.reward_name || 'Reward';
@@ -1007,8 +1085,9 @@ async function loadRewards() {
           return `
             <div class="card my-2">
               <div class="card-body d-flex gap-3 align-items-center">
-                ${img ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">`
-                      : `<div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
+                ${img
+                  ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">`
+                  : `<div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
                 <div class="flex-grow-1">
                   <div class="fw-bold">${h(title)}</div>
                   <div class="text-muted small">${h(desc)}</div>
@@ -1022,7 +1101,8 @@ async function loadRewards() {
     console.error('loadRewards error:', e);
     rail.innerHTML = `<div class="alert alert-danger">โหลดของรางวัลไม่สำเร็จ</div>`;
   } finally {
-    hideRewardSkeletons();  // <<<< ซ่อนแถบดำ
+    // ซ่อน skeleton เมื่อโหลดเสร็จ
+    try { hideRewardSkeletons && hideRewardSkeletons(); } catch {}
   }
 }
 

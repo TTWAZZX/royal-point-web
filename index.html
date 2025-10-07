@@ -360,7 +360,6 @@
 <script src="/loader.js"></script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
-<script src="/rewards.js"></script>
 <script src="/app.js" defer></script>
 
 <!-- ===== Auto-register flow (single gate) ===== -->
@@ -462,8 +461,12 @@
         body: JSON.stringify(payload),
       }, { scope: "overlay", msg: "กำลังบันทึกข้อมูลลงทะเบียน..." });
 
-      window.Swal ? Swal.fire("สำเร็จ", "ลงทะเบียนเรียบร้อย", "success") : alert("ลงทะเบียนเรียบร้อย");
-      bootstrap.Modal.getInstance(document.getElementById("registerModal"))?.hide();
+      // สำเร็จแล้ว
+      window.Swal ? Swal.fire("สำเร็จ","ลงทะเบียนเรียบร้อย","success") : alert("ลงทะเบียนเรียบร้อย");
+      bootstrap.Modal.getInstance(document.getElementById('registerModal'))?.hide();
+
+      // ✅ บังคับรีไฮเดรตทั้งหน้าให้เต็มรูปแบบ (คะแนน + ของรางวัล + ปุ่มแอดมิน)
+      await hydrateAfterRegister(payload.uid);
 
       // หลังสมัครสำเร็จ → บูตแอปต่อทันที (force = true เพื่อข้ามตัวกันซ้ำ)
       if (typeof initApp === "function") initApp({ uid: payload.uid, force: true });
