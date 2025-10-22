@@ -202,7 +202,7 @@ async function showAdminFabIfAuthorized() {
 }
 
 // (เผื่อโค้ดเก่าของคุณเรียกชื่อเดิม)
-window.showAdminEntry = showAdminFabIfAuthorized;
+window.showAdminFab = showAdminFabIfAuthorized; // alias ใหม่
 
 // ===== LIFF bootstrap helper =====
 window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
@@ -276,7 +276,7 @@ async function initApp(ctx = {}) {
     }
 
     // 5) โหลดข้อมูลหลัก
-    if (typeof refreshUserScore === 'function') await refreshUserScore();
+    if (typeof refreshUserScore === 'function') await refreshUserScore({ bust: true });
     if (typeof loadRewards === 'function') await loadRewards();
     if (typeof renderRewards === 'function') {
       const s = (typeof window.prevScore === 'number')
@@ -287,21 +287,8 @@ async function initApp(ctx = {}) {
 
     // 6) one-time binds
     if (!window.__MAIN_BOUND) {
+      if (typeof bindUI === 'function') { try { bindUI(); } catch(e) { console.warn('bindUI failed', e); } }
       window.__MAIN_BOUND = true;
-
-      // รีเฟรช
-      document.getElementById('refreshBtn')?.addEventListener('click', async () => {
-        try {
-          await ensureLiffInit(LIFF_ID);
-          await fetch(`/api/get-score?uid=${encodeURIComponent(window.__UID)}`, { method: 'GET', cache: 'no-store' });
-          if (typeof refreshUserScore === 'function') await refreshUserScore();
-          if (typeof loadRewards === 'function') await loadRewards();
-          if (typeof renderRewards === 'function') renderRewards(Number(window.prevScore || 0));
-        } catch (e) {
-          console.error(e);
-          window.Swal ? Swal.fire('ผิดพลาด','โหลดข้อมูลไม่สำเร็จ','error') : alert('โหลดข้อมูลไม่สำเร็จ');
-        }
-      });
 
       // ประวัติ
       document.getElementById('historyBtn')?.addEventListener('click', () => {
@@ -346,7 +333,7 @@ async function hydrateAfterRegister(uid) {
 
     // 1) อัปคะแนนขึ้นหน้าหลัก
     if (typeof refreshUserScore === 'function') {
-      await refreshUserScore();
+      await refreshUserScore({ bust: true });
     }
 
     // 2) โหลดของรางวัลทั้งหมด (รวม inactive)
@@ -429,7 +416,7 @@ async function startScanner() {
 
   const onScanSuccess = async (text /*, result */) => {
     const now = Date.now();
-    if (text === window.LAST_DECODE && now - (window.LAST_DECODE_AT||0) < 2500) return;
+    if (text === window.LAST_DECODE && now - (window.LAST_DECODE_AT||0) < DUP_COOLDOWN) return;
     window.LAST_DECODE = text; window.LAST_DECODE_AT = now;
     await redeemCode(text, 'SCAN');
   };
@@ -482,8 +469,20 @@ async function toggleTorch(on) {
 }
 
 function bindUI(){
-  // ปุ่มรีเฟรชคะแนน
-  els.btnRefresh && els.btnRefresh.addEventListener("click", refreshUserScore);
+    // ปุ่มรีเฟรชคะแนน (เวอร์ชันฉลาด: bust + poll)
+  if (els.btnRefresh && !els.btnRefresh.dataset._rpBound) {
+    els.btnRefresh.dataset._rpBound = 1;
+    els.btnRefresh.addEventListener("click", async () => {
+      try {
+        await ensureLiffInit(LIFF_ID);
+      } catch {}
+      try {
+        await refreshUserScore({ bust: true, poll: true, pollTries: 3, pollInterval: 500 });
+        await loadRewards?.();
+        renderRewards?.(Number(window.prevScore || 0));
+      } catch (e) { console.warn('refresh failed', e); }
+    });
+  }
 
   // ปุ่มประวัติ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
@@ -640,23 +639,27 @@ function showAdminEntry(isAdmin) {
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
-// ===== refreshUserScore (patched + cache) =====
-async function refreshUserScore(){
+// ===== refreshUserScore (patched, with bust & poll) =====
+async function refreshUserScore(opts = {}) {
+  const { bust=false, poll=false, pollTries=5, pollInterval=600 } = opts;
+
   const uid =
     (typeof UID !== 'undefined' && UID) ||
     window.__UID ||
     localStorage.getItem('uid') ||
     '';
 
+  // ไม่มี uid → รีเซ็ตแบบปลอดภัย
   if (!uid) {
     console.warn('[refreshUserScore] missing uid');
     els?.points && (els.points.textContent = '0');
     document.getElementById('xpPair')
       ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
-    try { window.setLastUpdated?.(true); } catch {}
-    return;
+    try { window.setLastUpdated?.(Date.now(), true); } catch {}
+    return 0;
   }
 
+  // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
     if (!o || typeof o !== 'object') return null;
     const cands = [
@@ -672,15 +675,27 @@ async function refreshUserScore(){
 
   let fromCache = false, data = null;
 
-  try{
-    const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
+  // สร้าง URL พร้อม cache-bust ถ้าขอ
+  const bustQS = bust ? `&_=${Date.now()}` : '';
+  const url = `${API_GET_SCORE}?uid=${encodeURIComponent(uid)}${bustQS}`;
+
+  // 1) ลองเรียก API ปกติ (บังคับไม่แคช)
+  try {
+    const res  = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control':'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+    });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json || json?.status === 'error') {
       throw new Error(json?.message || `HTTP ${res.status}`);
     }
     data = json;
-  }catch(e){
-    console.warn('[refreshUserScore] fetch failed → use cache if any', e);
+  } catch (e) {
+    console.warn('[refreshUserScore] fetch failed → fallback memory cache', e);
     if (Number.isFinite(Number(window.__userBalance))) {
       data = { score: Number(window.__userBalance) };
       fromCache = true;
@@ -691,17 +706,20 @@ async function refreshUserScore(){
     els?.points && (els.points.textContent = '0');
     document.getElementById('xpPair')
       ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
-    try { window.setLastUpdated?.(true); } catch {}
-    return;
+    try { window.setLastUpdated?.(Date.now(), true); } catch {}
+    return 0;
   }
 
   const newScore = pickScore(data) ?? 0;
 
-  // commit memory + UI
+  // --- commit state (อย่าเซ็ต prevScore ตรงนี้) ---
   window.__userBalance = newScore;
+  try { cacheScore?.(uid, newScore); } catch {}
+
+  // อัปเดตการ์ดโปรไฟล์/ธีม/แถบ ฯลฯ ให้ครบ ผ่าน setPoints()
   try { setPoints(newScore); } catch (e) { console.warn('setPoints failed', e); }
 
-  // === update pair (cur/max) fallback ===
+  // ===== คำนวณคู่ตัวเลขความคืบหน้า =====
   let need = Number(data?.need ?? data?.next_need);
   let cur  = Number(data?.current ?? newScore);
   let max  = Number(data?.max ?? data?.target);
@@ -710,20 +728,32 @@ async function refreshUserScore(){
     try {
       const tier = (typeof getTier === 'function') ? getTier(newScore) : null;
       if (tier && Number.isFinite(tier.next)) {
-        max  = tier.next; cur = newScore; need = Math.max(0, tier.next - newScore);
+        max  = tier.next;
+        cur  = newScore;
+        need = Math.max(0, tier.next - newScore);
       } else {
-        max = newScore || 1; cur = newScore; need = 0;
+        max  = newScore || 1;
+        cur  = newScore;
+        need = 0;
       }
     } catch {
-      max = newScore || 1; cur = newScore; need = 0;
+      max  = newScore || 1;
+      cur  = newScore;
+      need = 0;
     }
   }
+
   const pair = document.getElementById('xpPair');
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  // === save cache + stamp ===
-  try { cacheScore(uid, newScore); } catch {}
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
+
+  // ถ้าขอ poll เพื่อตามคะแนนจริงหลังทำธุรกรรม
+  if (poll) {
+    try { await pollScoreUntil(uid, newScore, pollTries, pollInterval); } catch {}
+  }
+
+  return newScore;
 }
 
 /* ===== Next-tier chip (always visible) ===== */
@@ -921,7 +951,7 @@ function hideRewardSkeleton() {
 async function kickOffUI() {
   try {
     // โหลดคะแนน/โปรไฟล์
-    if (typeof refreshUserScore === 'function') await refreshUserScore();
+    if (typeof refreshUserScore === 'function') await refreshUserScore({ bust: true });
   } catch (e) {
     console.warn('refreshUserScore failed:', e);
   }
@@ -1114,7 +1144,13 @@ async function redeemReward(reward, btn){
     const payload = await safeJson(res);
     if (payload?.status !== "success") throw new Error(payload?.message || "spend failed");
 
-    await refreshUserScore();
+// ====== วางแทนช่วง success ใน redeemReward() ======
+    // 1) จับ baseline "ก่อน" optimistic
+    const before = Number(window.__userBalance || 0);
+
+    // 2) อัปเดตจอทันทีแบบ optimistic (ให้ผู้ใช้เห็นไว)
+    optimisticSpend(cost);
+
     UiOverlay.hide();
     if (window.Swal){
       await Swal.fire({
@@ -1122,9 +1158,15 @@ async function redeemReward(reward, btn){
         html:`ใช้ไป <b>${cost}</b> pt<br><small>แคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
         icon:"success"
       });
-    }else{
+    } else {
       alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
     }
+
+    // 3) ตามคะแนนจริงจากเซิร์ฟเวอร์: โพลจน "แตกต่าง" จาก baseline เดิม
+    try {
+      await pollScoreUntil(curUid, before, 5, 650);
+    } catch {}
+// ====== จบชุดแทนที่ ======
   }catch(err){
     console.error(err);
     UiOverlay.hide();
@@ -1135,8 +1177,7 @@ async function redeemReward(reward, btn){
   }
 }
 
-/* ================= Redeem code / Scanner ================= */
-// ===== Redeem code (unified) — Overlay เฉพาะ SCAN + จัดการทุกเคสครบ =====
+// ===== Redeem code (unified) — overlay เฉพาะ SCAN + optimistic + poll baseline ที่ถูกต้อง =====
 async function redeemCode(input, source = 'manual') {
   const code = String(
     (input ?? document.getElementById('couponInput')?.value ?? '')
@@ -1154,7 +1195,7 @@ async function redeemCode(input, source = 'manual') {
   if (usingScan) UiOverlay.show('กำลังยืนยันรหัส…');
 
   // เก็บยอดก่อนหน้าไว้เทียบ หาก backend ไม่ส่ง amount
-  try { await refreshUserScore(); } catch {}
+  try { await refreshUserScore({ bust: true }); } catch {}
   const before = Number(window.__userBalance || 0);
 
   const payload = { uid, code, coupon: code, coupon_code: code, source };
@@ -1201,18 +1242,31 @@ async function redeemCode(input, source = 'manual') {
   };
 
   let added = pickAmount(json);
-  try { await refreshUserScore(); } catch {}
+
+  // รีเฟรชอีกครั้งแบบ bust เพื่อดึงยอด “จริงล่าสุดจากเซิร์ฟเวอร์”
+  try { await refreshUserScore({ bust: true }); } catch {}
   const after = Number(window.__userBalance || before);
   if (added === null) added = after - before;
 
+  // เก็บ baseline "ก่อน" optimistic ไว้ใช้กับ poll
+  const baselineBeforeOptimistic = Number(window.__userBalance || 0);
+
   if (usingScan) UiOverlay.hide();
 
+  // 1) โชว์ผล + อัปเดตจอแบบ optimistic
   if (added > 0) {
     toastOk(`รับ +${added} คะแนน`);
     try { showScoreDelta?.(added); } catch {}
+    optimisticAdd(added);
   } else {
     toastOk('แลกคูปองสำเร็จ');
   }
+
+  // 2) ตามคะแนนจริงจากเซิร์ฟเวอร์ (โพลจน "แตกต่าง" จาก baseline ก่อน optimistic)
+  try {
+    const uidNow = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
+    await pollScoreUntil(uidNow, baselineBeforeOptimistic, 5, 650);
+  } catch {}
 
   // เคลียร์ช่องกรอกเมื่อเป็นโฟลว์กรอกมือ
   if (String(source || '').toUpperCase() === 'MANUAL') {
@@ -1308,7 +1362,6 @@ async function openHistory(){
   const listWrap = document.getElementById('historyListWrap');
   const listEl   = document.getElementById('historyList');
   const skelEl   = modalEl?.querySelector('.history-skeleton');
-  const modal    = new bootstrap.Modal(modalEl);
 
   // เริ่มโหลด: เปิด skeleton
   if (skelEl) skelEl.style.display = '';
@@ -1316,7 +1369,7 @@ async function openHistory(){
   listEl && (listEl.innerHTML = '');
 
   try{
-    const resp = await fetch(`/api/score-history?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
+    const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
     const json = await resp.json().catch(()=> ({}));
     const items = Array.isArray(json) ? json
       : Array.isArray(json.items) ? json.items
@@ -1886,6 +1939,33 @@ function hydrateFromCache(uid) {
       if (typeof renderRewards === 'function') renderRewards(score ?? 0);
     }
   } catch {}
+}
+
+// ===== Poll จนคะแนน "เปลี่ยน" (สั้น ๆ หลังธุรกรรม) =====
+async function pollScoreUntil(uid, baseline, tries = 5, interval = 600) {
+  for (let i = 0; i < tries; i++) {
+    await new Promise(r => setTimeout(r, interval));
+    const s = await refreshUserScore({ bust: true }); // บังคับดึงสด
+    if (Number(s) !== Number(baseline)) {
+      return s; // ได้คะแนนใหม่แล้ว
+    }
+  }
+  return baseline; // ไม่เปลี่ยนภายในเวลาที่กำหนด
+}
+
+// ===== อัปเดตแบบ Optimistic แล้วค่อยตามผลจริง =====
+function optimisticAdd(delta) {
+  const cur = Number(window.__userBalance || 0);
+  const next = cur + Number(delta || 0);
+  window.__userBalance = next;
+  try { setPoints(next); } catch {}
+}
+
+function optimisticSpend(cost) {
+  const cur = Number(window.__userBalance || 0);
+  const next = Math.max(0, cur - Number(cost || 0));
+  window.__userBalance = next;
+  try { setPoints(next); } catch {}
 }
 
 // ===== save back to cache =====
