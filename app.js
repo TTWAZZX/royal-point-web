@@ -154,11 +154,6 @@ function setAppLoading(on){
   const sk = document.getElementById('appSkeleton');
   if (sk) sk.style.display = on ? 'block' : 'none';
 }
-document.addEventListener("DOMContentLoaded", () => {
-  // ถ้า index ตั้ง __SKIP_AUTO_INIT__ แปลว่าให้รอบูตผ่านสคริปต์ auto-register
-  if (window.__SKIP_AUTO_INIT__) return;
-  initApp();
-});
 
 // ==== Admin FAB control (copy-paste) ====
 // ตั้ง whitelist ไว้ในไฟล์นี้ก่อน (เพิ่ม/ลบได้ตามต้องการ)
@@ -645,7 +640,7 @@ function showAdminEntry(isAdmin) {
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
-// ===== refreshUserScore (patched) =====
+// ===== refreshUserScore (patched + cache) =====
 async function refreshUserScore(){
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -653,17 +648,15 @@ async function refreshUserScore(){
     localStorage.getItem('uid') ||
     '';
 
-  // ไม่มี uid → รีเซ็ตแบบปลอดภัย
   if (!uid) {
     console.warn('[refreshUserScore] missing uid');
-    if (els?.points) els.points.textContent = '0';
+    els?.points && (els.points.textContent = '0');
     document.getElementById('xpPair')
       ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
     try { window.setLastUpdated?.(true); } catch {}
     return;
   }
 
-  // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
     if (!o || typeof o !== 'object') return null;
     const cands = [
@@ -679,7 +672,6 @@ async function refreshUserScore(){
 
   let fromCache = false, data = null;
 
-  // 1) ลองเรียก API ปกติ
   try{
     const res  = await fetch(`${API_GET_SCORE}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
     const json = await res.json().catch(() => null);
@@ -689,16 +681,14 @@ async function refreshUserScore(){
     data = json;
   }catch(e){
     console.warn('[refreshUserScore] fetch failed → use cache if any', e);
-    // 2) fallback: ใช้แคชในหน่วยความจำ
     if (Number.isFinite(Number(window.__userBalance))) {
       data = { score: Number(window.__userBalance) };
       fromCache = true;
     }
   }
 
-  // ถ้าไม่มีข้อมูลเลย
   if (!data) {
-    if (els?.points) els.points.textContent = '0';
+    els?.points && (els.points.textContent = '0');
     document.getElementById('xpPair')
       ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
     try { window.setLastUpdated?.(true); } catch {}
@@ -707,40 +697,32 @@ async function refreshUserScore(){
 
   const newScore = pickScore(data) ?? 0;
 
-  // --- commit state (อย่าเซ็ต prevScore ตรงนี้) ---
+  // commit memory + UI
   window.__userBalance = newScore;
-
-  // อัปเดตการ์ดโปรไฟล์/ธีม/แถบ ฯลฯ ให้ครบ ผ่าน setPoints()
   try { setPoints(newScore); } catch (e) { console.warn('setPoints failed', e); }
 
-  // ===== คำนวณคู่ตัวเลขความคืบหน้า: cur / max (fallback ถ้า API ไม่ให้) =====
+  // === update pair (cur/max) fallback ===
   let need = Number(data?.need ?? data?.next_need);
   let cur  = Number(data?.current ?? newScore);
   let max  = Number(data?.max ?? data?.target);
 
   if (!Number.isFinite(max) || max <= 0) {
     try {
-      const tier = (typeof getTier === 'function') ? getTier(newScore) : null; // {min, next}
+      const tier = (typeof getTier === 'function') ? getTier(newScore) : null;
       if (tier && Number.isFinite(tier.next)) {
-        max  = tier.next;
-        cur  = newScore;
-        need = Math.max(0, tier.next - newScore);
+        max  = tier.next; cur = newScore; need = Math.max(0, tier.next - newScore);
       } else {
-        max  = newScore || 1;
-        cur  = newScore;
-        need = 0;
+        max = newScore || 1; cur = newScore; need = 0;
       }
     } catch {
-      max  = newScore || 1;
-      cur  = newScore;
-      need = 0;
+      max = newScore || 1; cur = newScore; need = 0;
     }
   }
-
   const pair = document.getElementById('xpPair');
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  // ตราประทับเวลา/ทูลทิป “อัปเดตล่าสุด”
+  // === save cache + stamp ===
+  try { cacheScore(uid, newScore); } catch {}
   try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
 }
 
@@ -966,10 +948,9 @@ function hideRewardSkeletons(){
 window.hideRewardSkeletons = hideRewardSkeletons;
 window.hideRewardsSkeletons = hideRewardSkeletons;
 
-// โหลดของรางวัลจาก /api/rewards แล้วเก็บไว้ใน REWARDS_CACHE
-// ค่าเริ่มต้น include=0 เพื่อซ่อนรายการ inactive สำหรับผู้ใช้
+// โหลดของรางวัล + cache
 async function loadRewards(opts = {}) {
-  const include = opts.include ?? 0;                   // 0 = เฉพาะ active
+  const include = opts.include ?? 0;
   const uid     = opts.uid || window.__UID || '';
   const qs      = new URLSearchParams();
   if (include != null) qs.set('include', String(include));
@@ -982,7 +963,6 @@ async function loadRewards(opts = {}) {
     const json = await res.json();
     if (json?.status !== 'success') throw new Error('bad payload');
 
-    // map → รูปแบบที่ renderRewards ใช้: {id,name,cost,img}
     const list = (json.items || json.data || []).map(x => ({
       id  : x.id ?? x.reward_id ?? '',
       name: x.name ?? x.title ?? `Reward`,
@@ -990,21 +970,19 @@ async function loadRewards(opts = {}) {
       img : x.img ?? x.image ?? x.image_url ?? ''
     }));
 
-    // เรียงตามลำดับคะแนน COST_ORDER และเติมที่ขาด
     const ordered = orderRewardsBySequence(list, COST_ORDER);
 
-    // เก็บลงแคช → ตัววาดหน้าจอจะหยิบไปใช้
     REWARDS_CACHE = ordered;
+    try { cacheRewards(ordered); } catch {}
 
-    // ให้ตัววาดหลักทำงาน (ใช้คะแนนล่าสุด)
     if (typeof renderRewards === 'function') {
       const score = Number(window.prevScore || 0);
       renderRewards(score);
     }
   } catch (e) {
     console.error('loadRewards error:', e);
-    // ไม่มีข้อมูล → ใช้ fallback ตาม COST_ORDER ไปก่อน
     REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
+    try { cacheRewards(REWARDS_CACHE); } catch {}
     if (typeof renderRewards === 'function') {
       const score = Number(window.prevScore || 0);
       renderRewards(score);
@@ -1635,42 +1613,6 @@ function getTier(score){
   return TIERS[TIERS.length - 1];
 }
 
-// ==== Torch / Low-light scan ====
-let ACTIVE_VIDEO_TRACK = null;
-
-function getActiveVideoTrack(){
-  try{
-    const v = document.querySelector('#qr-reader video');
-    return v?.srcObject?.getVideoTracks?.[0] || null;
-  }catch{ return null; }
-}
-function canUseTorch(track){
-  try{ return !!track?.getCapabilities?.().torch; }catch{ return false; }
-}
-async function toggleTorch(on){
-  const track = ACTIVE_VIDEO_TRACK || getActiveVideoTrack();
-  if (!track) throw new Error('no-camera-track');
-  if (!canUseTorch(track)) throw new Error('torch-not-supported');
-
-  await track.applyConstraints({ advanced: [{ torch: !!on }] });
-  TORCH_ON = !!on;
-  const btn = document.getElementById('torchBtn');
-  if (btn){
-    btn.classList.toggle('active', TORCH_ON);
-    btn.innerHTML = TORCH_ON
-      ? '<i class="fa-solid fa-bolt"></i> ไฟฉาย: เปิด'
-      : '<i class="fa-solid fa-bolt"></i> ไฟฉาย';
-  }
-}
-function afterCameraStarted(){
-  ACTIVE_VIDEO_TRACK = getActiveVideoTrack();
-  const btn = document.getElementById('torchBtn');
-  if (!btn) return;
-  const supported = canUseTorch(ACTIVE_VIDEO_TRACK);
-  btn.disabled = !supported;
-  btn.classList.toggle('d-none', !supported); // ไม่รองรับก็ซ่อน
-}
-
 /* ===== Premium helpers ===== */
 
 /** ตั้งธีมให้การ์ดด้วย data-tier (ใช้กับ CSS glow/gradient) */
@@ -1836,18 +1778,6 @@ window.addEventListener('online',  updateNetChip);
 window.addEventListener('offline', updateNetChip);
 updateNetChip(); // ครั้งแรก
 
-// ปุ่มรีเฟรช: ใช้ตัวเดิม (หมุน) — ถ้ามีแล้วข้ามได้
-(function wireRefreshFx(){
-  const btn = document.getElementById('refreshBtn');
-  if (!btn || btn.dataset._spinwired) return;
-  btn.dataset._spinwired = 1;
-  btn.addEventListener('click', ()=>{
-    btn.classList.add('spin');
-    navigator.vibrate?.(8);
-    setTimeout(()=>btn.classList.remove('spin'), 900);
-  });
-})();
-
 /* ---------- A11y: live regions ---------- */
 document.addEventListener('DOMContentLoaded', () => {
   try{
@@ -1920,10 +1850,10 @@ try{
   });
 })();
 
-// app.js (วางท้ายไฟล์)
+// ✅ ใช้บล็อกเดียวพอ
 document.addEventListener('DOMContentLoaded', () => {
   if (window.__SKIP_AUTO_INIT__) return;
-  initApp();
+  initAppFast();
 });
 
 // ===== Local cache keys =====
@@ -1931,19 +1861,23 @@ const LS_PROFILE  = 'RP_PROFILE';
 const LS_SCORE    = (uid)=>`RP_SCORE:${uid || 'anon'}`;
 const LS_REWARDS  = 'RP_REWARDS_V1';
 
-// ===== hydrate from cache (sync & very fast) =====
+// hydrate จาก localStorage (เร็ว) + fallback ไป setPoints
 function hydrateFromCache(uid) {
   try {
     const p = JSON.parse(localStorage.getItem(LS_PROFILE) || 'null');
     if (p?.displayName && typeof applyProfile === 'function') {
-      applyProfile(p); // คุณมีฟังก์ชันวาดชื่อ/รูปโปรไฟล์อยู่แล้ว
+      applyProfile(p);
     }
 
     const scoreStr = localStorage.getItem(LS_SCORE(uid));
     const score = scoreStr ? Number(scoreStr) : null;
     if (score != null) {
       window.prevScore = score;
-      if (typeof renderScoreCard === 'function') renderScoreCard(score); // ฟังก์ชันวาดแถบคะแนนของคุณ
+      if (typeof renderScoreCard === 'function') {
+        renderScoreCard(score);
+      } else if (typeof setPoints === 'function') {
+        setPoints(score);
+      }
     }
 
     const rewards = JSON.parse(localStorage.getItem(LS_REWARDS) || 'null');
@@ -1967,59 +1901,85 @@ function withTimeout(promise, ms, fallback){
   ]);
 }
 
-// ===== boot sequence =====
+// ===== boot sequence (no /api/bootstrap) =====
 async function initAppFast() {
-  // 1) เริ่ม LIFF พร้อม timeout 1.5s (กันช้า)
-  const liffP = withTimeout(initLiffSafe(), 1500, { uid:'', profile:null });
+  // 1) เริ่ม LIFF พร้อม timeout กันช้า
+  const { uid, profile } = await withTimeout(initLiffSafe(), 1500, { uid:'', profile:null });
 
-  // 2) ดึง uid/profile ได้เมื่อไหร่ → hydrate จาก cache ทันที
-  const { uid, profile } = await liffP;
-  hydrateFromCache(uid);
-
-  // 3) อัปเดตชื่อจาก LIFF (ถ้ามี)
-  if (profile?.displayName && typeof applyProfile === 'function') {
-    applyProfile(profile);
-    cacheProfile(profile);
+  // 1.1 commit UID ไว้ให้ส่วนอื่นใช้
+  if (uid) {
+    window.__UID = uid;
+    sessionStorage.setItem('uid', uid);
   }
 
-  // 4) ยิง bootstrap ชุดเดียว → score+rewards
+  // 2) hydrate UI จาก cache (เร็วทันใจ)
+  try { hydrateFromCache(uid); } catch {}
+
+  // 3) อัปเดตชื่อ/รูปจาก LIFF (ถ้ามี)
   try {
-    const qs = uid ? `?uid=${encodeURIComponent(uid)}` : '';
-    const r = await fetch(`/api/bootstrap${qs}`, { cache:'no-store' });
-    const j = await r.json();
-    if (j?.status === 'success') {
-      const score   = Number(j.data?.score || 0);
-      const rewards = Array.isArray(j.data?.rewards) ? j.data.rewards : [];
-      window.prevScore    = score;
-      window.REWARDS_CACHE = rewards;
-
-      cacheScore(uid, score);
-      cacheRewards(rewards);
-
-      if (typeof renderScoreCard === 'function') renderScoreCard(score);
-      if (typeof renderRewards === 'function') renderRewards(score);
+    if (profile?.displayName && typeof applyProfile === 'function') {
+      applyProfile(profile);
+      cacheProfile(profile);
     }
-  } catch(e){ console.warn('bootstrap failed', e); }
+  } catch {}
 
-  // 5) ปิด skeleton
+  // 3.1 ผูกอีเวนต์ UI ครั้งเดียว (ปุ่มสแกน/หยุด/รีเฟรช ฯลฯ)
+  if (!window.__MAIN_BOUND && typeof bindUI === 'function') {
+    try { bindUI(); } catch (e) { console.warn('bindUI failed', e); }
+    window.__MAIN_BOUND = true;
+  }
+
+  // 3.2 แสดงปุ่มแอดมินถ้าเข้าเกณฑ์
+  if (typeof showAdminFabIfAuthorized === 'function') {
+    try { await showAdminFabIfAuthorized(); } catch {}
+  }
+
+  // 4) โหลดข้อมูลหลักแบบแยก endpoint
+  try {
+    await Promise.allSettled([
+      (typeof refreshUserScore === 'function' ? refreshUserScore() : Promise.resolve()),
+      (typeof loadRewards      === 'function' ? loadRewards()      : Promise.resolve())
+    ]);
+
+    // 5) เรนเดอร์ของรางวัลด้วยคะแนนล่าสุด
+    if (typeof renderRewards === 'function') {
+      const score = Number(window.prevScore || 0);
+      renderRewards(score);
+    }
+  } catch (e) {
+    console.warn('fast boot fallback failed', e);
+  }
+
+  // 6) ปิด skeleton
   try { hideRewardSkeleton && hideRewardSkeleton(); } catch {}
 }
 
-// ===== LIFF safe init (ใช้ของเดิมคุณ + กัน init ซ้ำ) =====
+// ===== LIFF safe init (fixed to always use LIFF_ID) =====
 async function initLiffSafe() {
   try {
     if (!window.__LIFF_INITED) {
-      await liff.init({ liffId: window.LIFF_ID });
+      const liffId =
+        (typeof LIFF_ID !== 'undefined' && LIFF_ID) ||
+        (typeof window.LIFF_ID !== 'undefined' && window.LIFF_ID) ||
+        '';
+      if (!liffId) throw new Error('missing_liff_id');
+      await liff.init({ liffId });
       window.__LIFF_INITED = true;
     }
-    const p = await liff.getProfile();
-    const uid = liff.getDecodedIDToken()?.sub || '';
-    return { uid, profile: { displayName: p?.displayName || '', pictureUrl: p?.pictureUrl || '' } };
-  } catch(e){
+
+    const prof = await liff.getProfile().catch(() => null);
+    const uid =
+      liff.getDecodedIDToken?.()?.sub ||
+      prof?.userId || '';
+
+    return {
+      uid,
+      profile: prof
+        ? { displayName: prof.displayName || '', pictureUrl: prof.pictureUrl || '' }
+        : null
+    };
+  } catch (e) {
     console.warn('liff init failed', e);
-    return { uid:'', profile:null };
+    return { uid: '', profile: null };
   }
 }
-
-// เรียกฟังก์ชันเริ่ม
-initAppFast();
