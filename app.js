@@ -1014,7 +1014,22 @@ async function loadRewards(opts = {}) {
   }
 }
 
-/** render + click-to-redeem */
+// preload รูปบนสุด (เพื่อให้ช่องแรก/แถวแรกขึ้นไว)
+function preloadTopRewardImages(rewards, count = 2) {
+  const top = rewards.slice(0, count);
+  for (const r of top) {
+    if (!r?.img) continue;
+    const link = document.createElement('link');
+    link.rel = 'preload';
+    link.as = 'image';
+    link.href = r.img;
+    // บางเบราว์เซอร์รองรับ fetchpriority ใน <link>
+    link.fetchPriority = 'high';
+    document.head.appendChild(link);
+  }
+}
+
+/** render + click-to-redeem (optimized images) */
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
   if (!rail) return;
@@ -1023,19 +1038,34 @@ function renderRewards(currentScore){
     ? REWARDS_CACHE
     : buildFallbackRewards(COST_ORDER);
 
+  // ✅ preload รูปบนสุด 1–2 ใบให้ขึ้นไว (ฟังก์ชันนี้คุณมีแล้ว)
+  preloadTopRewardImages(data, 2);
+
   rail.innerHTML = data.map((r, i) => {
     const locked  = Number(currentScore) < Number(r.cost);
     const id      = escapeHtml(r.id || `R${i+1}`);
     const name    = escapeHtml(r.name || id);
-    const img     = pickRewardImage(r, i); // ใช้ helper รูป
+    const img     = pickRewardImage(r, i); // ใช้ helper รูปเดิม
     const cost    = Number(r.cost || 0);
+
+    // รูป 2 ใบแรก "eager+high", ที่เหลือ "lazy+low"
+    const eager = i < 2 ? 'eager' : 'lazy';
+    const prio  = i < 2 ? 'high'  : 'low';
 
     return `
       <div class="rp-reward-card ${locked ? 'locked' : ''}"
            data-id="${id}" data-cost="${cost}" title="${name}">
         <div class="rp-reward-img">
-          <img src="${img}" alt="${name}" loading="lazy"
-               onerror="this.onerror=null;this.src='https://placehold.co/640x480?text=${encodeURIComponent(name)}';">
+          <img
+            src="${img}"
+            alt="${name}"
+            loading="${eager}"
+            decoding="async"
+            fetchpriority="${prio}"
+            width="300" height="300"
+            onload="this.classList.add('is-ready')"
+            onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=${encodeURIComponent(name)}';this.classList.add('is-ready');"
+          >
           <div class="rp-reward-badge">${cost} pt</div>
         </div>
         <div class="rp-reward-body p-2">
@@ -1048,6 +1078,7 @@ function renderRewards(currentScore){
     `;
   }).join("");
 
+  // one-time click binding
   if (!rewardRailBound) {
     rail.addEventListener("click", async (ev) => {
       const btn = ev.target.closest(".rp-redeem-btn");
@@ -1062,7 +1093,6 @@ function renderRewards(currentScore){
     rewardRailBound = true;
   }
 }
-/* ===== end Rewards (dynamic) ===== */
 
 // กันกดซ้ำ
 let REDEEMING = false;
@@ -1895,3 +1925,101 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.__SKIP_AUTO_INIT__) return;
   initApp();
 });
+
+// ===== Local cache keys =====
+const LS_PROFILE  = 'RP_PROFILE';
+const LS_SCORE    = (uid)=>`RP_SCORE:${uid || 'anon'}`;
+const LS_REWARDS  = 'RP_REWARDS_V1';
+
+// ===== hydrate from cache (sync & very fast) =====
+function hydrateFromCache(uid) {
+  try {
+    const p = JSON.parse(localStorage.getItem(LS_PROFILE) || 'null');
+    if (p?.displayName && typeof applyProfile === 'function') {
+      applyProfile(p); // คุณมีฟังก์ชันวาดชื่อ/รูปโปรไฟล์อยู่แล้ว
+    }
+
+    const scoreStr = localStorage.getItem(LS_SCORE(uid));
+    const score = scoreStr ? Number(scoreStr) : null;
+    if (score != null) {
+      window.prevScore = score;
+      if (typeof renderScoreCard === 'function') renderScoreCard(score); // ฟังก์ชันวาดแถบคะแนนของคุณ
+    }
+
+    const rewards = JSON.parse(localStorage.getItem(LS_REWARDS) || 'null');
+    if (Array.isArray(rewards) && rewards.length) {
+      window.REWARDS_CACHE = rewards;
+      if (typeof renderRewards === 'function') renderRewards(score ?? 0);
+    }
+  } catch {}
+}
+
+// ===== save back to cache =====
+function cacheProfile(p){ try{ localStorage.setItem(LS_PROFILE, JSON.stringify(p || {})); }catch{} }
+function cacheScore(uid,score){ try{ localStorage.setItem(LS_SCORE(uid), String(score ?? 0)); }catch{} }
+function cacheRewards(list){ try{ localStorage.setItem(LS_REWARDS, JSON.stringify(list || [])); }catch{} }
+
+// ===== helper: race with timeout to avoid slow LIFF =====
+function withTimeout(promise, ms, fallback){
+  let t; return Promise.race([
+    promise.finally(()=>clearTimeout(t)),
+    new Promise(res=>{ t=setTimeout(()=>res(fallback), ms); })
+  ]);
+}
+
+// ===== boot sequence =====
+async function initAppFast() {
+  // 1) เริ่ม LIFF พร้อม timeout 1.5s (กันช้า)
+  const liffP = withTimeout(initLiffSafe(), 1500, { uid:'', profile:null });
+
+  // 2) ดึง uid/profile ได้เมื่อไหร่ → hydrate จาก cache ทันที
+  const { uid, profile } = await liffP;
+  hydrateFromCache(uid);
+
+  // 3) อัปเดตชื่อจาก LIFF (ถ้ามี)
+  if (profile?.displayName && typeof applyProfile === 'function') {
+    applyProfile(profile);
+    cacheProfile(profile);
+  }
+
+  // 4) ยิง bootstrap ชุดเดียว → score+rewards
+  try {
+    const qs = uid ? `?uid=${encodeURIComponent(uid)}` : '';
+    const r = await fetch(`/api/bootstrap${qs}`, { cache:'no-store' });
+    const j = await r.json();
+    if (j?.status === 'success') {
+      const score   = Number(j.data?.score || 0);
+      const rewards = Array.isArray(j.data?.rewards) ? j.data.rewards : [];
+      window.prevScore    = score;
+      window.REWARDS_CACHE = rewards;
+
+      cacheScore(uid, score);
+      cacheRewards(rewards);
+
+      if (typeof renderScoreCard === 'function') renderScoreCard(score);
+      if (typeof renderRewards === 'function') renderRewards(score);
+    }
+  } catch(e){ console.warn('bootstrap failed', e); }
+
+  // 5) ปิด skeleton
+  try { hideRewardSkeleton && hideRewardSkeleton(); } catch {}
+}
+
+// ===== LIFF safe init (ใช้ของเดิมคุณ + กัน init ซ้ำ) =====
+async function initLiffSafe() {
+  try {
+    if (!window.__LIFF_INITED) {
+      await liff.init({ liffId: window.LIFF_ID });
+      window.__LIFF_INITED = true;
+    }
+    const p = await liff.getProfile();
+    const uid = liff.getDecodedIDToken()?.sub || '';
+    return { uid, profile: { displayName: p?.displayName || '', pictureUrl: p?.pictureUrl || '' } };
+  } catch(e){
+    console.warn('liff init failed', e);
+    return { uid:'', profile:null };
+  }
+}
+
+// เรียกฟังก์ชันเริ่ม
+initAppFast();

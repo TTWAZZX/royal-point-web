@@ -43,8 +43,7 @@ module.exports = async (req, res) => {
       updated_at: r.updated_at || null
     }));
 
-    // ไม่ให้แคช
-    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 
     return res.status(200).json({ status: 'success', items });
   } catch (err) {

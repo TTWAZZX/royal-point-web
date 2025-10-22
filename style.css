@@ -3419,3 +3419,56 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .status-chip.hidden,
 .status-chip.d-none{ display:inline-flex !important; }
 
+/* การ์ดของรางวัลพื้นฐาน */
+.reward-card {
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(0,0,0,.06);
+  overflow: hidden;
+}
+
+/* กล่องรูป: ล็อกอัตราส่วน 1:1 ป้องกันหน้าโดดตอนรูปยังไม่มา */
+.reward-card .img-wrap {
+  width: 100%;
+  aspect-ratio: 1 / 1;         /* กัน CLS */
+  position: relative;
+  background: #f3f5f7;         /* สีพื้นแทน skeleton */
+}
+
+/* รูปภาพ: กินทั้งกรอบ, ครอบตัดพอดี */
+.reward-card .img-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
+}
+
+/* เอฟเฟ็กต์นิดๆ ตอนรูปโหลดเสร็จ */
+.reward-card .img-wrap img {
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+.reward-card .img-wrap img.is-ready {
+  opacity: 1;
+}
+
+/* --- Rewards image: กัน CLS และทำให้รูปขึ้นลื่น --- */
+.rp-reward-img{
+  width: 100%;
+  aspect-ratio: 1 / 1;            /* จองพื้นที่ 1:1 กันหน้าโดด */
+  position: relative;
+  background: #f3f5f7;            /* สีพื้นระหว่างรอรูป */
+  overflow: hidden;
+}
+.rp-reward-img img{
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;               /* ครอบพอดี กรอบไม่ยืด */
+  opacity: 0;
+  transition: opacity .2s ease;    /* นุ่ม ๆ ตอนขึ้นรูป */
+}
+.rp-reward-img img.is-ready{
+  opacity: 1;
+}
