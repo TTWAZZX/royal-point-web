@@ -357,7 +357,7 @@ async function hydrateAfterRegister(uid) {
     // 2) โหลดของรางวัลทั้งหมด (รวม inactive)
     if (typeof loadRewards === 'function') {
       // ถ้าฟังก์ชัน loadRewards รองรับ options
-      try { await loadRewards({ include: 1 }); }
+      try { await loadRewards({ include: 0 }); }
       catch { await loadRewards(); }
     }
 
@@ -896,81 +896,17 @@ const COST_ORDER = [
   600,700,800,900,1000
 ];
 
-/* ========= Reward Images (Frontend Mapping) ========= */
-/** อ้างด้วย ID ของรางวัล (ใช้เมื่อรู้ id ที่แน่ชัด เช่น R01-40) */
-const IMAGE_BY_ID = {
-  // ตัวอย่าง (ถ้าคุณใช้ id รูปแบบนี้อยู่)
-  // "R01-40": "https://lh3.googleusercontent.com/d/1o_VHWrIuc9o56MCRuzjrycB8W5w_dT5d",
-  // "R02-50": "https://lh3.googleusercontent.com/d/1vEP5DqyX0vgkv3_XDAyLxJpLm3zUtrqR",
-  // "R03-60": "https://lh3.googleusercontent.com/d/1Ve6_BNWlL59BdQXaTLdxdvX4iLYomUyX",
-};
-
-/** ใส่รูปตามลำดับ “ช่อง” 1–44 (index เริ่ม 0)
- *  ด้านล่างเป็น URL จำลองด้วย placehold.co — เปลี่ยนเป็นลิงก์จริงของคุณเมื่อพร้อม
- */
-// วางแทน const IMAGE_BY_INDEX = [ ... ] เดิมทั้งหมด
-const IMAGE_BY_INDEX = [
-  "https://lh3.googleusercontent.com/d/1tzYzZvuVWNiXT2wccYMI0UFh6lRTkbJ6", // 01 → 40 pt
-  "https://lh3.googleusercontent.com/d/1uom60jA2Ro0Yy-OGVaedm8mdKULxCFEE", // 02 → 50 pt
-  "https://lh3.googleusercontent.com/d/1ewIghQ5BclphzBErZuozCv7Z7BCyT2lN", // 03 → 60 pt
-  "https://lh3.googleusercontent.com/d/14QUnoEEuIjhlOP2z-BD40lGUXuzCSB3r", // 04 → 70 pt
-  "https://lh3.googleusercontent.com/d/1XolP2GN-VZHe89TEGBIzw-w0Ryy_aYAc", // 05 → 80 pt
-  "https://lh3.googleusercontent.com/d/1aT21MZZNHdS3CRfkrLjna1JiX4A9Rn-M", // 06 → 100 pt
-  "https://lh3.googleusercontent.com/d/1lhcANAqeHQ13XEkL467_yC7omadhcZZn", // 07 → 100 pt
-  "https://lh3.googleusercontent.com/d/1t6B9XMNuUvaBBjo818ZKqhc5nmCx2vdO", // 08 → 100 pt
-  "https://lh3.googleusercontent.com/d/1Ky0gv6_m61S49_KHqNQE_2X30RmcDLj8", // 09 → 100 pt
-  "https://lh3.googleusercontent.com/d/19T7uXQVgQgLwT0VQ117PdMFSgyuzqOVI", // 10 → 120 pt
-  "https://lh3.googleusercontent.com/d/1TXLYFAu9ZvCko0360qxJTi1Pd4GKdIWb", // 11 → 120 pt
-  "https://lh3.googleusercontent.com/d/1svMqu3Ge2GjalHmqVllY-ndA-heXpYIX", // 12 → 120 pt
-  "https://lh3.googleusercontent.com/d/1zemY7NwelAuduqvM3e0Wi8WmXBndHwB-", // 13 → 120 pt
-  "https://lh3.googleusercontent.com/d/1D4GGczCWdRrHbmP7A_3Gfs6_fr_KS90i", // 14 → 150 pt
-  "https://lh3.googleusercontent.com/d/1y9KbZYWmj53QF2_OPj7lid8HRvsUxJe3", // 15 → 180 pt
-  "https://lh3.googleusercontent.com/d/1WodL4DLw45xdPb6pg28d_mXVOldOpvjN", // 16 → 200 pt
-  "https://lh3.googleusercontent.com/d/1zoQBfcoJ_xXXz5CEWTTMJbXH6jw0RXWq", // 17 → 150 pt
-  "https://lh3.googleusercontent.com/d/12SMtYCokS2X8WhwS2J0azlDlA-iphZYO", // 18 → 180 pt
-  "https://lh3.googleusercontent.com/d/13M8mpNwCeEWL_kRJ-xHvwTQHUS4H0CON", // 19 → 200 pt
-  "https://lh3.googleusercontent.com/d/1psxmP2KcMddkRJ0CXHus19DZvMTedev_", // 20 → 200 pt
-  "https://lh3.googleusercontent.com/d/1twHwdnz0s71pvRjETIA9cooAxFONQdtz", // 21 → 220 pt
-  "https://lh3.googleusercontent.com/d/1lYz3T8FwFGQBEo5oBlEbx598klaRwwEe", // 22 → 230 pt
-  "https://lh3.googleusercontent.com/d/1fW2MftUbOncqpandHSglzTzzD3DaX8HD", // 23 → 250 pt
-  "https://lh3.googleusercontent.com/d/1X59mn0tSd3nK6KTOltbNcmqeVlTnEB-S", // 24 → 250 pt
-  "https://lh3.googleusercontent.com/d/19_UOzuEjbI9DeYqdrp6Rt_WRgpR7ncrf", // 25 → 250 pt
-  "https://lh3.googleusercontent.com/d/1UUuLYzIePqrfU08HPT30o6JxtBpGr8m7", // 26 → 250 pt
-  "https://lh3.googleusercontent.com/d/1YgutbniKKkjsGOCs4u2S3ThvAELzse9r", // 27 → 250 pt
-  "https://lh3.googleusercontent.com/d/1NQy15RAK0qLu267rAFRiRR-uMtBATSr_", // 28 → 250 pt
-  "https://lh3.googleusercontent.com/d/1VGi5BEfa2-Bk5WZw_Wf_EDCHT52x_l55", // 29 → 350 pt
-  "https://lh3.googleusercontent.com/d/1PGbkV97OS_wkGz7vWmB59a2paKjgULZF", // 30 → 380 pt
-  "https://lh3.googleusercontent.com/d/1_pARo-iiyA68pDqOp6TSLCRj33TN6x-d", // 31 → 400 pt
-  "https://lh3.googleusercontent.com/d/1epsk3teYcJw0uL4o3OwIywUsZw2CiCHW", // 32 → 400 pt
-  "https://lh3.googleusercontent.com/d/1LDYALZaa0Swo-SjknugAztmw2YQT3iq2", // 33 → 400 pt
-  "https://lh3.googleusercontent.com/d/1pxVisHXsJtvX6uqpx5hmiBTSHl92vLW3", // 34 → 400 pt
-  "https://lh3.googleusercontent.com/d/1WpUh8FY7cWlhTp8BKnC40ScOJ2IhQkUR", // 35 → 400 pt
-  "https://lh3.googleusercontent.com/d/1jWzvazjQdfGipCkGaKZVDA3NuzwjBK0x", // 36 → 400 pt
-  "https://lh3.googleusercontent.com/d/1ZqlCs9QjejQJ3e-Ikxd3hce4SX3CXZOQ", // 37 → 450 pt
-  "https://lh3.googleusercontent.com/d/1aur2qx_cR23DNTHQo5MRsJLuG0V0Jo7J", // 38 → 500 pt
-  "https://lh3.googleusercontent.com/d/1pxapISLJkRMGmcOL3Vj7DmANop-As2Pe", // 39 → 500 pt
-  "https://lh3.googleusercontent.com/d/1RC5G_HntHj8K1XEQfzLyA-N1w8vO4IIO", // 40 → 600 pt
-  "https://lh3.googleusercontent.com/d/12237FMpOJ-bODwOCmJWXCxEzugRWiGZh", // 41 → 700 pt
-  "https://lh3.googleusercontent.com/d/18L16KpZuaJTpio4CVD-IHuZFeFlLmXjm", // 42 → 800 pt
-  "https://lh3.googleusercontent.com/d/10SVEtB7e1xrYsTIEjfc2kLMFyPIay1Tq", // 43 → 900 pt
-  "https://lh3.googleusercontent.com/d/1uPg2s7N5QCg6He6_8563tfoTuu-jlBew"  // 44 → 1000 pt
-];
-
-/** เลือกรูปตามลำดับ: ID → INDEX → r.img จาก API → placeholder */
+// ใช้รูปจาก API เป็นหลัก ถ้าไม่มีให้ใช้ placeholder
 function pickRewardImage(r, slotIndex){
-  const fallback = `https://placehold.co/640x480?text=${encodeURIComponent(r?.name || `Gift ${slotIndex+1}`)}`;
-  const idGuess  = r?.id || `R${String(slotIndex+1).padStart(2,'0')}-${r?.cost ?? ''}`;
-  // ถ้า IMAGE_BY_ID ตรง id → ใช้เลย, ไม่งั้นดูตามลำดับช่อง, ไม่งั้นใช้ r.img จาก API, ไม่งั้น fallback
-  return IMAGE_BY_ID[idGuess] || IMAGE_BY_INDEX[slotIndex] || r?.img || fallback;
+  return r?.img || `https://placehold.co/640x480?text=${encodeURIComponent(r?.name || `Gift ${slotIndex+1}`)}`;
 }
 
-/** สร้าง fallback 44 กล่องจากลำดับคะแนน */
+// fallback เวลา API ไม่มีข้อมูล (ไม่อ้างอิง IMAGE_BY_INDEX อีกต่อไป)
 function buildFallbackRewards(costs){
   return costs.map((cost, idx)=>({
     id:   `R${String(idx+1).padStart(2,'0')}-${cost}`,
     name: `Gift ${idx+1}`,
-    cost: Number(cost),
-    img:  IMAGE_BY_INDEX[idx] || `https://placehold.co/640x480?text=Gift+${idx+1}`
+    cost: Number(cost)
   }));
 }
 
@@ -1030,78 +966,50 @@ function hideRewardSkeletons(){
 window.hideRewardSkeletons = hideRewardSkeletons;
 window.hideRewardsSkeletons = hideRewardSkeletons;
 
-/** โหลดรางวัล แล้วจัดรูปแบบให้ตรง COST_ORDER */
-// โหลดของรางวัล (รองรับ include=1 ให้โชว์ของ inactive ด้วย และแนบ uid)
-// - opts.include: 1 | 0  (default = 1 -> โชว์ทั้งหมด)
-// - opts.uid: ระบุ uid เองได้ (default = window.__UID)
+// โหลดของรางวัลจาก /api/rewards แล้วเก็บไว้ใน REWARDS_CACHE
+// ค่าเริ่มต้น include=0 เพื่อซ่อนรายการ inactive สำหรับผู้ใช้
 async function loadRewards(opts = {}) {
-  const rail     = document.getElementById('rewardRail');
-  const section  = document.getElementById('rewardsSection');
-
-  // สร้าง query string
-  const include = (opts.include ?? 1);                 // ✅ โชว์ inactive เป็นค่าเริ่มต้น
-  const uid     = (opts.uid || window.__UID || '');
-
-  const qs = new URLSearchParams();
+  const include = opts.include ?? 0;                   // 0 = เฉพาะ active
+  const uid     = opts.uid || window.__UID || '';
+  const qs      = new URLSearchParams();
   if (include != null) qs.set('include', String(include));
-  if (uid)            qs.set('uid', uid);
+  if (uid) qs.set('uid', uid);
 
-  const suffix = qs.toString() ? `?${qs}` : '';
-
-  // เตรียมสำรอง endpoint หลายตัว
-  const endpoints = [
-    `/api/rewards${suffix}`,
-    `/api/list-rewards${suffix}`,
-    `/api/reward-list${suffix}`,
-  ];
+  const url = `/api/rewards${qs.toString() ? `?${qs}` : ''}`;
 
   try {
-    // เรียกผ่านตัวช่วยเดิมของคุณ (แสดง skeleton ระหว่างโหลด)
-    const resp = await tryEndpoints(
-      endpoints,
-      {},
-      { scope: 'page', skeletonOf: section }
-    );
+    const res  = await fetch(url, { cache: 'no-store' });
+    const json = await res.json();
+    if (json?.status !== 'success') throw new Error('bad payload');
 
-    // รองรับหลายทรงตอบกลับ: {items:[]}, {data:[]}, [] ตรง ๆ
-    const items =
-      (Array.isArray(resp) ? resp :
-        (Array.isArray(resp?.items) ? resp.items :
-          (Array.isArray(resp?.data) ? resp.data : []))) || [];
+    // map → รูปแบบที่ renderRewards ใช้: {id,name,cost,img}
+    const list = (json.items || json.data || []).map(x => ({
+      id  : x.id ?? x.reward_id ?? '',
+      name: x.name ?? x.title ?? `Reward`,
+      cost: Number(x.cost ?? x.point_cost ?? x.points ?? 0),
+      img : x.img ?? x.image ?? x.image_url ?? ''
+    }));
 
-    // ฟังก์ชัน escape HTML สั้น ๆ (ถ้าในโปรเจ็กต์คุณมี h() อยู่แล้ว ใช้ของเดิมได้เลย)
-    const h = (s) => String(s ?? '').replace(/[&<>"']/g, m =>
-      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])
-    );
+    // เรียงตามลำดับคะแนน COST_ORDER และเติมที่ขาด
+    const ordered = orderRewardsBySequence(list, COST_ORDER);
 
-    // เรนเดอร์
-    rail.innerHTML = items.length
-      ? items.map(r => {
-          const title = r.name || r.title || r.reward_name || 'Reward';
-          const desc  = r.desc || r.description || '';
-          const img   = r.image || r.image_url || r.thumbnail || '';
-          const cost  = r.cost ?? r.point_cost ?? r.points ?? '?';
-          const rid   = r.id ?? r.reward_id ?? '';
-          return `
-            <div class="card my-2">
-              <div class="card-body d-flex gap-3 align-items-center">
-                ${img
-                  ? `<img src="${h(img)}" alt="" class="rounded" style="width:80px;height:80px;object-fit:cover">`
-                  : `<div class="skeleton skel-thumb" style="width:80px;height:80px"></div>`}
-                <div class="flex-grow-1">
-                  <div class="fw-bold">${h(title)}</div>
-                  <div class="text-muted small">${h(desc)}</div>
-                </div>
-                <button class="btn btn-primary" data-reward="${h(rid)}">แลก ${h(cost)} pt</button>
-              </div>
-            </div>`;
-        }).join('')
-      : `<div class="text-center text-muted py-3">ยังไม่มีของรางวัล</div>`;
+    // เก็บลงแคช → ตัววาดหน้าจอจะหยิบไปใช้
+    REWARDS_CACHE = ordered;
+
+    // ให้ตัววาดหลักทำงาน (ใช้คะแนนล่าสุด)
+    if (typeof renderRewards === 'function') {
+      const score = Number(window.prevScore || 0);
+      renderRewards(score);
+    }
   } catch (e) {
     console.error('loadRewards error:', e);
-    rail.innerHTML = `<div class="alert alert-danger">โหลดของรางวัลไม่สำเร็จ</div>`;
+    // ไม่มีข้อมูล → ใช้ fallback ตาม COST_ORDER ไปก่อน
+    REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
+    if (typeof renderRewards === 'function') {
+      const score = Number(window.prevScore || 0);
+      renderRewards(score);
+    }
   } finally {
-    // ซ่อน skeleton เมื่อโหลดเสร็จ
     try { hideRewardSkeletons && hideRewardSkeletons(); } catch {}
   }
 }
