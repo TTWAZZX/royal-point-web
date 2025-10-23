@@ -1,5 +1,15 @@
 <!doctype html>
 <html lang="th">
+<!-- === Performance Hints === -->
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="dns-prefetch" href="/api/">
+
+<!-- ใช้กับภาพ/ไอคอนที่ต้องขึ้นไว -->
+<link rel="preload" as="image" href="/images/logo.svg" fetchpriority="high">
+
+<!-- สีแถบแอปบนมือถือ -->
+<meta name="theme-color" content="#0ea5e9">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -21,6 +31,37 @@
   <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
 </head>
 <body>
+
+<div id="ptrHint">ปล่อยเพื่อรีเฟรช</div>
+
+  <!-- =========== SKELETON LAYOUT =========== -->
+<section id="appSkeleton" aria-hidden="true">
+  <!-- โปรไฟล์ -->
+  <div class="sk-row">
+    <div class="sk-avatar sk-shimmer"></div>
+    <div style="flex:1">
+      <div class="sk-line w60 sk-shimmer"></div>
+      <div style="height:8px"></div>
+      <div class="sk-line w40 sk-shimmer"></div>
+    </div>
+  </div>
+
+  <!-- XP bar -->
+  <div class="sk-line w80 sk-shimmer" style="height:10px; border-radius:6px;"></div>
+
+  <!-- กริดรางวัล ตัวอย่าง 4 ช่องแรก -->
+  <div class="sk-grid" style="margin-top:16px">
+    <div class="sk-card sk-shimmer"></div>
+    <div class="sk-card sk-shimmer"></div>
+    <div class="sk-card sk-shimmer"></div>
+    <div class="sk-card sk-shimmer"></div>
+  </div>
+</section>
+
+<!-- คอนเทนต์จริง (จะถูกซ่อนช่วงโหลด: ใส่คลาสนี้ไว้ที่ wrapper) -->
+<section id="contentWrap" class="skeleton-hide-when-loading">
+  <!-- ...ของเดิมทั้งหมดของคุณ เช่น การ์ดโปรไฟล์/แถบ XP/ rewardRail ... -->
+</section>
 
 <!-- Top progress bar -->
 <div id="topProgress" class="top-progress" aria-hidden="true">
@@ -187,6 +228,9 @@
           </button>
           <button id="torchBtn" class="btn btn-outline-warning btn-sm btn-torch tap-20" disabled>
             <i class="fa-solid fa-bolt"></i> ไฟฉาย
+          </button>
+          <button id="retryCameraBtn" class="btn btn-outline-secondary btn-sm tap-20">
+            <i class="fa-solid fa-rotate-right"></i> ลองอีกครั้ง
           </button>
         </div>
         <div id="qr-reader" style="width:100%;max-width:420px;margin:auto;"></div>
@@ -478,6 +522,13 @@
     }
   }
 })();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(console.warn);
+  });
+}
 </script>
 
 </body>
