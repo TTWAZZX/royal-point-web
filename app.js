@@ -7,6 +7,9 @@ const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
 /** state & cache (ต้องอยู่ตอนบนของไฟล์) */
 let REWARDS_CACHE = [];
+// กันผูกอีเวนต์โมดัลสแกนซ้ำหลายครั้ง
+window.__SCAN_MODAL_WIRED = window.__SCAN_MODAL_WIRED ?? false;
+
 let rewardRailBound = false;
 let AVATAR_SPARKLED_ONCE = false;
 
@@ -295,16 +298,6 @@ async function initApp(ctx = {}) {
         openHistory && openHistory();
       });
 
-      // สแกน/หยุด + lifecycle ของโมดัล
-      document.getElementById('startScanBtn')?.addEventListener('click', () => startScanner && startScanner());
-      document.getElementById('stopScanBtn') ?.addEventListener('click', () => stopScanner  && stopScanner());
-      const scanModalEl = document.getElementById('scoreModal');
-      if (scanModalEl) {
-        scanModalEl.addEventListener('shown.bs.modal',  () => startScanner && startScanner());
-        scanModalEl.addEventListener('hide.bs.modal',   () => stopScanner  && stopScanner());
-        scanModalEl.addEventListener('hidden.bs.modal', () => stopScanner  && stopScanner());
-      }
-
       // ยืนยันรหัสรับคะแนน
       document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
         const code = (document.getElementById('secretCode')?.value || '').trim();
@@ -371,6 +364,7 @@ async function hydrateAfterRegister(uid) {
 let QR_INSTANCE = null;
 let SCANNING = false;
 let TORCH_ON = false;
+let QR_STARTING = false; // กัน start ซ้อน
 
 async function ensureCameraPermission() {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -389,52 +383,66 @@ async function ensureCameraPermission() {
 }
 
 async function startScanner() {
-  try { await ensureCameraPermission(); }
-  catch (e) { return toastErr(e.userMessage || 'ใช้กล้องไม่ได้'); }
-
-  const hostId = 'qr-reader';
-  const el = document.getElementById(hostId);
-  if (!el) return;
-
-  if (!QR_INSTANCE) QR_INSTANCE = new Html5Qrcode(hostId);
-  if (SCANNING) return;
-
-  // เลือกกล้องหลังถ้ามี
-  let cameraId = undefined;
-  try {
-    const cams = await Html5Qrcode.getCameras();
-    const back = cams.find(c => /back|หลัง|environment/i.test(c.label)) || cams[0];
-    cameraId = back?.id || back?.deviceId;
-  } catch {}
-
-  const config = {
-    fps: 10,
-    qrbox: { width: 280, height: 280 },
-    rememberLastUsedCamera: true,
-    aspectRatio: 1.0
-  };
-
-  const onScanSuccess = async (text /*, result */) => {
-    const now = Date.now();
-    if (text === window.LAST_DECODE && now - (window.LAST_DECODE_AT||0) < DUP_COOLDOWN) return;
-    window.LAST_DECODE = text; window.LAST_DECODE_AT = now;
-    await redeemCode(text, 'SCAN');
-  };
-  const onScanError = () => {};
+  // กันเรียกซ้อน
+  if (QR_STARTING || SCANNING) return;
+  QR_STARTING = true;
 
   try {
-    await QR_INSTANCE.start(cameraId || { facingMode: "environment" }, config, onScanSuccess, onScanError);
+    // ขอสิทธิ์กล้อง (จะโยน error พร้อม userMessage ถ้าไม่ได้สิทธิ์)
+    await ensureCameraPermission();
+
+    // หน่วงสั้น ๆ ให้โมดัลนิ่งก่อน (ช่วย iOS/บางเครื่อง)
+    await new Promise(r => setTimeout(r, 60));
+
+    const hostId = 'qr-reader';
+    const el = document.getElementById(hostId);
+    if (!el) return;
+
+    if (!QR_INSTANCE) QR_INSTANCE = new Html5Qrcode(hostId);
+
+    // เลือกกล้องหลังถ้ามี
+    let cameraId;
+    try {
+      const cams = await Html5Qrcode.getCameras();
+      const back = cams.find(c => /back|หลัง|environment/i.test(c.label)) || cams[0];
+      cameraId = back?.id || back?.deviceId;
+    } catch {}
+
+    const config = {
+      fps: 10,
+      qrbox: { width: 280, height: 280 },
+      rememberLastUsedCamera: true,
+      aspectRatio: 1.0
+    };
+
+    const onScanSuccess = async (text /*, result */) => {
+      const now = Date.now();
+      if (text === window.LAST_DECODE && now - (window.LAST_DECODE_AT || 0) < DUP_COOLDOWN) return;
+      window.LAST_DECODE = text; window.LAST_DECODE_AT = now;
+      await redeemCode(text, 'SCAN');
+    };
+    const onScanError = () => {};
+
+    await QR_INSTANCE.start(
+      cameraId || { facingMode: "environment" },
+      config,
+      onScanSuccess,
+      onScanError
+    );
     SCANNING = true;
 
-    // ตั้งค่าไฟฉาย (ถ้าอุปกรณ์รองรับ)
+    // ตั้งค่าไฟฉายถ้าอุปกรณ์รองรับ
     const torchBtn = document.getElementById('torchBtn');
     try {
       const caps = QR_INSTANCE.getRunningTrackCapabilities?.();
       if (torchBtn) torchBtn.disabled = !(caps && 'torch' in caps);
     } catch { if (torchBtn) torchBtn.disabled = true; }
+
   } catch (err) {
     console.error('startScanner failed:', err);
-    toastErr('เปิดกล้องไม่สำเร็จ');
+    toastErr(err?.userMessage || 'เปิดกล้องไม่สำเร็จ ลองกด “เปิดกล้อง” อีกครั้ง');
+  } finally {
+    QR_STARTING = false;
   }
 }
 
@@ -487,14 +495,18 @@ function bindUI(){
   // ปุ่มประวัติ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // ✅ ควบคุมกล้องในโมดัล (ใช้ id ที่ถูกต้อง: #scoreModal)
-  const scanModalEl = document.getElementById('scoreModal');
-  if (scanModalEl) {
-    // เปิดโมดัลแล้วเริ่มกล้องอัตโนมัติ
-    scanModalEl.addEventListener('shown.bs.modal', () => { startScanner && startScanner(); });
-    // ปิด/กำลังปิด → หยุดกล้อง
-    scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
-    scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
+  // ✅ ควบคุมกล้องในโมดัล (กันซ้ำด้วยแฟล็ก + หน่วง 60ms ช่วย iOS)
+  if (!window.__SCAN_MODAL_WIRED) {
+    const scanModalEl = document.getElementById('scoreModal');
+    if (scanModalEl) {
+      scanModalEl.addEventListener('shown.bs.modal', () => {
+        // หน่วงนิดให้ layout โมดัลนิ่งก่อนค่อย start (แก้อาการ “กด OK แล้วจึงติด” บน iOS)
+        setTimeout(() => { startScanner && startScanner(); }, 60);
+      });
+      scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
+      scanModalEl.addEventListener('hidden.bs.modal', () => { stopScanner && stopScanner(); });
+    }
+    window.__SCAN_MODAL_WIRED = true;
   }
 
   // ปุ่ม start/stop (ควบคุมมือได้)
