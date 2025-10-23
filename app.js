@@ -366,15 +366,6 @@ let SCANNING = false;
 let TORCH_ON = false;
 let QR_STARTING = false; // กัน start ซ้อน
 
-// แผ่นช่วยอธิบาย error กล้องเป็นภาษาไทย
-function cameraHelpText(err){
-  const tip = 'ไปที่ การตั้งค่า > LINE > อนุญาตการเข้าถึงกล้อง แล้วเปิดใหม่';
-  if (err && String(err.name||'').includes('NotAllowed')) return `ไม่ได้รับสิทธิ์ใช้กล้อง • ${tip}`;
-  if (err && String(err.message||'').match(/permission|denied/i)) return `ไม่ได้รับสิทธิ์ใช้กล้อง • ${tip}`;
-  if (!navigator.mediaDevices?.getUserMedia) return 'เบราว์เซอร์นี้ไม่รองรับกล้อง';
-  return 'เปิดกล้องไม่สำเร็จ • ลองกด “ลองอีกครั้ง”';
-}
-
 async function ensureCameraPermission() {
   if (!navigator.mediaDevices?.getUserMedia) {
     const e = new Error('browser_no_getUserMedia');
@@ -447,10 +438,10 @@ async function startScanner() {
       if (torchBtn) torchBtn.disabled = !(caps && 'torch' in caps);
     } catch { if (torchBtn) torchBtn.disabled = true; }
 
-    } catch (err) {
-      console.error('startScanner failed:', err);
-      toastErr(cameraHelpText(err));
-    } finally {
+  } catch (err) {
+    console.error('startScanner failed:', err);
+    toastErr(err?.userMessage || 'เปิดกล้องไม่สำเร็จ ลองกด “เปิดกล้อง” อีกครั้ง');
+  } finally {
     QR_STARTING = false;
   }
 }
@@ -523,9 +514,6 @@ function bindUI(){
   const stopBtn  = document.getElementById("stopScanBtn");
   startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
   stopBtn  && stopBtn .addEventListener("click", () => stopScanner  && stopScanner());
-  document.getElementById('retryCameraBtn')?.addEventListener('click', () => {
-  startScanner && startScanner();
-  }); 
 
   // ปุ่มไฟฉาย
   const torchBtn = document.getElementById("torchBtn");
@@ -1061,15 +1049,6 @@ function preloadTopRewardImages(rewards, count = 2) {
   }
 }
 
-function with2x(url){
-  if (!url) return url;
-  if (/\.(png|jpg|jpeg|webp)$/i.test(url)) {
-    const m = url.match(/^(.*)(\.[a-z]+)$/i);
-    return m ? `${m[1]}@2x${m[2]}` : url;
-  }
-  return url;
-}
-
 /** render + click-to-redeem (optimized images) */
 function renderRewards(currentScore){
   const rail = document.getElementById("rewardRail");
@@ -1099,8 +1078,6 @@ function renderRewards(currentScore){
         <div class="rp-reward-img">
           <img
             src="${img}"
-            srcset="${img} 1x, ${with2x(img)} 2x"
-            sizes="(max-width: 480px) 45vw, 300px"
             alt="${name}"
             loading="${eager}"
             decoding="async"
@@ -1108,7 +1085,7 @@ function renderRewards(currentScore){
             width="300" height="300"
             onload="this.classList.add('is-ready')"
             onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=${encodeURIComponent(name)}';this.classList.add('is-ready');"
-          />
+          >
           <div class="rp-reward-badge">${cost} pt</div>
         </div>
         <div class="rp-reward-body p-2">
@@ -1381,7 +1358,8 @@ function setHistoryUserName() {
   span.textContent = name || 'ผู้ใช้';
 }
 
-// ===== REPLACE WHOLE FUNCTION: openHistory (with empty state) =====
+/* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
+// ===== REPLACE WHOLE FUNCTION: openHistory =====
 async function openHistory(){
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -1389,6 +1367,7 @@ async function openHistory(){
     localStorage.getItem('uid') || '';
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
+  // ชื่อบนหัว
   try { setHistoryUserName?.(); } catch {}
 
   const modalEl  = document.getElementById('historyModal');
@@ -1399,7 +1378,7 @@ async function openHistory(){
   // เริ่มโหลด: เปิด skeleton
   if (skelEl) skelEl.style.display = '';
   if (listWrap) listWrap.classList.add('skeleton-hide-when-loading');
-  if (listEl) listEl.innerHTML = '';
+  listEl && (listEl.innerHTML = '');
 
   try{
     const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
@@ -1420,39 +1399,22 @@ async function openHistory(){
     const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
     const fmt = v => { const d = new Date(v); if (isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()+543} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 
-    // empty state
-    if (!items.length){
-      listEl.classList.add('hist-compact');
-      listEl.innerHTML = `
-        <div class="rp-empty">
-          <img class="rp-empty-img" src="/images/empty.svg" alt="" width="96" height="96">
-          <div class="rp-empty-title">ยังไม่มีรายการ</div>
-          <div class="rp-empty-sub">เริ่มรับคะแนนครั้งแรกด้วยการสแกนที่ปุ่ม “รับคะแนน” มุมขวาบน</div>
-          <button class="btn btn-primary mt-2" onclick="document.getElementById('scoreModal') && bootstrap.Modal.getOrCreateInstance(document.getElementById('scoreModal')).show()">สแกน/กรอกรหัส</button>
+    listEl.classList.add('hist-compact');
+    listEl.innerHTML = items.map(it=>{
+      const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
+      const sign = amt > 0 ? '+' : '';
+      const when = fmt(it.created_at || it.time || '');
+      return `
+        <div class="hc-row">
+          <div class="hc-at">${esc(when)}</div>
+          <div class="hc-amt ${amt>=0?'plus':'minus'}">${sign}${amt}</div>
         </div>`;
-    } else {
-      listEl.classList.add('hist-compact');
-      listEl.innerHTML = items.map(it=>{
-        const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
-        const sign = amt > 0 ? '+' : '';
-        const when = fmt(it.created_at || it.time || '');
-        return `
-          <div class="hc-row">
-            <div class="hc-at">${esc(when)}</div>
-            <div class="hc-amt ${amt>=0?'plus':'minus'}">${sign}${amt}</div>
-          </div>`;
-      }).join('');
-    }
+    }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
   } catch (e){
     console.error(e);
-    listEl.innerHTML = `
-      <div class="rp-empty">
-        <img class="rp-empty-img" src="/images/error.svg" alt="" width="96" height="96">
-        <div class="rp-empty-title">โหลดประวัติไม่สำเร็จ</div>
-        <div class="rp-empty-sub">ตรวจสอบอินเทอร์เน็ต แล้วลองใหม่อีกครั้ง</div>
-        <button class="btn btn-outline-primary mt-2" onclick="openHistory()">ลองอีกครั้ง</button>
-      </div>`;
+    toastErr('โหลดประวัติไม่สำเร็จ');
   } finally {
+    // ปิด skeleton แล้วโชว์รายการ
     if (skelEl) skelEl.style.display = 'none';
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -2031,9 +1993,6 @@ function withTimeout(promise, ms, fallback){
   ]);
 }
 
-// ==== ก่อน initAppFast() ====
-document.body.classList.add('loading'); // โชว์ skeleton ไว้ก่อน
-
 // ===== boot sequence (no /api/bootstrap) =====
 async function initAppFast() {
   // 1) เริ่ม LIFF พร้อม timeout กันช้า
@@ -2085,52 +2044,7 @@ async function initAppFast() {
 
   // 6) ปิด skeleton
   try { hideRewardSkeleton && hideRewardSkeleton(); } catch {}
-  document.body.classList.remove('loading'); // <-- เพิ่มบรรทัดนี้
 }
-
-// ===== Mini Pull-to-Refresh (no lib) =====
-(function enablePTR(){
-  let startY = 0, pulling = false, armed = false;
-  const HINT = document.getElementById('ptrHint');
-  const THRESH = 64; // px
-
-  const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
-
-  window.addEventListener('touchstart', (e) => {
-    if (!atTop()) return;
-    startY = e.touches[0].clientY;
-    pulling = true; armed = false;
-  }, {passive:true});
-
-  window.addEventListener('touchmove', (e) => {
-    if (!pulling) return;
-    const dy = e.touches[0].clientY - startY;
-    if (dy > 10 && atTop()){
-      if (dy > THRESH && !armed){
-        armed = true; HINT?.classList.add('show');
-      } else if (dy <= THRESH && armed){
-        armed = false; HINT?.classList.remove('show');
-      }
-    }
-  }, {passive:true});
-
-  window.addEventListener('touchend', async () => {
-    if (!pulling) return;
-    pulling = false;
-    if (armed){
-      HINT?.classList.remove('show');
-      try{
-        UiOverlay.show('กำลังรีเฟรช…');
-        await refreshUserScore({ bust:true, poll:true, pollTries:3, pollInterval:500 });
-        await loadRewards?.();
-        renderRewards?.(Number(window.prevScore || 0));
-        navigator.vibrate?.(8);
-      } finally {
-        UiOverlay.hide();
-      }
-    }
-  }, {passive:true});
-})();
 
 // ===== LIFF safe init (fixed to always use LIFF_ID) =====
 async function initLiffSafe() {
