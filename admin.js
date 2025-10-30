@@ -15,14 +15,6 @@ let ALL_USERS = [];
 let FILTERED  = [];
 let CURRENT   = { uid: "", name: "", score: 0 };
 
-// ==== ADMIN TOKEN HEADER (เพิ่มใหม่) ====
-function adminHeaders(json = true) {
-  return {
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-    'x-admin-token': window.ADMIN_TOKEN || ''
-  };
-}
-
 // ============ UI refs ============
 const $id = (x)=>document.getElementById(x);
 
@@ -61,31 +53,6 @@ async function init(){
     // อัปเดตส่วนหัว
     $id("adminUid").textContent  = ADMIN_UID ? `UID: ${ADMIN_UID}` : "UID: —";
     $id("adminName").textContent = prof.displayName || "—";
-
-    // === ถามและเก็บ ADMIN_TOKEN ===
-    try {
-      window.ADMIN_TOKEN = localStorage.getItem('ADMIN_TOKEN') || window.ADMIN_TOKEN || '';
-      if (!window.ADMIN_TOKEN) {
-        const { value: token } = await Swal.fire({
-          title: 'ใส่ Admin Token',
-          input: 'password',
-          inputLabel: 'ADMIN_TOKEN',
-          inputPlaceholder: 'กรอกค่าเดียวกับ ENV บน Vercel',
-          confirmButtonText: 'บันทึก',
-          allowOutsideClick: false,
-          allowEscapeKey: false,
-          inputAttributes: { autocapitalize:'off', autocorrect:'off' }
-        });
-        if (!token) {
-          await Swal.fire('ยกเลิก', 'ต้องใส่โทเค็นก่อนเข้าใช้งาน', 'error');
-          return;
-        }
-        window.ADMIN_TOKEN = token;
-        localStorage.setItem('ADMIN_TOKEN', token);
-      }
-    } catch (e) {
-      console.warn('ADMIN_TOKEN setup error', e);
-    }
 
     bindEvents();           // รวมศูนย์การ bind event
     await reloadAllUsers(); // ดึงรายชื่อครั้งแรก
@@ -262,13 +229,9 @@ async function doAdjust(uid, name, delta){
   try{
     const res = await fetch(API_ADMIN_ADJUST, {
       method: "POST",
-      headers: adminHeaders(true),
-      body: JSON.stringify({ adminUid: window.__UID || ADMIN_UID, targetUid: uid, delta, note: "" })
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: "" })
     });
-    if (res.status === 403) {
-      overlay.hide();
-      return Swal.fire('สิทธิ์ไม่ถูกต้อง', 'ADMIN_TOKEN ไม่ถูกต้องหรือหมดอายุ', 'error');
-    }
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ปรับคะแนนไม่สำเร็จ");
 
@@ -302,8 +265,8 @@ async function submitReset(uid, name){
   try{
     const res = await fetch(API_ADMIN_RESET, {
       method:"POST",
-      headers: adminHeaders(true),
-      body: JSON.stringify({ adminUid: window.__UID || ADMIN_UID, targetUid: uid, note:"admin reset" })
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note:"admin reset" })
     });
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ล้างคะแนนไม่สำเร็จ");
@@ -350,13 +313,9 @@ async function submitAdjust(sign){
   try{
     const res = await fetch(API_ADMIN_ADJUST, {
       method:"POST",
-      headers: adminHeaders(true),
-      body: JSON.stringify({ adminUid: window.__UID || ADMIN_UID, targetUid: uid, delta, note })
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note })
     });
-    if (res.status === 403) {
-      overlay.hide();
-      return Swal.fire('สิทธิ์ไม่ถูกต้อง', 'ADMIN_TOKEN ไม่ถูกต้องหรือหมดอายุ', 'error');
-    }
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ปรับคะแนนไม่สำเร็จ");
 
@@ -615,7 +574,7 @@ window.openSheet   = openSheet;
       els.btnGen?.setAttribute('disabled','disabled');
       await tryMany(ENDPOINT_GEN, {
         method: 'POST',
-        headers: adminHeaders(true),
+        headers: { 'Content-Type':'application/json' },
         body: JSON.stringify(body)
       });
       window.Swal?.fire('สำเร็จ','สร้างคูปองแล้ว','success');

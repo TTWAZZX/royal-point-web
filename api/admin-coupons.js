@@ -1,6 +1,6 @@
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' });
   }
@@ -11,13 +11,16 @@ module.exports = async (req, res) => {
   }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+
   const { data, error } = await supabase
     .from('coupons')
     .select('code, point, status, claimer, used_at, created_at')
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false })  // ใหม่ก่อน
     .order('code', { ascending: true });
 
-  if (error) return res.status(500).json({ status: 'error', message: error.message });
+  if (error) {
+    return res.status(500).json({ status: 'error', message: error.message });
+  }
 
   const items = (data || []).map(r => ({
     code: r.code,
@@ -30,4 +33,4 @@ module.exports = async (req, res) => {
   }));
 
   return res.status(200).json({ status: 'success', data: items });
-};
+}
