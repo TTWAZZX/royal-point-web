@@ -45,6 +45,14 @@ let sortDir  = "desc";    // 'asc' | 'desc'
 let page     = 1;
 let pageSize = 20;
 
+// ==== ADMIN TOKEN HEADER (เพิ่มใหม่) ====
+function adminHeaders(json = true) {
+  return {
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+    'x-admin-token': window.ADMIN_TOKEN || ''
+  };
+}
+
 /* ---------- Utils (อย่าทับ jQuery: ใช้ qs/qsa แทน $/$$) ---------- */
 const qs  = (sel, root=document) => root.querySelector(sel);
 const qsa = (sel, root=document) => Array.from(root.querySelectorAll(sel));
@@ -279,10 +287,16 @@ async function submitAdjust(sign) {
 
   try {
     overlay.show("กำลังบันทึก...");
-    const res  = await fetch(API_ADJUST, {
-      method: "POST", headers: { "Content-Type":"application/json" },
+    const res = await fetch(API_ADMIN_ADJUST, {
+      method:"POST",
+      headers: adminHeaders(true), // ★ เพิ่ม token header
       body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, delta, note })
     });
+    if (res.status === 403) {
+      overlay.hide();
+      return Swal.fire("สิทธิ์ไม่ถูกต้อง", "ADMIN_TOKEN ไม่ถูกต้องหรือหมดอายุ", "error");
+    }
+
     const data = await res.json();
     overlay.hide();
     if (data.status !== "success") return Swal.fire("ไม่สำเร็จ", data.message || "ปรับคะแนนไม่สำเร็จ", "error");
@@ -309,9 +323,10 @@ async function submitReset(forceUid) {
   const note = qs("#ajNote")?.value || "admin reset";
   try {
     overlay.show("กำลังล้างคะแนน...");
-    const res  = await fetch(API_RESET, {
-      method:"POST", headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, note })
+    const res = await fetch(API_ADMIN_RESET, {
+      method:"POST",
+      headers: adminHeaders(true), // ★ เพิ่ม token header
+      body: JSON.stringify({ adminUid: MY_UID, targetUid: uid, note:"admin reset" })
     });
     const data = await res.json();
     overlay.hide();
@@ -416,6 +431,35 @@ async function boot() {
     // โชว์ UID ที่หัว (ถ้ามี element)
     const adminUidHost = qs('#adminUid');
     if (adminUidHost) adminUidHost.textContent = MY_UID;
+
+      // ก่อน bindEvents(); loadList(); ในฟังก์ชัน boot()
+    try {
+      // 1) โหลด token จาก localStorage มาก่อน
+      window.ADMIN_TOKEN = localStorage.getItem('ADMIN_TOKEN') || window.ADMIN_TOKEN || '';
+
+      // 2) ถ้าไม่มี ให้ถามผ่าน SweetAlert แล้วบันทึก
+      if (!window.ADMIN_TOKEN) {
+        const { value: token } = await Swal.fire({
+          title: 'ใส่ Admin Token',
+          input: 'password',
+          inputLabel: 'ADMIN_TOKEN',
+          inputPlaceholder: 'กรอกค่าเดียวกับ ENV บน Vercel',
+          inputAttributes: { autocapitalize:'off', autocorrect:'off' },
+          confirmButtonText: 'บันทึก',
+          allowOutsideClick: false,
+          allowEscapeKey: false
+        });
+
+        if (!token) {
+          await Swal.fire('ยกเลิก', 'ต้องใส่โทเค็นเพื่อใช้งานหน้าผู้ดูแลระบบ', 'error');
+          return;
+        }
+        window.ADMIN_TOKEN = token;
+        localStorage.setItem('ADMIN_TOKEN', token);
+      }
+    } catch (e) {
+      console.warn('ADMIN_TOKEN setup error', e);
+    }
 
     bindEvents();
     loadList();

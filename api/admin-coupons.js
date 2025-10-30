@@ -5,17 +5,21 @@ export default async function handler(req, res) {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' });
   }
 
-  const { adminUid } = req.query;
-  if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-    return res.status(403).json({ status: 'error', message: 'Forbidden' });
+  // ✅ ตรวจสอบ ADMIN_TOKEN แทน adminUid
+  const token = req.headers['x-admin-token'];
+  if (!token || token !== process.env.ADMIN_TOKEN) {
+    return res.status(403).json({ status: 'error', message: 'Forbidden: Invalid admin token' });
   }
 
-  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
   const { data, error } = await supabase
     .from('coupons')
     .select('code, point, status, claimer, used_at, created_at')
-    .order('created_at', { ascending: false })  // ใหม่ก่อน
+    .order('created_at', { ascending: false })
     .order('code', { ascending: true });
 
   if (error) {
@@ -29,7 +33,7 @@ export default async function handler(req, res) {
     used: r.status === 'used',
     claimer: r.claimer,
     used_at: r.used_at,
-    created_at: r.created_at
+    created_at: r.created_at,
   }));
 
   return res.status(200).json({ status: 'success', data: items });
