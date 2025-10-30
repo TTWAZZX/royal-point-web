@@ -1,9 +1,8 @@
 {
-  "regions": ["sin1"],
+  "regions": ["sin1"],                 
   "functions": {
     "api/**/*.js": {
-      "runtime": "nodejs18.x",
-      "regions": ["sin1"]
+      "runtime": "nodejs18.x"          
     }
   }
 }
