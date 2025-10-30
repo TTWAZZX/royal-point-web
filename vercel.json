@@ -1,6 +1,7 @@
 {
-  "regions": ["sin1", "hkg1"],
   "functions": {
-    "api/**/*": { "memory": 1024, "maxDuration": 10 }
+    "api/**/*.js": {
+      "runtime": "nodejs18.x"
+    }
   }
 }
