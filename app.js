@@ -935,24 +935,22 @@ function buildFallbackRewards(costs){
 }
 
 /** จัดเรียง rewards จาก API ให้ตรงตาม COST_ORDER และเติมที่ขาด */
-function orderRewardsBySequence(list, sequence){
-  const buckets = new Map();
-  list.forEach(r=>{
-    const c = Number(r?.cost || 0);
-    if (!buckets.has(c)) buckets.set(c, []);
-    buckets.get(c).push(r);
-  });
+// เรียงรางวัล: ของที่ "ยังมี stock" มาอยู่ก่อน แล้วเรียงตาม sort_index
+function orderRewardsBySequence(list) {
+  return [...list].sort((a, b) => {
+    const sa = Number(a.stock ?? 0);
+    const sb = Number(b.stock ?? 0);
 
-  const out = [];
-  sequence.forEach((cost, i)=>{
-    const b = buckets.get(cost);
-    if (b && b.length){
-      out.push(b.shift()); // ใช้ของจริงจาก API
-    }else{
-      out.push({ id:`R${String(i+1).padStart(2,'0')}-${cost}`, name:`Gift ${i+1}`, cost:Number(cost) });
-    }
+    // 1) ของหมดต้องอยู่ท้ายสุด
+    if (sa <= 0 && sb > 0) return 1;
+    if (sb <= 0 && sa > 0) return -1;
+
+    // 2) ถ้าทั้งคู่ยังมีของ → เรียงตาม sort_index
+    const ia = Number(a.sort_index ?? 999);
+    const ib = Number(b.sort_index ?? 999);
+
+    return ia - ib;
   });
-  return out;
 }
 
 function hideRewardSkeleton() {
@@ -1244,7 +1242,7 @@ async function redeemReward(reward, btn){
     try {
       await pollScoreUntil(curUid, beforeScore, 5, 650);
     } catch {}
-    
+
     // ⭐ โหลดสต๊อกจาก DB ใหม่หลังจาก apply_points และ update stock แล้ว
     try {
       await loadRewards({ include: 1, uid: curUid });
