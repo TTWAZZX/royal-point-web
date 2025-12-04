@@ -3576,3 +3576,21 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-reward-img {
   box-shadow: 0 4px 12px rgba(0,0,0,0.10);
 }
+
+/* ==== All Rewards Page – Stock Label Smaller & Bottom Corner ==== */
+.all-reward-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.all-reward-stock {
+  position: absolute;
+  bottom: 6px;
+  right: 8px;        /* ← ถ้าอยากไปมุมซ้าย เปลี่ยนเป็น left: 8px; */
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  padding: 2px 6px;
+  font-size: 0.65rem;     /* ลดขนาดลง 50% */
+  border-radius: 6px;
+  z-index: 5;
+}
