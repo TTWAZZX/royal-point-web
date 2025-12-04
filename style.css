@@ -3557,3 +3557,22 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   color: #b91c1c;
   font-weight: 800;
 }
+
+/* กล่องรูปของรางวัล */
+.rp-reward-img {
+  position: relative;
+  border-radius: 20px;       /* <<< ทำกรอบโค้งมน */
+  overflow: hidden;          /* <<< ตัดรูปส่วนเกินให้โค้งตาม */
+}
+
+/* ตัวรูปภาพในกล่อง */
+.rp-reward-img img {
+  width: 100%;
+  height: auto;
+  border-radius: 20px;       /* <<< ทำให้รูปโค้งเหมือนกรอบ */
+  object-fit: cover;         /* <<< ทำให้ภาพพอดี ไม่บี้ */
+}
+
+.rp-reward-img {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+}

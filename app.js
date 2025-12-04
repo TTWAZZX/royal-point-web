@@ -1244,6 +1244,11 @@ async function redeemReward(reward, btn){
     try {
       await pollScoreUntil(curUid, beforeScore, 5, 650);
     } catch {}
+    
+    // ⭐ โหลดสต๊อกจาก DB ใหม่หลังจาก apply_points และ update stock แล้ว
+    try {
+      await loadRewards({ include: 1, uid: curUid });
+    } catch {}
 
   }catch(err){
     console.error(err);
