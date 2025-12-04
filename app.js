@@ -1051,30 +1051,58 @@ function preloadTopRewardImages(rewards, count = 2) {
 
 /** render + click-to-redeem (optimized images) */
 function renderRewards(currentScore){
-  const rail = document.getElementById("rewardRail");
+  const rail = document.querySelector('.rp-reward-rail');
   if (!rail) return;
 
-  const data = (REWARDS_CACHE && REWARDS_CACHE.length)
+  // ถ้าโหลดจาก API แล้วใช้ REWARDS_CACHE, ถ้ายังไม่มีใช้ fallback เดิม
+  const data = Array.isArray(REWARDS_CACHE) && REWARDS_CACHE.length
     ? REWARDS_CACHE
     : buildFallbackRewards(COST_ORDER);
 
-  // ✅ preload รูปบนสุด 1–2 ใบให้ขึ้นไว (ฟังก์ชันนี้คุณมีแล้ว)
+  // preload รูป 1–2 ใบแรกให้ขึ้นไว
   preloadTopRewardImages(data, 2);
 
   rail.innerHTML = data.map((r, i) => {
-    const locked  = Number(currentScore) < Number(r.cost);
-    const id      = escapeHtml(r.id || `R${i+1}`);
-    const name    = escapeHtml(r.name || id);
-    const img     = pickRewardImage(r, i); // ใช้ helper รูปเดิม
-    const cost    = Number(r.cost || 0);
+    const cost  = Number(r.cost || 0);
+    const score = Number(currentScore || 0);
 
-    // รูป 2 ใบแรก "eager+high", ที่เหลือ "lazy+low"
+    // stock จาก API (/api/rewards.js ส่งมาแล้ว)
+    const stockRaw    = typeof r.stock === 'number' ? r.stock : parseInt(r.stock ?? '0', 10) || 0;
+    const stockMaxRaw = typeof r.stock_max === 'number' ? r.stock_max : parseInt(r.stock_max ?? '0', 10) || 0;
+
+    const stock    = Math.max(0, stockRaw);
+    const stockMax = stockMaxRaw > 0 ? stockMaxRaw : null;
+
+    const outOfStock    = stock <= 0;
+    const lockedByPoint = !outOfStock && score < cost; // ถ้าของหมด ไม่ต้องโชว์ "คะแนนไม่พอ"
+
+    const classes = ['rp-reward-card'];
+    if (lockedByPoint) classes.push('locked');
+    if (outOfStock)    classes.push('soldout');
+
+    const id   = escapeHtml(r.id || `R${i+1}`);
+    const name = escapeHtml(r.name || id);
+    const img  = pickRewardImage(r, i);
+
     const eager = i < 2 ? 'eager' : 'lazy';
     const prio  = i < 2 ? 'high'  : 'low';
 
+    // text stock
+    let stockLabel = '';
+    if (outOfStock) {
+      stockLabel = `<span class="rp-reward-stock rp-reward-stock-out">หมดแล้ว</span>`;
+    } else if (stockMax != null) {
+      stockLabel = `<span class="rp-reward-stock">เหลือ ${stock}/${stockMax} ชิ้น</span>`;
+    } else {
+      stockLabel = `<span class="rp-reward-stock">เหลือ ${stock} ชิ้น</span>`;
+    }
+
     return `
-      <div class="rp-reward-card ${locked ? 'locked' : ''}"
-           data-id="${id}" data-cost="${cost}" title="${name}">
+      <div class="${classes.join(' ')}"
+           data-id="${id}"
+           data-cost="${cost}"
+           data-stock="${stock}"
+           title="${name}">
         <div class="rp-reward-img">
           <img
             src="${img}"
@@ -1082,23 +1110,26 @@ function renderRewards(currentScore){
             loading="${eager}"
             decoding="async"
             fetchpriority="${prio}"
-            width="300" height="300"
+            width="300" height="425"
             onload="this.classList.add('is-ready')"
-            onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=${encodeURIComponent(name)}';this.classList.add('is-ready');"
+            onerror="this.onerror=null;this.src='https://placehold.co/600x850?text=${encodeURIComponent(name)}';this.classList.add('is-ready');"
           >
-          <div class="rp-reward-badge">${cost} pt</div>
+          <div class="rp-reward-cost">${cost} pt</div>
+          ${stockLabel}
         </div>
         <div class="rp-reward-body p-2">
           <div class="fw-bold text-truncate">${name}</div>
         </div>
-        <button class="rp-redeem-btn" aria-label="แลก ${name}" ${locked ? "disabled" : ""}>
+        <button class="rp-redeem-btn"
+                aria-label="แลก ${name}"
+                ${outOfStock || lockedByPoint ? 'disabled' : ''}>
           <i class="fa-solid fa-gift"></i>
         </button>
       </div>
     `;
   }).join("");
 
-  // one-time click binding
+  // one-time click binding (ใช้ของเดิมได้เลย)
   if (!rewardRailBound) {
     rail.addEventListener("click", async (ev) => {
       const btn = ev.target.closest(".rp-redeem-btn");
