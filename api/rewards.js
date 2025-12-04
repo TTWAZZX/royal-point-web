@@ -13,13 +13,11 @@ module.exports = async (req, res) => {
       return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
     }
 
-    // include=1 → รวมของ inactive ด้วย
     const include = String(req.query.include ?? '1') === '1';
 
-    // ดึง reward พร้อม stock ใหม่
     let query = supabase
       .from('rewards')
-      .select('id,name,cost,img_url,active,updated_at,stock,stock_max'); // ← เพิ่มสองฟิลด์นี้
+      .select('id,name,cost,img_url,active,updated_at,stock,stock_max,sort_index'); // ← เพิ่ม sort_index
 
     if (!include) {
       query = query.eq('active', true);
@@ -40,7 +38,8 @@ module.exports = async (req, res) => {
       active: !!r.active,
       updated_at: r.updated_at || null,
       stock: r.stock ?? 0,
-      stock_max: r.stock_max ?? 0
+      stock_max: r.stock_max ?? 0,
+      sort_index: r.sort_index ?? 9999   // ← เพิ่มตรงนี้
     }));
 
     res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
