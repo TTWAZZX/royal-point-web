@@ -1005,12 +1005,16 @@ async function loadRewards(opts = {}) {
     const json = await res.json();
     if (json?.status !== 'success') throw new Error('bad payload');
 
-    const list = (json.items || json.data || []).map(x => ({
-      id  : x.id ?? x.reward_id ?? '',
-      name: x.name ?? x.title ?? `Reward`,
-      cost: Number(x.cost ?? x.point_cost ?? x.points ?? 0),
-      img : x.img ?? x.image ?? x.image_url ?? ''
-    }));
+  const list = (json.items || json.data || []).map(x => ({
+    id        : x.id ?? x.reward_id ?? '',
+    name      : x.name ?? x.title ?? `Reward`,
+    cost      : Number(x.cost ?? x.point_cost ?? x.points ?? 0),
+    img       : x.img ?? x.image ?? x.image_url ?? '',
+    
+    // 👇👇 เพิ่ม 2 ฟิลด์นี้เข้าไป
+    stock     : Number(x.stock ?? 0),
+    stock_max : Number(x.stock_max ?? 0)
+  }));
 
     const ordered = orderRewardsBySequence(list, COST_ORDER);
 
