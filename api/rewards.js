@@ -26,7 +26,7 @@ module.exports = async (req, res) => {
     }
 
     query = query
-      .order('cost', { ascending: true })
+      .order('sort_index', { ascending: true })
       .order('updated_at', { ascending: false });
 
     const { data, error } = await query;
