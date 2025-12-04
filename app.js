@@ -1154,7 +1154,6 @@ let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
 
-  // ดึง uid กันพลาด
   const curUid = (typeof UID !== 'undefined' && UID) ||
                  window.__UID ||
                  localStorage.getItem('uid') || '';
@@ -1164,18 +1163,14 @@ async function redeemReward(reward, btn){
   const cost = Math.max(0, Number(reward?.cost) || 0);
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // กันคะแนนไม่พอ
   const scoreNow = Number(prevScore || 0);
   if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
   // ยืนยัน
   const confirmed = window.Swal
     ? (await Swal.fire({
-        title:"ยืนยันการแลก?",
-        html:`จะใช้ <b>${cost}</b> pt`,
-        icon:"question",
-        showCancelButton:true,
-        confirmButtonText:"แลกเลย"
+        title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost}</b> pt`,
+        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
       })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
   if (!confirmed) return;
@@ -1191,19 +1186,50 @@ async function redeemReward(reward, btn){
       body: JSON.stringify({ uid: curUid, cost, rewardId: id }),
       cache: 'no-store'
     });
+
     const payload = await safeJson(res);
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
-    // ===== Success Phase =====
+    // ------------------------------
+    // 🔥 OPTIMISTIC UPDATE SECTION 🔥
+    // ------------------------------
 
-    // baseline ก่อนหักแต้ม
-    const before = Number(window.__userBalance || 0);
+    // 1) จำ baseline คะแนนก่อน optimistic
+    const beforeScore = Number(window.__userBalance || 0);
 
-    // optimistic UI
+    // 2) หักคะแนนบนหน้าจอทันที
     optimisticSpend(cost);
 
+    // 3) ลด stock บนหน้าเว็บทันที ไม่ต้องรอ API reload
+    const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
+    if (card) {
+      const stockEl = card.querySelector(".rp-reward-stock");
+      let stock = Number(card.dataset.stock || 0);
+
+      if (stock > 0) {
+        stock -= 1;
+        card.dataset.stock = stock;
+
+        if (stock === 0) {
+          // หมดแล้ว
+          stockEl.textContent = "หมดแล้ว";
+          card.classList.add("soldout");
+          const btnRedeem = card.querySelector(".rp-redeem-btn");
+          if (btnRedeem) btnRedeem.disabled = true;
+        } else {
+          // มี stock เหลือ
+          const max = Number(card.dataset.stockMax || 0);
+          stockEl.textContent = max > 0
+            ? `เหลือ ${stock}/${max} ชิ้น`
+            : `เหลือ ${stock} ชิ้น`;
+        }
+      }
+    }
+
     UiOverlay.hide();
+
+    // Popup สำเร็จ
     if (window.Swal){
       await Swal.fire({
         title:"แลกสำเร็จ ✅",
@@ -1211,16 +1237,12 @@ async function redeemReward(reward, btn){
         icon:"success"
       });
     } else {
-      alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
+      alert("แลกสำเร็จ!");
     }
 
-    // 🔥 โหลดรางวัลใหม่จากฐานข้อมูล (สำคัญที่สุด!)
-    await loadRewards();
-    renderRewards(window.__userBalance || 0);
-
-    // โพลคะแนนจริงจาก backend เพื่อให้ตรงเซิร์ฟเวอร์
+    // 4) Poll เอาคะแนนล่าสุดจาก server (ไม่ต้อง poll stock แล้ว)
     try {
-      await pollScoreUntil(curUid, before, 5, 650);
+      await pollScoreUntil(curUid, beforeScore, 5, 650);
     } catch {}
 
   }catch(err){
