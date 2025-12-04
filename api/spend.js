@@ -43,6 +43,27 @@ module.exports = async (req, res) => {
       })
     }
 
+    // ตรวจสอบ stock
+    const { data: rewardRow, error: eStock } = await supabaseAdmin
+      .from('rewards')
+      .select('id, stock')
+      .eq('id', rewardId)
+      .single();
+
+    if (!rewardRow) return res.status(404).json({ status: 'error', message: 'reward_not_found' });
+    if (rewardRow.stock <= 0) return res.status(400).json({ status: 'error', message: 'out_of_stock' });
+
+    // ลด stock แบบ atomic
+    const { error: eUpdate } = await supabaseAdmin
+      .from('rewards')
+      .update({ stock: rewardRow.stock - 1 })
+      .eq('id', rewardId)
+      .eq('stock', rewardRow.stock); // ป้องกันแย่งกันแลก
+
+    if (eUpdate) {
+      return res.status(409).json({ status: 'error', message: 'stock_conflict' });
+    }
+
     if (redis) { try { await redis.del(`score:${uid}`) } catch {} }
     res.status(200).json({ status:'success', spent: amount, reward: reward?.name || null })
   } catch (e) {
