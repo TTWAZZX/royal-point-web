@@ -3419,170 +3419,141 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .status-chip.hidden,
 .status-chip.d-none{ display:inline-flex !important; }
 
-/* การ์ดของรางวัลพื้นฐาน */
-.reward-card {
-  border-radius: 12px;
+/* ============================
+   🎁 Reward Card (ภาพ 800×600 px – อัตราส่วน 4:3)
+   ============================ */
+
+.rp-reward-rail {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 6px 2px 10px;
+  scroll-snap-type: x mandatory;
+}
+
+/* การ์ดรางวัล — ออกแบบใหม่สำหรับรูปแนวนอน 4:3 */
+.rp-reward-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: 8cm;                 /* ขนาดเหมาะกับภาพแนวนอน */
+  max-width: 8cm;
+  border: 1px solid var(--rp-border);
+  border-radius: 16px;
   background: #fff;
-  box-shadow: 0 1px 6px rgba(0,0,0,.06);
+  box-shadow: 0 8px 22px rgba(2,120,87,0.7);
+  overflow: hidden;
+  scroll-snap-align: start;
+}
+
+/* กรอบรูป */
+.rp-reward-img {
+  width: 100%;
+  aspect-ratio: 4 / 3;        /* อัตราส่วนจริงของรูป 800×600 */
+  background: #fff;
+  display: block;
+  position: relative;
   overflow: hidden;
 }
 
-/* กล่องรูป: ล็อกอัตราส่วน 1:1 ป้องกันหน้าโดดตอนรูปยังไม่มา */
-.reward-card .img-wrap {
-  width: 100%;
-  aspect-ratio: 1 / 1;         /* กัน CLS */
-  position: relative;
-  background: #f3f5f7;         /* สีพื้นแทน skeleton */
-}
-
-/* รูปภาพ: กินทั้งกรอบ, ครอบตัดพอดี */
-.reward-card .img-wrap img {
+/* แสดงรูปไม่ให้บิดหรือโดนครอป */
+.rp-reward-img img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain; 
   display: block;
-  border: 0;
-}
-
-/* เอฟเฟ็กต์นิดๆ ตอนรูปโหลดเสร็จ */
-.reward-card .img-wrap img {
+  background: #fff;
+  padding: 6px;
   opacity: 0;
   transition: opacity .2s ease;
+  border-bottom: 1px solid #e2e8f0;
 }
-.reward-card .img-wrap img.is-ready {
+
+.rp-reward-img img.is-ready {
   opacity: 1;
 }
 
-/* --- Rewards image: กัน CLS และทำให้รูปขึ้นลื่น --- */
-.rp-reward-img{
-  width: 100%;
-  aspect-ratio: 1 / 1;            /* จองพื้นที่ 1:1 กันหน้าโดด */
-  position: relative;
-  background: #f3f5f7;            /* สีพื้นระหว่างรอรูป */
-  overflow: hidden;
-}
-.rp-reward-img img{
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;               /* ครอบพอดี กรอบไม่ยืด */
-  opacity: 0;
-  transition: opacity .2s ease;    /* นุ่ม ๆ ตอนขึ้นรูป */
-}
-.rp-reward-img img.is-ready{
-  opacity: 1;
+/* กล่องชื่อรางวัล */
+.rp-reward-body {
+  padding: 8px;
 }
 
-/* Reward rail */
-.rp-reward-rail{
-  display:flex;
-  gap:14px;
-  overflow-x:auto;
-  padding:6px 2px 10px;
-  scroll-snap-type:x mandatory;
+/* ป้ายราคา */
+.rp-reward-cost {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #f0fdfa;
+  border: 1px solid var(--rp-border);
+  padding: .25rem .55rem;
+  border-radius: 999px;
+  font-weight: 800;
+  color: #047857;
+  font-size: .80rem;
 }
 
-/* การ์ดรางวัล – ขนาดประมาณ 6×8.5 ซม. (เวลา print) */
-.rp-reward-card{
-  position:relative;
-  flex:0 0 auto;
-  width:6cm;
-  max-width:6cm;
-  border:1px solid var(--rp-border);
-  border-radius:18px;
-  background:#fff;
-  box-shadow:0 8px 22px rgba(2,120,87,0.7);
-  overflow:hidden;
-  scroll-snap-align:start;
+/* badge stock */
+.rp-reward-stock {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: rgba(250,250,250,.9);
+  padding: .22rem .5rem;
+  font-size: .75rem;
+  font-weight: 600;
+  color: #0f172a;
+  border: 1px solid var(--rp-border);
+  border-radius: 999px;
 }
 
-/* รูปแนวตั้ง 6:8.5 ให้พอดีกับงานออกแบบ */
-.rp-reward-img{
-  background:#f4fbf7;
-  aspect-ratio:6 / 8.5;
-}
-.rp-reward-img img{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  display:block;
-}
-
-/* badge คะแนน */
-.rp-reward-cost{
-  position:absolute;
-  top:10px;
-  right:10px;
-  background:#f0fdfa;
-  border:1px solid var(--rp-border);
-  padding:.25rem .55rem;
-  border-radius:999px;
-  font-weight:800;
-  color:#047857;
-  font-size:.85rem;
-}
-
-/* label stock */
-.rp-reward-stock{
-  position:absolute;
-  left:10px;
-  bottom:10px;
-  padding:.2rem .5rem;
-  border-radius:999px;
-  background:rgba(255,255,255,.9);
-  border:1px solid var(--rp-border);
-  font-size:.75rem;
-  font-weight:600;
-  color:#0f172a;
-}
-.rp-reward-stock-out{
-  background:rgba(248,250,252,.96);
-  color:#b91c1c;
-  border-color:#fecaca;
+.rp-reward-stock-out {
+  background: rgba(254,226,226,.85);
+  color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
 /* ปุ่มแลก */
-.rp-redeem-btn{
-  position:absolute;
-  right:10px;
-  bottom:10px;
-  width:42px;
-  height:42px;
-  border-radius:12px;
-  border:1px solid var(--rp-border);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#fff;
-  color:#065f46;
-}
-.rp-redeem-btn:disabled{
-  opacity:.45;
-  pointer-events:none;
+.rp-redeem-btn {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--rp-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #065f46;
 }
 
-/* overlay คะแนนไม่พอ (ของเดิม) */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ";
-  position:absolute;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.55));
-  color:#475569;
-  font-weight:800;
+.rp-redeem-btn:disabled {
+  opacity: .45;
+  pointer-events: none;
+}
+
+/* overlay คะแนนไม่พอ */
+.rp-reward-card.locked::after {
+  content: "คะแนนไม่พอ";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.55));
+  color: #475569;
+  font-weight: 800;
 }
 
 /* overlay ของหมด */
-.rp-reward-card.soldout::after{
-  content:"ของหมดแล้ว";
-  position:absolute;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.7));
-  color:#b91c1c;
-  font-weight:800;
+.rp-reward-card.soldout::after {
+  content: "ของหมดแล้ว";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.7));
+  color: #b91c1c;
+  font-weight: 800;
 }
