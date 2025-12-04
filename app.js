@@ -1154,7 +1154,7 @@ let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
 
-  // ✅ ดึง uid แบบกันพลาด
+  // ดึง uid กันพลาด
   const curUid = (typeof UID !== 'undefined' && UID) ||
                  window.__UID ||
                  localStorage.getItem('uid') || '';
@@ -1171,8 +1171,11 @@ async function redeemReward(reward, btn){
   // ยืนยัน
   const confirmed = window.Swal
     ? (await Swal.fire({
-        title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost}</b> pt`,
-        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
+        title:"ยืนยันการแลก?",
+        html:`จะใช้ <b>${cost}</b> pt`,
+        icon:"question",
+        showCancelButton:true,
+        confirmButtonText:"แลกเลย"
       })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
   if (!confirmed) return;
@@ -1189,13 +1192,15 @@ async function redeemReward(reward, btn){
       cache: 'no-store'
     });
     const payload = await safeJson(res);
-    if (payload?.status !== "success") throw new Error(payload?.message || "spend failed");
+    if (payload?.status !== "success")
+      throw new Error(payload?.message || "spend failed");
 
-// ====== วางแทนช่วง success ใน redeemReward() ======
-    // 1) จับ baseline "ก่อน" optimistic
+    // ===== Success Phase =====
+
+    // baseline ก่อนหักแต้ม
     const before = Number(window.__userBalance || 0);
 
-    // 2) อัปเดตจอทันทีแบบ optimistic (ให้ผู้ใช้เห็นไว)
+    // optimistic UI
     optimisticSpend(cost);
 
     UiOverlay.hide();
@@ -1209,11 +1214,15 @@ async function redeemReward(reward, btn){
       alert("แลกสำเร็จ! กรุณาแคปหน้าจอไว้เพื่อนำไปแสดงรับรางวัล");
     }
 
-    // 3) ตามคะแนนจริงจากเซิร์ฟเวอร์: โพลจน "แตกต่าง" จาก baseline เดิม
+    // 🔥 โหลดรางวัลใหม่จากฐานข้อมูล (สำคัญที่สุด!)
+    await loadRewards();
+    renderRewards(window.__userBalance || 0);
+
+    // โพลคะแนนจริงจาก backend เพื่อให้ตรงเซิร์ฟเวอร์
     try {
       await pollScoreUntil(curUid, before, 5, 650);
     } catch {}
-// ====== จบชุดแทนที่ ======
+
   }catch(err){
     console.error(err);
     UiOverlay.hide();
