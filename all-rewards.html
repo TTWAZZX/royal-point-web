@@ -62,18 +62,18 @@
       border: 1px solid #94d6c3;
     }
 
-    /* ป้ายยอดคงเหลือแบบเล็ก + มุมล่างขวา */
+    /* ป้ายยอดคงเหลือแบบเล็ก + มุมซ้ายบน */
     .reward-stock {
-    position: absolute;
-    bottom: 6px;
-    right: 8px;
-    background: rgba(0,0,0,0.65);
-    padding: 2px 6px;
-    font-size: 0.62rem;    /* เล็กลง 50% */
-    border-radius: 6px;
-    color: #fff;
-    font-weight: 600;
-    z-index: 10;
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0,0,0,0.65);
+      padding: 2px 8px;
+      font-size: 0.70rem;   
+      border-radius: 6px;
+      color: #fff;
+      font-weight: 600;
+      z-index: 10;
     }
 
     .reward-card.soldout::after {
@@ -94,13 +94,14 @@
 <body>
 
   <div class="container py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="fw-bold text-success m-0">🎁 ของรางวัลทั้งหมด</h3>
 
-    <a href="/" class="text-success" style="font-size: 1.4rem;">
-        <i class="fa-solid fa-arrow-left"></i>
+    <a href="/" class="text-success" style="font-size: 1.45rem;">
+      <i class="fa-solid fa-arrow-left-long"></i>
     </a>
-    </div>
+  </div>
+
     <div id="rewardGrid" class="reward-grid">
       <!-- JS Render -->
     </div>
@@ -136,19 +137,19 @@
     function renderGrid(list) {
     const wrap = document.getElementById('rewardGrid');
     wrap.innerHTML = list.map(r => `
-        <div class="reward-card ${r.stock <= 0 ? 'soldout' : ''}">
-        
-        <img src="${r.img}" alt="${r.name}">
-        
-        <div class="reward-cost">${r.cost} pt</div>
-        
-        <div class="reward-name">${r.name}</div>
-        
-        <div class="reward-stock">
-            ${r.stock <= 0 ? 'หมดแล้ว' : `เหลือ ${r.stock}/${r.stock_max}`}
-        </div>
+    <div class="reward-card ${r.stock <= 0 ? 'soldout' : ''}">
+      
+      <img src="${r.img}" alt="${r.name}">
 
-        </div>
+      <div class="reward-cost">${r.cost} pt</div>
+
+      <div class="reward-stock">
+        ${r.stock <= 0 ? 'หมดแล้ว' : `เหลือ ${r.stock}/${r.stock_max}`}
+      </div>
+
+      <div class="reward-name">${r.name}</div>
+
+    </div>
     `).join("");
     }
 
