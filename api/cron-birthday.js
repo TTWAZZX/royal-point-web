@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
                   type: "bubble",
                   hero: {
                     type: "image",
-                    url: "https://lh3.googleusercontent.com/d/1ENj4Y9AgaJBRSChfCoTm8YsN2lkSuFjC", // รูปเค้กสวยๆ
+                    url: "https://lh3.googleusercontent.com/d/1nxeogrQNzIO8Vv2L3g8HKBRCZ61W4TnK", // รูปเค้กสวยๆ
                     size: "full",
                     aspectRatio: "20:13",
                     aspectMode: "cover"
