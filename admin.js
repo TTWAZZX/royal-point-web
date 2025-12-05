@@ -336,45 +336,36 @@ async function submitAdjust(sign){
   }finally{ overlay.hide(); }
 }
 
-// [เพิ่มใหม่ทั้งก้อน] ฟังก์ชันแจกคะแนนทุกคน
+// [เพิ่มใหม่ทั้งก้อน]
 function confirmGlobalGiveaway() {
   const amtStr = $id("globalAmount").value;
   const note   = ($id("globalNote").value || "").trim();
   const amount = parseInt(amtStr, 10);
 
-  // Validation
-  if (isNaN(amount) || amount <= 0) {
-    return Swal.fire("แจ้งเตือน", "กรุณาระบุจำนวนแต้มที่ถูกต้อง (ต้องมากกว่า 0)", "warning");
-  }
-  if (!note) {
-    return Swal.fire("แจ้งเตือน", "กรุณาระบุเหตุผล/เนื่องในโอกาส เพื่อบันทึกประวัติ", "warning");
-  }
+  if (isNaN(amount) || amount <= 0) return Swal.fire("แจ้งเตือน", "กรุณาระบุจำนวนแต้ม", "warning");
+  if (!note) return Swal.fire("แจ้งเตือน", "กรุณาระบุเหตุผล", "warning");
 
-  // ถามยืนยัน
   Swal.fire({
     title: `ยืนยันแจก ${amount} แต้ม?`,
-    html: `ให้สมาชิก <b>ทุกคน</b> ในระบบ<br>เนื่องในโอกาส: <span class="text-primary">${escapeHtml(note)}</span><br><br><small class="text-danger">การกระทำนี้ไม่สามารถยกเลิกได้</small>`,
-    icon: "question",
+    html: `ให้สมาชิก <b>ทุกคน</b><br>เนื่องในโอกาส: ${escapeHtml(note)}`,
+    icon: "warning",
     showCancelButton: true,
-    confirmButtonText: "ยืนยัน, แจกเลย!",
+    confirmButtonText: "ยืนยัน",
     confirmButtonColor: "#f59e0b",
     cancelButtonText: "ยกเลิก"
   }).then((result) => {
-    if (result.isConfirmed) {
-      submitGlobalGiveaway(amount, note);
-    }
+    if (result.isConfirmed) submitGlobalGiveaway(amount, note);
   });
 }
 
 async function submitGlobalGiveaway(amount, note) {
-  overlay.show("กำลังแจกแต้มให้ทุกคน...");
+  overlay.show("กำลังแจกแต้ม...");
   try {
     const res = await fetch(API_ADMIN_GIVEAWAY, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // 👇 เพิ่ม action: 'giveaway'
       body: JSON.stringify({
-        action: 'giveaway', // <--- สำคัญ
+        action: 'giveaway', // <--- สำคัญมาก
         adminUid: ADMIN_UID,
         amount: amount,
         note: note
@@ -384,20 +375,9 @@ async function submitGlobalGiveaway(amount, note) {
     
     if (j.status !== "success") throw new Error(j.message || "ทำรายการไม่สำเร็จ");
 
-    // สำเร็จ
-    Swal.fire({
-      title: "เรียบร้อย!",
-      text: `แจก ${amount} แต้ม ให้สมาชิกทุกคนแล้ว`,
-      icon: "success",
-      timer: 2000,
-      showConfirmButton: false
-    });
-    
-    // เคลียร์ค่า
+    Swal.fire("สำเร็จ", `แจก ${amount} แต้ม ให้ทุกคนเรียบร้อย`, "success");
     $id("globalAmount").value = "";
     $id("globalNote").value = "";
-
-    // รีโหลดลิสต์รายชื่อ (หน่วงเวลานิดนึงเพื่อให้ DB อัปเดตทัน)
     setTimeout(reloadAllUsers, 1000);
 
   } catch (e) {
