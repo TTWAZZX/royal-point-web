@@ -8,6 +8,7 @@ const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, 
 const API_COUPON_LIST = "/api/admin-coupons";
 const API_COUPON_GEN  = "/api/admin-coupons-generate";
 const USER_PAGE = "/index.html";
+const API_ADMIN_GIVEAWAY = "/api/admin-giveaway";
 
 // ============ STATE ============
 let ADMIN_UID = "";
@@ -187,6 +188,7 @@ function bindEvents(){
   $id("btnAdjAdd")   ?.addEventListener("click", ()=>submitAdjust(+1));
   $id("btnAdjDeduct")?.addEventListener("click", ()=>submitAdjust(-1));
   $id("btnAdjReset") ?.addEventListener("click", ()=>submitReset(CURRENT.uid, CURRENT.name));
+  $id("btnGlobalGive")?.addEventListener("click", confirmGlobalGiveaway);
 }
 
 // ============ ACTIONS ============
@@ -329,6 +331,76 @@ async function submitAdjust(sign){
     console.error(e);
     Swal.fire("ผิดพลาด", String(e.message||e), "error");
   }finally{ overlay.hide(); }
+}
+
+// [เพิ่มใหม่ทั้งก้อน] ฟังก์ชันแจกคะแนนทุกคน
+function confirmGlobalGiveaway() {
+  const amtStr = $id("globalAmount").value;
+  const note   = ($id("globalNote").value || "").trim();
+  const amount = parseInt(amtStr, 10);
+
+  // Validation
+  if (isNaN(amount) || amount <= 0) {
+    return Swal.fire("แจ้งเตือน", "กรุณาระบุจำนวนแต้มที่ถูกต้อง (ต้องมากกว่า 0)", "warning");
+  }
+  if (!note) {
+    return Swal.fire("แจ้งเตือน", "กรุณาระบุเหตุผล/เนื่องในโอกาส เพื่อบันทึกประวัติ", "warning");
+  }
+
+  // ถามยืนยัน
+  Swal.fire({
+    title: `ยืนยันแจก ${amount} แต้ม?`,
+    html: `ให้สมาชิก <b>ทุกคน</b> ในระบบ<br>เนื่องในโอกาส: <span class="text-primary">${escapeHtml(note)}</span><br><br><small class="text-danger">การกระทำนี้ไม่สามารถยกเลิกได้</small>`,
+    icon: "question",
+    showCancelButton: true,
+    confirmButtonText: "ยืนยัน, แจกเลย!",
+    confirmButtonColor: "#f59e0b",
+    cancelButtonText: "ยกเลิก"
+  }).then((result) => {
+    if (result.isConfirmed) {
+      submitGlobalGiveaway(amount, note);
+    }
+  });
+}
+
+async function submitGlobalGiveaway(amount, note) {
+  overlay.show("กำลังแจกแต้มให้ทุกคน...");
+  try {
+    const res = await fetch(API_ADMIN_GIVEAWAY, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        adminUid: ADMIN_UID,
+        amount: amount,
+        note: note
+      })
+    });
+    const j = await res.json();
+    
+    if (j.status !== "success") throw new Error(j.message || "ทำรายการไม่สำเร็จ");
+
+    // สำเร็จ
+    Swal.fire({
+      title: "เรียบร้อย!",
+      text: `แจก ${amount} แต้ม ให้สมาชิกทุกคนแล้ว`,
+      icon: "success",
+      timer: 2000,
+      showConfirmButton: false
+    });
+    
+    // เคลียร์ค่า
+    $id("globalAmount").value = "";
+    $id("globalNote").value = "";
+
+    // รีโหลดลิสต์รายชื่อ (หน่วงเวลานิดนึงเพื่อให้ DB อัปเดตทัน)
+    setTimeout(reloadAllUsers, 1000);
+
+  } catch (e) {
+    console.error(e);
+    Swal.fire("ผิดพลาด", String(e.message || e), "error");
+  } finally {
+    overlay.hide();
+  }
 }
 
 // ============ UTIL ============
