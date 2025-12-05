@@ -45,7 +45,7 @@ module.exports = async (req, res) => {
                   type: "bubble",
                   hero: {
                     type: "image",
-                    url: "https://images.unsplash.com/photo-1513151233558-d860c5398176?w=800", // รูปเค้กสวยๆ
+                    url: "https://lh3.googleusercontent.com/d/1ENj4Y9AgaJBRSChfCoTm8YsN2lkSuFjC", // รูปเค้กสวยๆ
                     size: "full",
                     aspectRatio: "20:13",
                     aspectMode: "cover"
@@ -69,7 +69,7 @@ module.exports = async (req, res) => {
                       },
                       {
                         type: "text",
-                        text: `ทางเราขอมอบ ${REWARD_AMOUNT} คะแนน เป็นของขวัญวันเกิด ขอให้มีความสุขมากๆ นะครับ 🎉`,
+                        text: `จอห์นนี่ขอมอบ ${REWARD_AMOUNT} คะแนน เป็นของขวัญวันเกิด ขอให้มีความสุขและปลอดภัย นะครับ 🎉`,
                         wrap: true,
                         color: "#666666",
                         margin: "sm"
@@ -85,7 +85,7 @@ module.exports = async (req, res) => {
                         action: {
                           type: "uri",
                           label: "เช็คคะแนนสะสม",
-                          uri: "https://liff.line.me/YOUR_LIFF_ID" // ใส่ LIFF Link ของคุณ
+                          uri: "https://liff.line.me/2007053300-QoEvbXyn" // ใส่ LIFF Link ของคุณ
                         },
                         style: "primary",
                         color: "#1DB446"
