@@ -3,12 +3,12 @@
 const LIFF_ID = "2007053300-QoEvbXyn";
 const API_ALL_SCORES    = "/api/all-scores";     // GET  ?uid= (หรือ ?adminUid=)
 const API_SCORE_HISTORY = "/api/score-history";  // GET  ?uid=
-const API_ADMIN_ADJUST  = "/api/admin-adjust";   // POST { adminUid, targetUid, delta, note }
-const API_ADMIN_RESET   = "/api/admin-reset";    // POST { adminUid, targetUid, note }
+const API_ADMIN_ADJUST   = "/api/admin-actions"; 
+const API_ADMIN_RESET    = "/api/admin-actions"; 
+const API_ADMIN_GIVEAWAY = "/api/admin-actions";
 const API_COUPON_LIST = "/api/admin-coupons";
 const API_COUPON_GEN  = "/api/admin-coupons-generate";
 const USER_PAGE = "/index.html";
-const API_ADMIN_GIVEAWAY = "/api/admin-giveaway";
 
 // ============ STATE ============
 let ADMIN_UID = "";
@@ -232,7 +232,8 @@ async function doAdjust(uid, name, delta){
     const res = await fetch(API_ADMIN_ADJUST, {
       method: "POST",
       headers: { "Content-Type":"application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note: "" })
+      // 👇 เพิ่ม action: 'adjust'
+      body: JSON.stringify({ action: 'adjust', adminUid: ADMIN_UID, targetUid: uid, delta, note: "" })
     });
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ปรับคะแนนไม่สำเร็จ");
@@ -268,7 +269,8 @@ async function submitReset(uid, name){
     const res = await fetch(API_ADMIN_RESET, {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, note:"admin reset" })
+      // 👇 เพิ่ม action: 'reset'
+      body: JSON.stringify({ action: 'reset', adminUid: ADMIN_UID, targetUid: uid, note:"admin reset" })
     });
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ล้างคะแนนไม่สำเร็จ");
@@ -316,7 +318,8 @@ async function submitAdjust(sign){
     const res = await fetch(API_ADMIN_ADJUST, {
       method:"POST",
       headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid: uid, delta, note })
+      // 👇 เพิ่ม action: 'adjust'
+      body: JSON.stringify({ action: 'adjust', adminUid: ADMIN_UID, targetUid: uid, delta, note })
     });
     const j = await res.json();
     if (j.status !== "success") throw new Error(j.message || "ปรับคะแนนไม่สำเร็จ");
@@ -369,7 +372,9 @@ async function submitGlobalGiveaway(amount, note) {
     const res = await fetch(API_ADMIN_GIVEAWAY, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // 👇 เพิ่ม action: 'giveaway'
       body: JSON.stringify({
+        action: 'giveaway', // <--- สำคัญ
         adminUid: ADMIN_UID,
         amount: amount,
         note: note
