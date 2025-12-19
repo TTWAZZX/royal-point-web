@@ -183,6 +183,12 @@ function renderGrid(list) {
 
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
+    
+    // ⭐ แก้ไข 1: ป้องกันชื่อที่มี ' หรือ " ทำโค้ดพัง
+    // เช่น "McDonald's" จะถูกแปลงเป็น "McDonald\'s" เพื่อให้ใส่ใน onclick ได้
+    const safeName = r.name
+        .replace(/'/g, "\\'")   // แก้ single quote
+        .replace(/"/g, "&quot;"); // แก้ double quote
 
     return `
     <div class="reward-card ${isSoldOut ? 'soldout' : ''}" id="card-${r.id}">
@@ -199,7 +205,7 @@ function renderGrid(list) {
       <div class="reward-footer">
         <button
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          onclick="redeemReward('${r.id}', '${r.name}', ${r.cost}')"
+          onclick="redeemReward('${r.id}', '${safeName}', ${r.cost})"
           ${isSoldOut ? 'disabled' : ''}>
           แลกรางวัล
         </button>
