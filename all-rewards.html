@@ -175,28 +175,31 @@ async function loadAllRewards() {
 }
 
 /* ===============================
-   RENDER
+   RENDER (แก้ตรงนี้)
 ================================ */
 function renderGrid(list) {
   const wrap = document.getElementById('rewardGrid');
-  const myPoints = Number(localStorage.getItem('RP_SCORE:'+getUid()) || 0); // (Optional) เอาคะแนนมาเช็คเพื่อ disable ปุ่ม
+  const myPoints = Number(localStorage.getItem('RP_SCORE:'+getUid()) || 0);
 
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
-    // const notEnough = myPoints < r.cost; // ถ้าอยากให้ปุ่มเทาเมื่อคะแนนไม่พอ
 
     return `
     <div class="reward-card ${isSoldOut ? 'soldout' : ''}" id="card-${r.id}">
       <img src="${r.img}" alt="${r.name}" loading="lazy">
       <div class="reward-cost">${r.cost} pt</div>
-      <div class="reward-stock" id="stock-${r.id}">
+      
+      <div class="reward-stock" id="stock-${r.id}" 
+           data-stock="${r.stock}" 
+           data-max="${r.stock_max}">
         ${isSoldOut ? 'หมดแล้ว' : `เหลือ ${r.stock}/${r.stock_max}`}
       </div>
+
       <div class="reward-name">${r.name}</div>
       <div class="reward-footer">
         <button
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          onclick="redeemReward('${r.id}', '${r.name}', ${r.cost})"
+          onclick="redeemReward('${r.id}', '${r.name}', ${r.cost}')"
           ${isSoldOut ? 'disabled' : ''}>
           แลกรางวัล
         </button>
@@ -206,7 +209,7 @@ function renderGrid(list) {
 }
 
 /* ===============================
-   REDEEM
+   REDEEM (แก้ตรงนี้)
 ================================ */
 async function redeemReward(rewardId, rewardName, cost) {
   const uid = getUid();
@@ -215,7 +218,6 @@ async function redeemReward(rewardId, rewardName, cost) {
     return;
   }
 
-  // Confirm Dialog สวยๆ
   const confirm = await Swal.fire({
     title: 'ยืนยันการแลก?',
     text: `ใช้ ${cost} คะแนน แลก "${rewardName}"`,
@@ -229,25 +231,41 @@ async function redeemReward(rewardId, rewardName, cost) {
   if (!confirm.isConfirmed) return;
 
   try {
-    // 1. เรียก API ผ่าน Loading Helper (จะขึ้น Overlay ทันที)
-    const res = await Loading.apiFetch('/api/spend', {
+    await Loading.apiFetch('/api/spend', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ uid, rewardId, cost })
     }, { scope: 'overlay', msg: 'กำลังบันทึกข้อมูล...' });
 
-    // 2. ถ้าสำเร็จ (apiFetch จะ throw error ถ้าไม่สำเร็จ)
     // --- Update Local Storage คะแนน ---
     const currentScore = Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0);
     const newScore = Math.max(0, currentScore - cost);
     localStorage.setItem(`RP_SCORE:${uid}`, newScore);
     
-    // --- Update UI Stock (Optimistic) ---
+    // --- ⭐ Update UI Stock (Optimistic Update) ---
+    // ส่วนนี้จะทำงานทันที ไม่ต้องรอ API Cache
     const stockEl = document.getElementById(`stock-${rewardId}`);
     const cardEl = document.getElementById(`card-${rewardId}`);
-    if(stockEl) {
-        // ดึงตัวเลขจาก text (วิธีบ้านๆ) หรือโหลดใหม่ก็ได้ แต่โหลดใหม่ช้า
-        loadAllRewards(); // โหลดใหม่ชัวร์สุด
+    const btnEl = cardEl?.querySelector('button');
+
+    if (stockEl) {
+        // ดึงค่าเก่ามาลบ 1
+        let currentStock = parseInt(stockEl.getAttribute('data-stock') || '0');
+        let maxStock = stockEl.getAttribute('data-max');
+        let newStock = currentStock - 1;
+
+        // อัปเดตค่ากลับเข้าไป
+        stockEl.setAttribute('data-stock', newStock);
+
+        if (newStock <= 0) {
+            // กรณีของหมด
+            stockEl.textContent = "หมดแล้ว";
+            cardEl.classList.add('soldout');
+            if (btnEl) btnEl.disabled = true;
+        } else {
+            // กรณีของยังเหลือ
+            stockEl.textContent = `เหลือ ${newStock}/${maxStock}`;
+        }
     }
 
     await Swal.fire('สำเร็จ!', 'แลกของรางวัลเรียบร้อยแล้ว', 'success');
