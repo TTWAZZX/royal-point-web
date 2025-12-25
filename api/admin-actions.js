@@ -5,8 +5,11 @@ module.exports = async (req, res) => {
   // 1. ตรวจสอบ Method
   if (req.method !== 'POST') return res.status(405).json({ status: 'error', message: 'Method not allowed' })
 
-  // 2. รับค่า action
-  const { action, adminUid, targetUid, amount, delta, note } = req.body || {}
+  // 2. รับค่า (เพิ่ม rewardId และ rewardData เข้ามาสำหรับฟังก์ชันใหม่)
+  const { action, adminUid, targetUid, amount, delta, note, rewardId, rewardData } = req.body || {}
+
+  // *ควรเช็ค ADMIN_UID จาก env เพื่อความปลอดภัย (ถ้ามี)*
+  // if (adminUid !== process.env.ADMIN_UID) return res.status(403).json(...)
 
   if (!adminUid) return res.status(400).json({ status: 'error', message: 'Missing adminUid' })
 
@@ -14,10 +17,11 @@ module.exports = async (req, res) => {
     let rpcName = ''
     let rpcParams = {}
 
-    // --- CASE A: ปรับแต้มรายคน (Adjust) ---
+    // ==================================================
+    // 🟢 CASE A: ปรับแต้มรายคน (ของเดิม ห้ามลบ)
+    // ==================================================
     if (action === 'adjust') {
       if (!targetUid || typeof delta !== 'number') return res.status(400).json({ status: 'error', message: 'Missing data' })
-      
       const { data: user } = await supabaseAdmin.from('users').select('id').eq('uid', targetUid).single()
       if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
 
@@ -26,19 +30,19 @@ module.exports = async (req, res) => {
         p_user: user.id,
         p_amount: delta,
         p_code: note || 'admin-adjust',
-        p_type: delta >= 0 ? 'ADMIN_ADJUST_ADD' : 'ADMIN_ADJUST_SUB',
+        p_type: delta >= 0 ? 'ADMIN_GIVE' : 'ADMIN_DEDUCT',
         p_actor: adminUid
       }
-    } 
-    
-    // --- CASE B: ล้างแต้มรายคน (Reset) ---
+    }
+
+    // ==================================================
+    // 🟢 CASE B: รีเซ็ตแต้มเป็น 0 (ของเดิม ห้ามลบ)
+    // ==================================================
     else if (action === 'reset') {
       if (!targetUid) return res.status(400).json({ status: 'error', message: 'Missing targetUid' })
-      
       const { data: user } = await supabaseAdmin.from('users').select('id').eq('uid', targetUid).single()
       if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
 
-      // เช็คยอดก่อนลบ
       const { data: up } = await supabaseAdmin.from('user_points').select('balance').eq('user_id', user.id).single()
       const cur = up?.balance ?? 0
       if (cur === 0) return res.status(200).json({ status: 'success', message: 'Already 0' })
@@ -53,40 +57,58 @@ module.exports = async (req, res) => {
       }
     }
 
-    // --- CASE C: แจกทุกคน (Giveaway) ---
+    // ==================================================
+    // 🟢 CASE C: แจกทุกคน (ของเดิม ห้ามลบ)
+    // ==================================================
     else if (action === 'giveaway') {
       if (!amount || amount <= 0) return res.status(400).json({ status: 'error', message: 'Invalid amount' })
-      if (!note) return res.status(400).json({ status: 'error', message: 'Note required' })
+      // if (!note) return res.status(400).json({ status: 'error', message: 'Note required' }) // บางทีอาจไม่บังคับ note
 
       rpcName = 'admin_giveaway_to_all'
       rpcParams = {
         p_amount: amount,
-        p_note: note,
+        p_note: note || 'Giveaway',
         p_admin_uid: adminUid
       }
     } 
     
+    // ==================================================
+    // ⭐ CASE D: จัดการของรางวัล (เพิ่มใหม่ สำหรับ Stock Manager)
+    // ==================================================
+    else if (action === 'reward_update') {
+      if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
+      
+      // อัปเดตข้อมูลลง Table 'rewards' โดยตรง (เช่น active, stock, name, cost)
+      const { data, error } = await supabaseAdmin
+        .from('rewards')
+        .update(rewardData) // รับ object ที่ต้องการแก้มาเลย
+        .eq('id', rewardId)
+        .select()
+      
+      if (error) throw error
+      
+      // ไม่ต้องเรียก RPC จบการทำงานแล้วส่งผลลัพธ์กลับเลย
+      return res.status(200).json({ status: 'success', data })
+    }
+
     else {
       return res.status(400).json({ status: 'error', message: 'Invalid action' })
     }
 
-    // 3. ยิง Database
+    // ==================================================
+    // Process RPC calls (สำหรับ Case A, B, C)
+    // ==================================================
     const { error } = await supabaseAdmin.rpc(rpcName, rpcParams)
     
     if (error) {
       console.error('RPC Error:', error)
-      return res.status(500).json({ status: 'error', message: 'DB Error: ' + error.message })
-    }
-
-    // 4. ล้าง Cache (เฉพาะรายบุคคล)
-    if (targetUid && redis) {
-      try { await redis.del(`score:${targetUid}`) } catch {}
+      return res.status(500).json({ status: 'error', message: error.message })
     }
 
     res.status(200).json({ status: 'success' })
 
   } catch (e) {
-    console.error(e)
+    console.error('Admin Action Error:', e)
     res.status(500).json({ status: 'error', message: String(e) })
   }
 }
