@@ -30,6 +30,7 @@ let page     = 1;
 let pageSize = 20;
 let TARGET_USER = null; 
 
+/* ---------- Helpers ---------- */
 const qs  = (sel) => document.querySelector(sel);
 const fmt = (n) => Number(n||0).toLocaleString();
 function debounce(fn, ms=300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms);} }
@@ -39,7 +40,16 @@ function formatDateTime(ts) {
   return d.toLocaleString('th-TH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
-/* ---------- Render List (Mobile Friendly - Clean) ---------- */
+// ⭐ Helper: พยายามหา UID แอดมินให้เจอไม่ว่าจะอยู่ที่ไหน
+function getCurrentAdminUid() {
+    if (MY_UID_PAGE) return MY_UID_PAGE;
+    if (window.CURRENT_ADMIN_UID) return window.CURRENT_ADMIN_UID; // รับจาก admin.js
+    if (sessionStorage.getItem('uid')) return sessionStorage.getItem('uid');
+    if (localStorage.getItem('uid')) return localStorage.getItem('uid');
+    return null;
+}
+
+/* ---------- Render List (Mobile Friendly) ---------- */
 function renderTable(totalPages) {
   const start = (page-1)*pageSize;
   const end   = Math.min(start + pageSize, view.length);
@@ -51,7 +61,6 @@ function renderTable(totalPages) {
   if (!slice.length) {
       container.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-user-slash fa-2x mb-2 opacity-25"></i><br>ไม่พบสมาชิก</div>`;
   } else {
-      // รูปแบบการ์ด: ไม่มีรูปโปรไฟล์, ไม่มี UID, เน้นชื่อและคะแนน
       container.innerHTML = slice.map(r => `
         <div class="m-card p-3 mb-2 d-flex align-items-center justify-content-between shadow-sm border-0">
           <div style="min-width:0; flex-grow:1;">
@@ -68,7 +77,6 @@ function renderTable(totalPages) {
                 <div class="fw-bold text-primary" style="font-size:1.2rem; line-height:1;">${fmt(r.score)}</div>
                 <div class="small text-muted" style="font-size:0.65rem;">POINTS</div>
              </div>
-             
              <div class="d-flex gap-1 bg-light rounded-pill p-1 border">
                 <button class="btn btn-sm text-secondary rounded-circle" style="width:34px; height:34px;" onclick="openHistoryModal('${r.uid}')">
                    <i class="fa-solid fa-clock-rotate-left"></i>
@@ -82,7 +90,6 @@ function renderTable(totalPages) {
       `).join("");
   }
 
-  // Update Pagination
   const info = qs("#pageInfo");
   if (info) info.textContent = `${page} / ${totalPages}`;
   const btnPrev = qs("#btnPrev");
@@ -94,19 +101,16 @@ function renderTable(totalPages) {
 /* ---------- Data Loading ---------- */
 async function loadPageUsers() {
   const container = qs("#adminTableBody");
-  // ใส่ Spinner ให้รู้ว่ากำลังโหลด
   if(container && !rows.length) container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 text-muted small">กำลังโหลดข้อมูล...</div></div>';
   
   try {
     const res = await fetch(`${API_LIST}?ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
-    
     if (json.status !== "success") throw new Error(json.message || "Load failed");
 
     rows = json.data.map((r,i)=>({ 
         uid: r.uid, name: r.name, score: Number(r.score||0), tel: r.tel || '', room: r.room || ''
     }));
-    
     applyFilterSortPaginate(true);
   } catch (e) {
     console.error("Load Error:", e);
@@ -142,17 +146,26 @@ window.openActionModal = (uid) => {
     if (!u) return;
     TARGET_USER = u;
     qs("#actionUserName").textContent = u.name;
-    qs("#actionUserUID").textContent = ""; // Hide UID
+    qs("#actionUserUID").textContent = ""; 
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
     qs("#radioAdd").checked = true;
     new bootstrap.Modal(qs('#actionModal')).show();
 };
 
+// ⭐ แก้ไข: ฟังก์ชันบันทึกแต้ม (เพิ่มการเช็ค UID ให้ชัวร์)
 async function submitAdjust() {
     const mode = document.querySelector('input[name="adjustType"]:checked')?.value; 
     const amount = Number(qs("#adjustAmount")?.value || 0);
     const note = qs("#adjustNote")?.value || "";
+    
+    // ดึง UID ล่าสุด ณ วินาทีที่กดปุ่ม
+    const finalAdminUid = getCurrentAdminUid();
+
+    if (!finalAdminUid) {
+        return Swal.fire("ไม่พบสิทธิ์แอดมิน", "กรุณาลองรีเฟรชหน้าเว็บ หรือเปิดใหม่ผ่าน LINE", "error");
+    }
+
     if (mode !== "reset" && amount <= 0) return Swal.fire("แจ้งเตือน","กรุณาระบุจำนวนแต้ม","warning");
 
     let action = "adjust";
@@ -165,13 +178,23 @@ async function submitAdjust() {
     try {
       const res = await fetch(API_ACTIONS, {
         method: "POST", headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ adminUid: MY_UID_PAGE, action, targetUid: TARGET_USER.uid, delta, note })
+        body: JSON.stringify({ 
+            adminUid: finalAdminUid, // ใช้ค่าที่หามาได้ชัวร์ๆ
+            action, 
+            targetUid: TARGET_USER.uid, 
+            delta, 
+            note 
+        })
       });
       const j = await res.json();
-      if (!res.ok || j.status !== "success") throw new Error("Failed");
+      if (!res.ok || j.status !== "success") throw new Error(j.message || "Failed");
+      
       Swal.fire("สำเร็จ", "บันทึกเรียบร้อย", "success");
       loadPageUsers();
-    } catch (e) { Swal.fire("ผิดพลาด", "ทำรายการไม่สำเร็จ", "error"); } 
+    } catch (e) { 
+        console.error(e);
+        Swal.fire("ผิดพลาด", `ทำรายการไม่สำเร็จ: ${e.message}`, "error"); 
+    } 
     finally { pageOverlay.hide(); }
 }
 
@@ -201,49 +224,39 @@ window.openHistoryModal = async (uid) => {
     }
 }
 
-/* ---------- Boot System with Safety Timeout ---------- */
 async function boot() {
     if (!qs("#adminTableBody")) return;
     
-    let isLoaded = false;
-
-    // ฟังก์ชันเริ่มโหลดข้อมูล (จะถูกเรียกเมื่อพร้อม หรือเมื่อหมดเวลา)
-    const startApp = () => {
-        if (isLoaded) return;
-        isLoaded = true;
-        bindEvents();
-        loadPageUsers();
-    };
-
-    // 1. ตั้งเวลา 1.5 วินาที ถ้า LIFF ยังไม่เสร็จ ให้ข้ามไปโหลดข้อมูลเลย
+    // ตั้งเวลา Timeout: ถ้า LIFF โหลดนานเกิน 1.5 วิ ให้ข้ามไปโหลดข้อมูลเลย
     const safetyTimer = setTimeout(() => {
         console.warn("LIFF init slow, forcing start...");
-        startApp();
+        bindEvents();
+        loadPageUsers();
     }, 1500);
 
     try {
-        // 2. พยายามเชื่อมต่อ LIFF
         if (typeof liff !== 'undefined') {
             await liff.init({ liffId: window.LIFF_ID || "2007053300-QoEvbXyn" });
             
-            // ถ้าเชื่อมต่อสำเร็จ ให้เก็บ UID แล้วเริ่มแอป
             if (liff.isLoggedIn()) {
                 const p = await liff.getProfile();
                 MY_UID_PAGE = p.userId;
+                // สำรองไว้ใน Storage เผื่อหลุด
+                sessionStorage.setItem('uid', p.userId);
             }
         } else {
             MY_UID_PAGE = sessionStorage.getItem('uid');
         }
         
-        // ถ้า init สำเร็จก่อนหมดเวลา ให้ยกเลิกตัวจับเวลา แล้วเริ่มแอป
         clearTimeout(safetyTimer);
-        startApp();
+        bindEvents();
+        loadPageUsers();
 
     } catch (e) { 
-        // ถ้า LIFF error ก็ให้เริ่มแอปอยู่ดี
-        console.error("Boot Error:", e);
         clearTimeout(safetyTimer);
-        startApp();
+        console.error("Boot Error:", e);
+        bindEvents(); 
+        loadPageUsers(); 
     }
 }
 
