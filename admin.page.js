@@ -39,7 +39,7 @@ function formatDateTime(ts) {
   return d.toLocaleString('th-TH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
-/* ---------- Render List (Mobile Friendly - No Avatar) ---------- */
+/* ---------- Render List (Mobile Friendly - Clean) ---------- */
 function renderTable(totalPages) {
   const start = (page-1)*pageSize;
   const end   = Math.min(start + pageSize, view.length);
@@ -51,27 +51,29 @@ function renderTable(totalPages) {
   if (!slice.length) {
       container.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-user-slash fa-2x mb-2 opacity-25"></i><br>ไม่พบสมาชิก</div>`;
   } else {
-      // แก้ไข: เอา Avatar ออก, ปรับ Layout ให้ชื่ออยู่ซ้ายสุด
+      // รูปแบบการ์ด: ไม่มีรูปโปรไฟล์, ไม่มี UID, เน้นชื่อและคะแนน
       container.innerHTML = slice.map(r => `
         <div class="m-card p-3 mb-2 d-flex align-items-center justify-content-between shadow-sm border-0">
           <div style="min-width:0; flex-grow:1;">
-             <div class="d-flex align-items-center gap-2">
-                <div class="fw-bold text-dark text-truncate" style="font-size:1rem;">${escapeHtml(r.name || 'ไม่ระบุชื่อ')}</div>
-                <div class="badge bg-light text-secondary border fw-normal" style="font-size:0.75rem;">${escapeHtml(r.room || r.tel || 'User')}</div>
+             <div class="fw-bold text-dark text-truncate mb-1" style="font-size:1.05rem;">
+                ${escapeHtml(r.name || 'ไม่ระบุชื่อ')}
              </div>
+             <div class="text-muted small">
+                <i class="fa-regular fa-id-card me-1 opacity-50"></i>${escapeHtml(r.room || r.tel || 'General User')}
              </div>
+          </div>
 
-          <div class="d-flex align-items-center gap-3 flex-shrink-0 ms-2">
+          <div class="d-flex align-items-center gap-3 flex-shrink-0 ms-3">
              <div class="text-end">
-                <div class="fw-bold text-primary" style="font-size:1.1rem;">${fmt(r.score)}</div>
-                <div class="small text-muted" style="font-size:0.7rem; margin-top:-2px;">POINTS</div>
+                <div class="fw-bold text-primary" style="font-size:1.2rem; line-height:1;">${fmt(r.score)}</div>
+                <div class="small text-muted" style="font-size:0.65rem;">POINTS</div>
              </div>
              
-             <div class="d-flex gap-1">
-                <button class="btn btn-light btn-sm text-secondary border rounded-3" style="width:36px; height:36px;" onclick="openHistoryModal('${r.uid}')">
+             <div class="d-flex gap-1 bg-light rounded-pill p-1 border">
+                <button class="btn btn-sm text-secondary rounded-circle" style="width:34px; height:34px;" onclick="openHistoryModal('${r.uid}')">
                    <i class="fa-solid fa-clock-rotate-left"></i>
                 </button>
-                <button class="btn btn-primary btn-sm text-white rounded-3 shadow-sm" style="width:36px; height:36px;" onclick="openActionModal('${r.uid}')">
+                <button class="btn btn-sm btn-white text-primary shadow-sm rounded-circle" style="width:34px; height:34px;" onclick="openActionModal('${r.uid}')">
                    <i class="fa-solid fa-sliders"></i>
                 </button>
              </div>
@@ -92,25 +94,29 @@ function renderTable(totalPages) {
 /* ---------- Data Loading ---------- */
 async function loadPageUsers() {
   const container = qs("#adminTableBody");
-  if(container) container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div></div>';
+  // ใส่ Spinner ให้รู้ว่ากำลังโหลด
+  if(container && !rows.length) container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 text-muted small">กำลังโหลดข้อมูล...</div></div>';
   
   try {
     const res = await fetch(`${API_LIST}?ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
-    if (json.status !== "success") throw new Error("Load failed");
+    
+    if (json.status !== "success") throw new Error(json.message || "Load failed");
 
     rows = json.data.map((r,i)=>({ 
         uid: r.uid, name: r.name, score: Number(r.score||0), tel: r.tel || '', room: r.room || ''
     }));
+    
     applyFilterSortPaginate(true);
   } catch (e) {
-    if(container) container.innerHTML = `<div class="text-center text-danger py-4">โหลดไม่สำเร็จ</div>`;
+    console.error("Load Error:", e);
+    if(container) container.innerHTML = `<div class="text-center text-danger py-4"><i class="fa-solid fa-triangle-exclamation mb-2"></i><br>โหลดไม่สำเร็จ<br><small>${e.message}</small><br><button class="btn btn-sm btn-outline-danger mt-2" onclick="loadPageUsers()">ลองใหม่</button></div>`;
   }
 }
 
 function applyFilterSortPaginate(resetPage=false) {
   const q = (qs("#searchInput")?.value || "").trim().toLowerCase();
-  view = rows.filter(r => !q || (r.name||"").toLowerCase().includes(q) || String(r.uid||"").toLowerCase().includes(q));
+  view = rows.filter(r => !q || (r.name||"").toLowerCase().includes(q) || String(r.tel||"").includes(q)); 
   view.sort((a,b)=> b.score - a.score);
 
   const totalPages = Math.max(1, Math.ceil(view.length / pageSize));
@@ -135,8 +141,8 @@ window.openActionModal = (uid) => {
     const u = rows.find(x => x.uid === uid);
     if (!u) return;
     TARGET_USER = u;
-    qs("#actionUserUID").textContent = u.uid;
     qs("#actionUserName").textContent = u.name;
+    qs("#actionUserUID").textContent = ""; // Hide UID
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
     qs("#radioAdd").checked = true;
@@ -195,19 +201,50 @@ window.openHistoryModal = async (uid) => {
     }
 }
 
+/* ---------- Boot System with Safety Timeout ---------- */
 async function boot() {
     if (!qs("#adminTableBody")) return;
+    
+    let isLoaded = false;
+
+    // ฟังก์ชันเริ่มโหลดข้อมูล (จะถูกเรียกเมื่อพร้อม หรือเมื่อหมดเวลา)
+    const startApp = () => {
+        if (isLoaded) return;
+        isLoaded = true;
+        bindEvents();
+        loadPageUsers();
+    };
+
+    // 1. ตั้งเวลา 1.5 วินาที ถ้า LIFF ยังไม่เสร็จ ให้ข้ามไปโหลดข้อมูลเลย
+    const safetyTimer = setTimeout(() => {
+        console.warn("LIFF init slow, forcing start...");
+        startApp();
+    }, 1500);
+
     try {
+        // 2. พยายามเชื่อมต่อ LIFF
         if (typeof liff !== 'undefined') {
             await liff.init({ liffId: window.LIFF_ID || "2007053300-QoEvbXyn" });
-            if (!liff.isLoggedIn()) { liff.login(); return; }
-            const p = await liff.getProfile();
-            MY_UID_PAGE = p.userId;
+            
+            // ถ้าเชื่อมต่อสำเร็จ ให้เก็บ UID แล้วเริ่มแอป
+            if (liff.isLoggedIn()) {
+                const p = await liff.getProfile();
+                MY_UID_PAGE = p.userId;
+            }
         } else {
             MY_UID_PAGE = sessionStorage.getItem('uid');
         }
-        bindEvents();
-        loadPageUsers();
-    } catch (e) { bindEvents(); loadPageUsers(); }
+        
+        // ถ้า init สำเร็จก่อนหมดเวลา ให้ยกเลิกตัวจับเวลา แล้วเริ่มแอป
+        clearTimeout(safetyTimer);
+        startApp();
+
+    } catch (e) { 
+        // ถ้า LIFF error ก็ให้เริ่มแอปอยู่ดี
+        console.error("Boot Error:", e);
+        clearTimeout(safetyTimer);
+        startApp();
+    }
 }
+
 document.addEventListener("DOMContentLoaded", boot);
