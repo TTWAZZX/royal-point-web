@@ -1,11 +1,6 @@
 /***********************
  * Admin Frontend (Table View)
- * - โหลดตารางคะแนน
- * - ค้นหา/กรอง/เรียง/แบ่งหน้า
- * - ปรับคะแนน +/–, ล้างคะแนน (ผ่านโมดัล)
- * - ดูประวัติ (โมดัล)
- * - Export CSV
- * * สคริปต์นี้จะรันเฉพาะเมื่อมี #adminTableBody อยู่บนหน้าเท่านั้น
+ * แก้ไข: เปลี่ยนชื่อ overlay -> pageOverlay และลบ LIFF_ID ซ้ำ
  ***********************/
 
 /* ---------- Overlay (เปลี่ยนชื่อเป็น pageOverlay กันชนกับ admin.js) ---------- */
@@ -29,23 +24,22 @@ const pageOverlay = {
 };
 
 /* ---------- CONFIG ---------- */
-// ใช้ LIFF ID ตามที่คุณระบุ
-const LIFF_ID     = "2007053300-QoEvbXyn";
+// ❌ ลบ LIFF_ID ออก เพราะ admin.js ประกาศไว้แล้ว
+// const LIFF_ID = "..."; 
+
 const API_LIST    = "/api/all-scores";     
-// ⭐ เปลี่ยนมาใช้ endpoint กลางที่เราเพิ่งทำ
+// ⭐ ใช้ API กลางที่เราเพิ่งรวมไฟล์
 const API_ACTIONS = "/api/admin-actions";  
-const API_HISTORY = "/api/score-history";  
+const API_HISTORY = "/api/score-history";
 
 /* ---------- STATE ---------- */
-let MY_UID   = null;
-let rows     = [];  // raw data
-let view     = [];  // filtered/sorted
+let MY_UID_PAGE = null; // เปลี่ยนชื่อกันชน
+let rows     = [];  
+let view     = [];  
 let sortKey  = "score";   
 let sortDir  = "desc";    
 let page     = 1;
 let pageSize = 20;
-
-// ตัวแปรสำหรับ Modal Action
 let TARGET_USER = null; 
 
 /* ---------- Utils ---------- */
@@ -69,8 +63,8 @@ function renderSkeleton() {
     body.innerHTML = `
       <tr><td colspan="4">
         <div class="d-flex flex-column gap-2 p-3">
-           <div class="placeholder glow w-100" style="height:20px"></div>
-           <div class="placeholder glow w-75" style="height:20px"></div>
+           <div class="placeholder glow w-100" style="height:20px; background:#eee;"></div>
+           <div class="placeholder glow w-75" style="height:20px; background:#eee;"></div>
         </div>
       </td></tr>
     `;
@@ -81,7 +75,6 @@ function renderSkeleton() {
 async function loadPageUsers() {
   renderSkeleton();
   try {
-    // โหลดข้อมูล (ใส่ timestamp กัน cache)
     const res = await fetch(`${API_LIST}?ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
 
@@ -89,7 +82,6 @@ async function loadPageUsers() {
       throw new Error(json.message || "โหลดข้อมูลไม่สำเร็จ");
     }
 
-    // Map ข้อมูลเข้า State
     rows = json.data.map((r,i)=>({ 
         rank: i+1, 
         uid: r.uid, 
@@ -111,14 +103,12 @@ async function loadPageUsers() {
 function applyFilterSortPaginate(resetPage=false) {
   const q = (qs("#searchInput")?.value || "").trim().toLowerCase();
   
-  // 1. Filter
   view = rows.filter(r => {
     return !q || (r.name||"").toLowerCase().includes(q) || 
                  String(r.uid||"").toLowerCase().includes(q) ||
                  String(r.tel||"").includes(q);
   });
 
-  // 2. Sort
   view.sort((a,b)=>{
     let va=a[sortKey], vb=b[sortKey];
     if (typeof va==='string') va=va.toLowerCase();
@@ -128,7 +118,6 @@ function applyFilterSortPaginate(resetPage=false) {
     return 0;
   });
 
-  // 3. Paginate
   const total = view.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   
@@ -170,7 +159,6 @@ function renderTable(totalPages) {
     }
   }
 
-  // Update Pagination UI
   const info = qs("#pageInfo");
   if (info) info.textContent = `หน้า ${page} / ${totalPages} (รวม ${view.length})`;
   
@@ -182,20 +170,15 @@ function renderTable(totalPages) {
 
 /* ---------- Events Setup ---------- */
 function bindEvents() {
-  // Search
   qs("#searchInput")?.addEventListener("input", debounce(()=>applyFilterSortPaginate(true), 300));
-  
-  // Refresh
   qs("#btnRefreshPage")?.addEventListener("click", () => loadPageUsers());
 
-  // Pagination
   qs("#btnPrev")?.addEventListener("click", () => { if(page>1){ page--; renderTable(Math.ceil(view.length/pageSize)); }});
   qs("#btnNext")?.addEventListener("click", () => { 
       const max = Math.ceil(view.length/pageSize);
       if(page < max){ page++; renderTable(max); }
   });
 
-  // Modal Confirm Action
   qs("#btnConfirmAdjust")?.addEventListener("click", submitAdjust);
 }
 
@@ -209,13 +192,13 @@ window.openActionModal = (uid) => {
     qs("#actionUserName").textContent = u.name;
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
-    qs("#radioAdd").checked = true; // default
+    qs("#radioAdd").checked = true;
   
     bootstrap.Modal.getOrCreateInstance(qs('#actionModal')).show();
 };
 
 async function submitAdjust() {
-    const mode = qs('input[name="adjustType"]:checked')?.value; // add / del / reset
+    const mode = qs('input[name="adjustType"]:checked')?.value; 
     const amount = Number(qs("#adjustAmount")?.value || 0);
     const note = qs("#adjustNote")?.value || "";
 
@@ -229,18 +212,17 @@ async function submitAdjust() {
     else if (mode === "del") { action = "adjust"; delta = -amount; }
     else if (mode === "reset") { action = "reset"; }
 
-    // ปิด Modal
     bootstrap.Modal.getInstance(qs('#actionModal'))?.hide();
     
-    // ⭐ ใช้ pageOverlay แทน overlay
+    // ใช้ pageOverlay
     pageOverlay.show("กำลังบันทึก...");
     try {
-      // ⭐ เรียก API ตัวใหม่ที่รวมไฟล์แล้ว
+      // เรียก API admin-actions
       const res = await fetch(API_ACTIONS, {
         method: "POST",
         headers: { "Content-Type":"application/json" },
         body: JSON.stringify({
-          adminUid: MY_UID,
+          adminUid: MY_UID_PAGE, // ส่ง UID แอดมิน
           action,
           targetUid: TARGET_USER.uid,
           delta, 
@@ -251,7 +233,7 @@ async function submitAdjust() {
       if (!res.ok || j.status !== "success") throw new Error(j.message||"Failed");
 
       Swal.fire("สำเร็จ", "บันทึกเรียบร้อย", "success");
-      loadPageUsers(); // โหลดข้อมูลใหม่
+      loadPageUsers();
     } catch (e) {
       console.error(e);
       Swal.fire("ผิดพลาด", e.message, "error");
@@ -299,32 +281,26 @@ window.openHistoryModal = async (uid) => {
 
 /* ---------- Boot / Init ---------- */
 async function boot() {
-    // รันเฉพาะหน้าที่มีตารางสมาชิก
     if (!qs("#adminTableBody")) return;
 
     try {
+        // ใช้ LIFF_ID จาก Global context (ที่ admin.js ประกาศไว้)
         if (typeof liff !== 'undefined') {
-            await liff.init({ liffId: LIFF_ID });
+            await liff.init({ liffId: window.LIFF_ID || "2007053300-QoEvbXyn" });
             if (!liff.isLoggedIn()) { liff.login(); return; }
             const profile = await liff.getProfile();
-            MY_UID = profile.userId;
+            MY_UID_PAGE = profile.userId;
         } else {
-            // Fallback for non-LIFF (PC Testing)
-            MY_UID = sessionStorage.getItem('uid') || localStorage.getItem('uid');
+            MY_UID_PAGE = sessionStorage.getItem('uid') || localStorage.getItem('uid');
         }
-
-        // ⭐ ไม่ Block UID แล้ว ปล่อยให้ API หลังบ้านจัดการเรื่อง Permission
-        // เพื่อป้องกันปัญหา Hardcode UID ไม่ตรง
         
         bindEvents();
         loadPageUsers();
     } catch (e) {
         console.warn("LIFF init warning:", e);
-        // ถ้า LIFF พัง ยังพยายามโหลดต่อ
         bindEvents();
         loadPageUsers();
     }
 }
 
-// เริ่มทำงาน
 document.addEventListener("DOMContentLoaded", boot);
