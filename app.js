@@ -254,17 +254,28 @@ async function initApp(ctx = {}) {
     if (uid) {
       window.__UID = uid;
       sessionStorage.setItem('uid', uid);
+
+      // ⭐ [เพิ่มใหม่ตรงนี้] : อัปเดตลิงก์ปุ่ม "ดูรางวัลทั้งหมด" ให้แนบ UID ไปด้วย
+      // เพื่อให้ User ทั่วไปกดเข้าไปแล้วไม่ต้องล็อกอินใหม่
+      const allRewardsBtn = document.querySelector('a[href*="all-rewards.html"]');
+      if (allRewardsBtn) {
+         const separator = allRewardsBtn.href.includes('?') ? '&' : '?';
+         // ป้องกันการเติมซ้ำ
+         if (!allRewardsBtn.href.includes('uid=')) {
+             allRewardsBtn.href = `${allRewardsBtn.href}${separator}uid=${uid}`;
+         }
+      }
     }
 
     // 3) preflight check
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
     const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
     if (resp.status === 404) {
-     document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
-       .forEach(el => el.classList.add('d-none'));
-     if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-     console.warn('showRegisterModal() not found');
-     return;
+      document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
+        .forEach(el => el.classList.add('d-none'));
+      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
+      console.warn('showRegisterModal() not found');
+      return;
     }
     if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
 

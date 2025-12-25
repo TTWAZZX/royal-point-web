@@ -131,8 +131,16 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 
 <script>
-// ดึง UID
-const getUid = () => localStorage.getItem('uid');
+
+// แก้ฟังก์ชัน getUid ให้ดึงจาก URL เป็นอันดับแรก (Super Safe Mode)
+const getUid = () => {
+  // 1. ลองดึงจาก URL (ที่ส่งมาจากหน้าแรก)
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('uid')) return params.get('uid');
+
+  // 2. ถ้าไม่มี ค่อยลองดึงจาก Session/Local
+  return sessionStorage.getItem('uid') || localStorage.getItem('uid');
+};
 
 /* ===============================
    LOAD REWARDS
