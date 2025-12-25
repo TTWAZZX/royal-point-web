@@ -127,7 +127,7 @@
 
       <div class="tab-pane fade" id="pills-users" role="tabpanel">
         
-        <div class="m-card bg-primary text-white border-0 d-flex align-items-center justify-content-between p-3" 
+        <div class="m-card bg-primary text-white border-0 d-flex align-items-center justify-content-between p-3 mb-3" 
              style="background: linear-gradient(135deg, #0ea5e9, #2563eb);">
           <div>
             <div class="fw-bold"><i class="fa-solid fa-gift me-2"></i>แจกแต้มพิเศษ</div>
@@ -138,11 +138,11 @@
           </button>
         </div>
 
-        <div class="m-card p-2 sticky-top" style="top: 70px; z-index: 10;">
+        <div class="m-card p-2 mb-3">
           <div class="input-group">
-            <span class="input-group-text bg-transparent border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
-            <input type="text" id="searchInput" class="form-control border-0 bg-transparent shadow-none" placeholder="ค้นหาชื่อ, เบอร์...">
-            <button class="btn btn-light rounded-circle" id="btnRefreshPage" style="width:40px; height:40px;">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="text" id="searchInput" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหาชื่อ, เบอร์..." style="font-size: 0.95rem;">
+            <button class="btn btn-light rounded-circle ms-2" id="btnRefreshPage" style="width:40px; height:40px; background:#f1f5f9;">
               <i class="fa-solid fa-rotate-right text-secondary"></i>
             </button>
           </div>
@@ -342,19 +342,67 @@
         }).join('');
     }
 
+    // Update Stock (มี Effect แจ้งเตือน)
     async function updateStock(id, delta) {
         const item = ALL_REWARDS_DATA.find(x => x.id == id);
         if (!item) return;
-        const newStock = Math.max(0, parseInt(item.stock || 0) + delta);
-        if (newStock === item.stock) return;
-        document.getElementById(`stock-val-${id}`).textContent = newStock;
+
+        const oldStock = parseInt(item.stock || 0);
+        const newStock = Math.max(0, oldStock + delta);
+        if (newStock === oldStock) return;
+
+        // --- 1. Visual Feedback (Animation) ---
+        const stockEl = document.getElementById(`stock-val-${id}`);
+        stockEl.textContent = newStock;
+        
+        // เปลี่ยนสีและขยายตัวเลขชั่วคราว
+        stockEl.style.transition = "all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)";
+        stockEl.style.transform = "scale(1.3)";
+        stockEl.style.color = delta > 0 ? "#16a34a" : "#dc2626"; // เขียว/แดง
+        
+        // คืนค่าเดิมหลังจาก 0.3 วินาที
+        setTimeout(() => {
+            stockEl.style.transform = "scale(1)";
+            stockEl.style.color = "";
+        }, 300);
+
+        // อัปเดตข้อมูลในตัวแปร
         item.stock = newStock;
+        if(newStock <= 0) stockEl.classList.add('zero'); else stockEl.classList.remove('zero');
+
         try {
             await Loading.apiFetch('/api/admin-actions', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'reward_update', adminUid: getMyUid(), rewardId: id, rewardData: { stock: newStock } })
-            }, { scope: 'inline' });
-        } catch (err) { console.error(err); }
+                body: JSON.stringify({ 
+                    action: 'reward_update', 
+                    adminUid: getMyUid(), 
+                    rewardId: id, 
+                    rewardData: { stock: newStock } 
+                })
+            }, { scope: 'inline' }); // ไม่ต้องโชว์ Loading ใหญ่
+
+            // --- 2. Toast Notification ---
+            // แจ้งเตือนเล็กๆ ด้านบน
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top',
+                showConfirmButton: false,
+                timer: 1000,
+                timerProgressBar: false
+            });
+            
+            Toast.fire({
+                icon: 'success',
+                title: delta > 0 ? `+${delta} ชิ้น` : `${delta} ชิ้น`
+            });
+
+        } catch (err) { 
+            console.error(err);
+            // ถ้า Error ให้คืนค่าเดิม
+            stockEl.textContent = oldStock;
+            item.stock = oldStock;
+            Swal.fire('ข้อผิดพลาด', 'อัปเดตสต็อกไม่สำเร็จ', 'error');
+        }
     }
 
     async function toggleActive(id, status) {

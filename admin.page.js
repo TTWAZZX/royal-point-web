@@ -39,7 +39,7 @@ function formatDateTime(ts) {
   return d.toLocaleString('th-TH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
-/* ---------- Render List (Mobile Card Style) ---------- */
+/* ---------- Render List (Mobile Friendly - No Avatar) ---------- */
 function renderTable(totalPages) {
   const start = (page-1)*pageSize;
   const end   = Math.min(start + pageSize, view.length);
@@ -51,31 +51,27 @@ function renderTable(totalPages) {
   if (!slice.length) {
       container.innerHTML = `<div class="text-center text-muted py-5"><i class="fa-solid fa-user-slash fa-2x mb-2 opacity-25"></i><br>ไม่พบสมาชิก</div>`;
   } else {
-      // Mobile List View (ไม่ใช่ <table> แล้ว)
+      // แก้ไข: เอา Avatar ออก, ปรับ Layout ให้ชื่ออยู่ซ้ายสุด
       container.innerHTML = slice.map(r => `
-        <div class="m-card p-3 mb-2 d-flex align-items-center justify-content-between">
-          <div class="d-flex align-items-center gap-3 overflow-hidden">
-             <div class="rounded-circle bg-light text-primary d-flex align-items-center justify-content-center fw-bold fs-5 flex-shrink-0" 
-                  style="width:45px; height:45px; border:1px solid #e0f2fe;">
-                ${(r.name || '?').charAt(0).toUpperCase()}
+        <div class="m-card p-3 mb-2 d-flex align-items-center justify-content-between shadow-sm border-0">
+          <div style="min-width:0; flex-grow:1;">
+             <div class="d-flex align-items-center gap-2">
+                <div class="fw-bold text-dark text-truncate" style="font-size:1rem;">${escapeHtml(r.name || 'ไม่ระบุชื่อ')}</div>
+                <div class="badge bg-light text-secondary border fw-normal" style="font-size:0.75rem;">${escapeHtml(r.room || r.tel || 'User')}</div>
              </div>
-             <div style="min-width:0;">
-                <div class="fw-bold text-dark text-truncate" style="font-size:0.95rem;">${escapeHtml(r.name || 'ไม่ระบุชื่อ')}</div>
-                <div class="text-muted small text-truncate">
-                   ${escapeHtml(r.room || r.tel || 'General User')} 
-                   </div>
              </div>
-          </div>
 
-          <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0 ms-2">
-             <div class="badge bg-primary-subtle text-primary rounded-pill px-2" style="font-size:0.85rem;">
-                ${fmt(r.score)} pt
+          <div class="d-flex align-items-center gap-3 flex-shrink-0 ms-2">
+             <div class="text-end">
+                <div class="fw-bold text-primary" style="font-size:1.1rem;">${fmt(r.score)}</div>
+                <div class="small text-muted" style="font-size:0.7rem; margin-top:-2px;">POINTS</div>
              </div>
-             <div class="d-flex gap-1 mt-1">
-                <button class="btn btn-light btn-sm text-secondary border" style="width:32px; height:32px; border-radius:8px;" onclick="openHistoryModal('${r.uid}')">
+             
+             <div class="d-flex gap-1">
+                <button class="btn btn-light btn-sm text-secondary border rounded-3" style="width:36px; height:36px;" onclick="openHistoryModal('${r.uid}')">
                    <i class="fa-solid fa-clock-rotate-left"></i>
                 </button>
-                <button class="btn btn-primary btn-sm text-white" style="width:32px; height:32px; border-radius:8px;" onclick="openActionModal('${r.uid}')">
+                <button class="btn btn-primary btn-sm text-white rounded-3 shadow-sm" style="width:36px; height:36px;" onclick="openActionModal('${r.uid}')">
                    <i class="fa-solid fa-sliders"></i>
                 </button>
              </div>
@@ -115,7 +111,7 @@ async function loadPageUsers() {
 function applyFilterSortPaginate(resetPage=false) {
   const q = (qs("#searchInput")?.value || "").trim().toLowerCase();
   view = rows.filter(r => !q || (r.name||"").toLowerCase().includes(q) || String(r.uid||"").toLowerCase().includes(q));
-  view.sort((a,b)=> b.score - a.score); // Default Sort by Score High->Low
+  view.sort((a,b)=> b.score - a.score);
 
   const totalPages = Math.max(1, Math.ceil(view.length / pageSize));
   if (resetPage) page = 1;
@@ -139,7 +135,7 @@ window.openActionModal = (uid) => {
     const u = rows.find(x => x.uid === uid);
     if (!u) return;
     TARGET_USER = u;
-    qs("#actionUserUID").textContent = u.uid; // โชว์ UID ใน modal ได้ (User ไม่เห็นจากข้างนอก)
+    qs("#actionUserUID").textContent = u.uid;
     qs("#actionUserName").textContent = u.name;
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
@@ -174,7 +170,6 @@ async function submitAdjust() {
 }
 
 window.openHistoryModal = async (uid) => {
-    // โหลด History มาแสดงใน Table
     const tbody = qs("#historyTableBody");
     tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">กำลังโหลด...</td></tr>';
     new bootstrap.Modal(qs('#historyModal')).show();
