@@ -1149,7 +1149,7 @@ function renderRewards(currentScore){
   }
 }
 
-// ฟังก์ชันแลกของรางวัล (แก้ไข: ตัดระบบเช็คซ้ำออก แก้ปัญหาจอกระพริบและแต้มหาย)
+// ฟังก์ชันแลกของรางวัล (ฉบับสมบูรณ์: แก้ปัญหาแต้มหาย + ตัดการเช็คซ้ำ)
 let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
@@ -1183,7 +1183,7 @@ async function redeemReward(reward, btn){
 
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // เช็คคะแนนแบบแม่นยำ (Variables + DOM)
+  // 1. อ่านคะแนนปัจจุบันแบบแม่นยำ (Variables + DOM)
   let scoreNow = 0;
   if (typeof prevScore !== 'undefined') scoreNow = Number(prevScore);
   if (scoreNow === 0 && typeof window.__userBalance === 'number') scoreNow = window.__userBalance;
@@ -1226,6 +1226,12 @@ async function redeemReward(reward, btn){
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
+    // 2. คำนวณแต้มใหม่ และอัปเดตตัวแปรทั้งหมดให้ตรงกัน (แก้บั๊กแต้มหาย)
+    const nextScore = Math.max(0, scoreNow - cost);
+    window.__userBalance = nextScore;
+    window.prevScore = nextScore; // ⭐ สำคัญมาก: ต้องอัปเดตตัวนี้ด้วย ไม่งั้น loadRewards จะเห็นเป็น 0
+    if (typeof prevScore !== 'undefined') prevScore = nextScore; // อัปเดตตัวแปร local ถ้ามี
+
     // ตัดสต็อกใน Cache ทันที
     if (Array.isArray(window.REWARDS_CACHE)) {
         const cacheIndex = window.REWARDS_CACHE.findIndex(r => r.id === id);
@@ -1235,8 +1241,8 @@ async function redeemReward(reward, btn){
         }
     }
 
-    // ตัดแต้มที่หน้าจอทันที (Optimistic Update)
-    optimisticSpend(cost);
+    // อัปเดต UI (ตัวเลขแต้ม)
+    try { setPoints(nextScore); } catch {}
 
     // อัปเดตการ์ดสต็อก (DOM)
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
@@ -1282,10 +1288,7 @@ async function redeemReward(reward, btn){
       alert(`แลก ${name} สำเร็จ!`);
     }
 
-    // ⭐ [จุดสำคัญ] ตัดบรรทัด pollScoreUntil ออกไปเลยครับ ไม่ต้องเช็คซ้ำแล้ว
-    // จะได้ไม่รีเฟรช 4 รอบ และแต้มจะไม่หาย
-    
-    // โหลดแค่อัปเดตสต็อกของรางวัลก็พอ
+    // โหลดแค่อัปเดตสต็อกของรางวัลก็พอ (ตอนนี้ window.prevScore ถูกต้องแล้ว ไม่ต้องกลัวบั๊ก)
     try { await loadRewards({ include: 1, uid: curUid }); } catch {}
 
   }catch(err){
