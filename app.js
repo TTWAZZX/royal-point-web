@@ -1159,7 +1159,7 @@ function renderRewards(currentScore){
   }
 }
 
-// ฟังก์ชันแลกของรางวัล (แก้ไขเรื่องเช็คคะแนนแล้ว)
+// ฟังก์ชันแลกของรางวัล (ฉบับแก้ไข: อ่านคะแนนแม่นยำ 100%)
 let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
@@ -1193,12 +1193,29 @@ async function redeemReward(reward, btn){
 
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // ⭐ [จุดที่แก้ไข] ใช้ window.__userBalance แทน window.prevScore
-  const scoreNow = Number(window.__userBalance || 0);
+  // ⭐ [จุดที่แก้ไข] อ่านคะแนนจาก 3 แหล่ง เพื่อความชัวร์ (ตัวแปร -> Global -> หน้าจอ)
+  let scoreNow = 0;
   
+  // 1. ลองอ่านจากตัวแปร prevScore (ถ้ามี)
+  if (typeof prevScore !== 'undefined') scoreNow = Number(prevScore);
+  
+  // 2. ถ้าเป็น 0 ลองอ่านจาก window.__userBalance
+  if (scoreNow === 0 && typeof window.__userBalance === 'number') scoreNow = window.__userBalance;
+
+  // 3. ถ้ายังเป็น 0 อีก (ไม้ตาย) อ่านจากตัวเลขบนหน้าจอเลย
+  if (scoreNow === 0) {
+      const pointEl = document.getElementById('points');
+      if (pointEl) {
+          // ลบลูกน้ำออกแล้วแปลงเป็นตัวเลข
+          scoreNow = Number(pointEl.textContent.replace(/,/g, '')) || 0;
+      }
+  }
+
+  // Log ดูค่าคะแนน (กด F12 ดูได้ถ้าสงสัย)
+  console.log(`[Redeem] Cost: ${cost}, Current Score: ${scoreNow}`);
+
   if (scoreNow < cost) {
-      console.warn(`Redeem blocked: Score ${scoreNow} < Cost ${cost}`); // Debug ดูใน Console ได้
-      return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+      return toastErr(`คะแนนไม่พอ (มี ${scoreNow} ใช้ ${cost})`);
   }
 
   // Popup ยืนยัน
