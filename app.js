@@ -722,7 +722,12 @@ async function refreshUserScore(opts = {}) {
     return 0;
   }
 
-  const newScore = pickScore(data) ?? 0;
+  // ⭐ [แก้จุดที่ 2] ถ้าหาคะแนนไม่เจอ อย่าเพิ่งปรับเป็น 0 ให้ใช้ของเดิมไปก่อน
+  let newScore = pickScore(data);
+  if (newScore === null) {
+      console.warn('[refreshUserScore] invalid score data, keep previous');
+      newScore = (typeof window.prevScore === 'number') ? window.prevScore : 0;
+  }
 
   // --- commit state (อย่าเซ็ต prevScore ตรงนี้) ---
   window.__userBalance = newScore;
@@ -1166,16 +1171,38 @@ async function redeemReward(reward, btn){
 
   const id   = reward?.id;
   const cost = Math.max(0, Number(reward?.cost) || 0);
-  // ⭐ รับค่าชื่อและรูป (ถ้าไม่มีให้ใช้ค่า default)
-  const name = reward?.name || id; 
-  const img  = reward?.img || '';
+  
+  // ⭐ [FIX 1] ระบบค้นหาชื่อ/รูปสำรอง (Fallback)
+  // กรณีเรียกจากหน้าอื่นแล้วไม่ได้ส่งชื่อ/รูปมา ให้พยายามไปหาเอง
+  let name = reward?.name;
+  let img  = reward?.img;
+
+  if (!name || !img) {
+    // 1. ลองหาใน Cache
+    const cached = (window.REWARDS_CACHE || []).find(r => r.id === id);
+    if (cached) {
+       if (!name) name = cached.name;
+       if (!img)  img  = cached.img;
+    } else {
+       // 2. ถ้าไม่อยู่ใน Cache ลองหาจากการ์ดในหน้าจอ (DOM)
+       const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
+       if (card) {
+          if (!name) name = card.getAttribute('title');
+          if (!img)  img  = card.querySelector('img')?.src;
+       }
+    }
+  }
+  // ค่า Default สุดท้ายถ้าหาไม่เจอจริงๆ
+  name = name || id;
+  img  = img  || '';
 
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  const scoreNow = Number(prevScore || 0);
+  // ตรวจสอบคะแนนที่มีอยู่
+  const scoreNow = Number(window.prevScore || 0);
   if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
-  // ยืนยัน (แสดงชื่อของรางวัลด้วย)
+  // Popup ยืนยัน (แสดงชื่อของรางวัลด้วย)
   const confirmed = window.Swal
     ? (await Swal.fire({
         title: "ยืนยันการแลก?", 
@@ -1204,11 +1231,21 @@ async function redeemReward(reward, btn){
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
+    // ⭐ [FIX 2] อัปเดตสต็อกใน Cache ทันที (ป้องกัน render แล้วสต็อกดีดกลับ)
+    if (Array.isArray(window.REWARDS_CACHE)) {
+        const cacheIndex = window.REWARDS_CACHE.findIndex(r => r.id === id);
+        if (cacheIndex > -1) {
+            let s = window.REWARDS_CACHE[cacheIndex].stock;
+            if (s > 0) window.REWARDS_CACHE[cacheIndex].stock = s - 1;
+        }
+    }
+
     // --- OPTIMISTIC UPDATE ---
     const beforeScore = Number(window.__userBalance || 0);
+    // หักคะแนนหน้าจอทันที
     optimisticSpend(cost);
 
-    // ตัดสต็อกหน้าเว็บทันที
+    // ตัดสต็อกหน้าเว็บทันที (DOM Update)
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
     if (card) {
       const stockEl = card.querySelector(".rp-reward-stock");
@@ -1254,6 +1291,7 @@ async function redeemReward(reward, btn){
       alert(`แลก ${name} สำเร็จ!`);
     }
 
+    // ซิงค์ข้อมูลจริงจาก Server (เผื่อมีอะไรคลาดเคลื่อน)
     try { await pollScoreUntil(curUid, beforeScore, 5, 650); } catch {}
     try { await loadRewards({ include: 1, uid: curUid }); } catch {}
 
