@@ -85,6 +85,28 @@
       border-radius: 8px;
     }
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* เพิ่มต่อท้ายใน <style> */
+    .reward-card.locked { filter: grayscale(1); opacity: 0.8; }
+    .reward-card.locked .reward-footer button { 
+      background-color: #94a3b8; 
+      border-color: #94a3b8; 
+      cursor: not-allowed; 
+    }
+    .reward-card.locked::after {
+      content: "คะแนนไม่พอ";
+      position: absolute; inset: 0;
+      background: rgba(255,255,255,0.3);
+      display: flex; justify-content: center; align-items: center;
+      font-weight: 800; color: #64748b; font-size: 1.1rem; z-index: 20;
+      transform: rotate(-10deg);
+      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    /* ปรับแต่ง soldout ให้ซ้อนทับ locked ได้ */
+    .reward-card.soldout::after {
+      content: "หมดแล้ว";
+      color: #b91c1c;
+    }
   </style>
 </head>
 
@@ -132,38 +154,58 @@
 
 <script>
 
-// แก้ฟังก์ชัน getUid ให้ดึงจาก URL เป็นอันดับแรก (Super Safe Mode)
+// 1. ดึง UID
 const getUid = () => {
-  // 1. ลองดึงจาก URL (ที่ส่งมาจากหน้าแรก)
   const params = new URLSearchParams(window.location.search);
-  if (params.get('uid')) return params.get('uid');
-
-  // 2. ถ้าไม่มี ค่อยลองดึงจาก Session/Local
-  return sessionStorage.getItem('uid') || localStorage.getItem('uid');
+  return params.get('uid') || sessionStorage.getItem('uid') || localStorage.getItem('uid');
 };
 
+// ตัวแปรเก็บคะแนนปัจจุบัน
+let CURRENT_SCORE = 0;
+
 /* ===============================
-   LOAD REWARDS
+   LOAD DATA (Rewards + Score)
 ================================ */
 async function loadAllRewards() {
   const grid = document.getElementById('rewardGrid');
   const skel = document.getElementById('skeletonGrid');
+  const uid  = getUid();
   
   try {
-    // ใช้ Loading.apiFetch แทน fetch ธรรมดา เพื่อได้ Progress Bar ด้านบน
-    const j = await Loading.apiFetch('/api/rewards?include=1', { cache:'no-store' });
+    // ⭐ โหลดทั้งของรางวัล และ คะแนนล่าสุด พร้อมกัน
+    const [rewardsRes, scoreRes] = await Promise.allSettled([
+       Loading.apiFetch('/api/rewards?include=1', {cache:'no-store'}),
+       fetch(`/api/get-score?uid=${uid}`, {cache:'no-store'}).then(r=>r.json())
+    ]);
 
-    const list = (j.items || []).map(x => ({
-      id: x.id,
-      name: x.name,
-      cost: Number(x.cost || 0),
-      img: x.img || 'https://placehold.co/300x300?text=No+Image',
-      stock: Number(x.stock ?? 0),
-      stock_max: Number(x.stock_max ?? 0),
-      sort_index: Number(x.sort_index ?? 999),
-    }));
+    // 1) จัดการคะแนน
+    if (scoreRes.status === 'fulfilled' && scoreRes.value?.data) {
+       // พยายามหาฟิลด์คะแนน
+       const d = scoreRes.value.data;
+       CURRENT_SCORE = Number(d.score || d.points || d.point || d.balance || 0);
+       // บันทึกลง LocalStorage เผื่อใช้ที่อื่น
+       localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
+    } else {
+       // ถ้าโหลดไม่ได้ ให้ใช้ค่าเดิมจากเครื่อง
+       CURRENT_SCORE = Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0);
+    }
 
-    // เรียง: มีของมาก่อน -> ตาม sort_index
+    // 2) จัดการของรางวัล
+    let list = [];
+    if (rewardsRes.status === 'fulfilled') {
+        const j = rewardsRes.value;
+        list = (j.items || j.data || []).map(x => ({
+          id: x.id,
+          name: x.name,
+          cost: Number(x.cost || 0),
+          img: x.img || 'https://placehold.co/300x300?text=No+Image',
+          stock: Number(x.stock ?? 0),
+          stock_max: Number(x.stock_max ?? 0),
+          sort_index: Number(x.sort_index ?? 999),
+        }));
+    }
+
+    // เรียงลำดับ
     list.sort((a,b)=>{
       if (a.stock <= 0 && b.stock > 0) return 1;
       if (b.stock <= 0 && a.stock > 0) return -1;
@@ -172,7 +214,6 @@ async function loadAllRewards() {
 
     renderGrid(list);
 
-    // สลับเอา Skeleton ออก
     skel.classList.add('d-none');
     grid.classList.remove('d-none');
 
@@ -183,23 +224,26 @@ async function loadAllRewards() {
 }
 
 /* ===============================
-   RENDER (แก้ตรงนี้)
+   RENDER GRID
 ================================ */
 function renderGrid(list) {
   const wrap = document.getElementById('rewardGrid');
-  const myPoints = Number(localStorage.getItem('RP_SCORE:'+getUid()) || 0);
-
+  
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
-    
-    // ⭐ แก้ไข 1: ป้องกันชื่อที่มี ' หรือ " ทำโค้ดพัง
-    // เช่น "McDonald's" จะถูกแปลงเป็น "McDonald\'s" เพื่อให้ใส่ใน onclick ได้
-    const safeName = r.name
-        .replace(/'/g, "\\'")   // แก้ single quote
-        .replace(/"/g, "&quot;"); // แก้ double quote
+    const isLocked  = !isSoldOut && (CURRENT_SCORE < r.cost); // ⭐ เช็คคะแนน
+
+    // Escape ชื่อเพื่อความปลอดภัย
+    const safeName = r.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    const safeImg  = r.img.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+
+    // สร้างคลาส
+    let cls = 'reward-card';
+    if (isSoldOut) cls += ' soldout';
+    else if (isLocked) cls += ' locked';
 
     return `
-    <div class="reward-card ${isSoldOut ? 'soldout' : ''}" id="card-${r.id}">
+    <div class="${cls}" id="card-${r.id}">
       <img src="${r.img}" alt="${r.name}" loading="lazy">
       <div class="reward-cost">${r.cost} pt</div>
       
@@ -213,9 +257,9 @@ function renderGrid(list) {
       <div class="reward-footer">
         <button
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          onclick="redeemReward('${r.id}', '${safeName}', ${r.cost})"
-          ${isSoldOut ? 'disabled' : ''}>
-          แลกรางวัล
+          onclick="redeemReward('${r.id}', '${safeName}', ${r.cost}, '${safeImg}')"
+          ${isSoldOut || isLocked ? 'disabled' : ''}>
+          ${isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
         </button>
       </div>
     </div>
@@ -223,21 +267,28 @@ function renderGrid(list) {
 }
 
 /* ===============================
-   REDEEM (แก้ตรงนี้)
+   REDEEM FUNCTION (Updated)
 ================================ */
-async function redeemReward(rewardId, rewardName, cost) {
+async function redeemReward(rewardId, rewardName, cost, rewardImg) {
   const uid = getUid();
   if (!uid) {
     Swal.fire('แจ้งเตือน', 'กรุณากลับไปหน้าหลักเพื่อเข้าสู่ระบบใหม่', 'warning');
     return;
   }
 
+  // 1. เช็คคะแนนฝั่ง Client ก่อนส่ง
+  if (CURRENT_SCORE < cost) {
+    Swal.fire('คะแนนไม่พอ', `คุณมี ${CURRENT_SCORE} คะแนน แต่รางวัลนี้ใช้ ${cost} คะแนน`, 'error');
+    return;
+  }
+
+  // 2. Popup ยืนยันสวยๆ (เหมือนหน้าหลัก)
   const confirm = await Swal.fire({
     title: 'ยืนยันการแลก?',
-    text: `ใช้ ${cost} คะแนน แลก "${rewardName}"`,
+    html: `ต้องการแลก <b>${rewardName}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
     icon: 'question',
     showCancelButton: true,
-    confirmButtonText: 'ยืนยัน',
+    confirmButtonText: 'แลกเลย',
     cancelButtonText: 'ยกเลิก',
     confirmButtonColor: '#198754'
   });
@@ -245,44 +296,37 @@ async function redeemReward(rewardId, rewardName, cost) {
   if (!confirm.isConfirmed) return;
 
   try {
+    // 3. เรียก API
     await Loading.apiFetch('/api/spend', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ uid, rewardId, cost })
     }, { scope: 'overlay', msg: 'กำลังบันทึกข้อมูล...' });
 
-    // --- Update Local Storage คะแนน ---
-    const currentScore = Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0);
-    const newScore = Math.max(0, currentScore - cost);
-    localStorage.setItem(`RP_SCORE:${uid}`, newScore);
+    // 4. ตัดคะแนนในตัวแปร และ LocalStorage ทันที
+    CURRENT_SCORE = Math.max(0, CURRENT_SCORE - cost);
+    localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
     
-    // --- ⭐ Update UI Stock (Optimistic Update) ---
-    // ส่วนนี้จะทำงานทันที ไม่ต้องรอ API Cache
-    const stockEl = document.getElementById(`stock-${rewardId}`);
-    const cardEl = document.getElementById(`card-${rewardId}`);
-    const btnEl = cardEl?.querySelector('button');
+    // 5. อัปเดต UI (ตัดสต็อก + ล็อกปุ่มรางวัลอื่นถ้าคะแนนไม่พอแล้ว)
+    updateUiAfterSpend(rewardId, cost);
 
-    if (stockEl) {
-        // ดึงค่าเก่ามาลบ 1
-        let currentStock = parseInt(stockEl.getAttribute('data-stock') || '0');
-        let maxStock = stockEl.getAttribute('data-max');
-        let newStock = currentStock - 1;
-
-        // อัปเดตค่ากลับเข้าไป
-        stockEl.setAttribute('data-stock', newStock);
-
-        if (newStock <= 0) {
-            // กรณีของหมด
-            stockEl.textContent = "หมดแล้ว";
-            cardEl.classList.add('soldout');
-            if (btnEl) btnEl.disabled = true;
-        } else {
-            // กรณีของยังเหลือ
-            stockEl.textContent = `เหลือ ${newStock}/${maxStock}`;
-        }
-    }
-
-    await Swal.fire('สำเร็จ!', 'แลกของรางวัลเรียบร้อยแล้ว', 'success');
+    // 6. Popup สำเร็จ (มีรูป)
+    await Swal.fire({
+        title: "แลกสำเร็จ! 🎉",
+        imageUrl: rewardImg || undefined,
+        imageWidth: 150,
+        imageHeight: 'auto',
+        imageAlt: rewardName,
+        html: `
+          <h5 class="fw-bold text-dark mt-2">${rewardName}</h5>
+          <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
+          <div class="alert alert-warning small p-2">
+             <i class="fa-solid fa-camera"></i> แคปหน้าจอนี้ไว้เพื่อรับของรางวัล
+          </div>
+        `,
+        confirmButtonText: "ตกลง",
+        confirmButtonColor: "#22c55e"
+    });
 
   } catch (err) {
     console.error(err);
@@ -290,12 +334,57 @@ async function redeemReward(rewardId, rewardName, cost) {
   }
 }
 
-// ฟังก์ชันกดย้อนกลับแล้วบังคับหน้าหลักรีเฟรช
+// อัปเดต UI หน้าจอหลังแลกสำเร็จ (ตัดสต็อก / รีเรนเดอร์ปุ่มล็อค)
+function updateUiAfterSpend(rewardId, cost) {
+    // ตัดสต็อกตัวที่แลก
+    const stockEl = document.getElementById(`stock-${rewardId}`);
+    const cardEl = document.getElementById(`card-${rewardId}`);
+    const btnEl = cardEl?.querySelector('button');
+
+    if (stockEl) {
+        let currentStock = parseInt(stockEl.getAttribute('data-stock') || '0');
+        let maxStock = stockEl.getAttribute('data-max');
+        let newStock = currentStock - 1;
+        stockEl.setAttribute('data-stock', newStock);
+
+        if (newStock <= 0) {
+            stockEl.textContent = "หมดแล้ว";
+            cardEl.classList.add('soldout');
+            if(cardEl.classList.contains('locked')) cardEl.classList.remove('locked'); // เอา locked ออกถ้า soldout แล้ว
+            if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'แลกรางวัล'; }
+        } else {
+            stockEl.textContent = `เหลือ ${newStock}/${maxStock}`;
+        }
+    }
+
+    // วนลูปเช็ครางวัลอื่น: ถ้าคะแนนเหลือน้อยกว่าราคาของ ให้ขึ้น Locked ทันที
+    const allCards = document.querySelectorAll('.reward-card');
+    allCards.forEach(card => {
+        // ข้ามตัวที่หมดแล้ว
+        if (card.classList.contains('soldout')) return;
+
+        // ดึงราคาจาก DOM (แกะจาก text "XX pt" หรือต้องเก็บ data-cost ไว้)
+        // เพื่อความง่าย เราจะดึงจาก HTML ที่ render ไว้ (แนะนำให้เก็บ data-cost ไว้ที่ card ตอน renderGrid)
+        // แต่ในโค้ด renderGrid ข้างบน ผมไม่ได้ใส่ data-cost ไว้ที่ card element หลัก
+        // ดังนั้นเราจะใช้วิธี re-render หรือปรับ class ปุ่มเอา
+        
+        // วิธีง่ายสุด: ดูราคาจาก .reward-cost
+        const costEl = card.querySelector('.reward-cost');
+        if (costEl) {
+            const thisCost = parseInt(costEl.textContent);
+            const btn = card.querySelector('button');
+            if (CURRENT_SCORE < thisCost) {
+                card.classList.add('locked');
+                if (btn) { btn.disabled = true; btn.textContent = 'คะแนนไม่พอ'; }
+            }
+        }
+    });
+}
+
 function goBack(e) {
   e.preventDefault();
-  // set flag ให้หน้าหลักรู้ว่าต้อง reload data
   sessionStorage.setItem('FORCE_REFRESH', '1'); 
-  window.location.href = '/';
+  window.location.href = '/'; // หรือ index.html
 }
 
 // เริ่มทำงาน
