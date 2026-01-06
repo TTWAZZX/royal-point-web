@@ -1140,8 +1140,15 @@ function renderRewards(currentScore){
       if (!card) return;
       const id   = card.dataset.id;
       const cost = Number(card.dataset.cost);
+      
+      // ⭐ เพิ่ม: ดึงชื่อและรูปภาพจากการ์ด
+      const name = card.getAttribute('title') || 'ของรางวัล';
+      const img  = card.querySelector('img')?.src || '';
+
       if (!id || Number.isNaN(cost)) return;
-      await redeemReward({ id, cost }, btn);
+      
+      // ⭐ ส่ง name และ img ไปที่ฟังก์ชัน redeemReward ด้วย
+      await redeemReward({ id, cost, name, img }, btn);
     });
     rewardRailBound = true;
   }
@@ -1159,18 +1166,26 @@ async function redeemReward(reward, btn){
 
   const id   = reward?.id;
   const cost = Math.max(0, Number(reward?.cost) || 0);
+  // ⭐ รับค่าชื่อและรูป (ถ้าไม่มีให้ใช้ค่า default)
+  const name = reward?.name || id; 
+  const img  = reward?.img || '';
+
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
   const scoreNow = Number(prevScore || 0);
   if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
 
-  // ยืนยัน
+  // ยืนยัน (แสดงชื่อของรางวัลด้วย)
   const confirmed = window.Swal
     ? (await Swal.fire({
-        title:"ยืนยันการแลก?", html:`จะใช้ <b>${cost}</b> pt`,
-        icon:"question", showCancelButton:true, confirmButtonText:"แลกเลย"
+        title: "ยืนยันการแลก?", 
+        html: `ต้องการแลก <b>${h(name)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
+        icon: "question", 
+        showCancelButton: true, 
+        confirmButtonText: "แลกเลย",
+        cancelButtonText: "ยกเลิก"
       })).isConfirmed
-    : confirm(`ใช้ ${cost} pt แลกรางวัล ${id}?`);
+    : confirm(`ใช้ ${cost} pt แลกรางวัล ${name}?`);
   if (!confirmed) return;
 
   REDEEMING = true;
@@ -1189,64 +1204,58 @@ async function redeemReward(reward, btn){
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
-    // ------------------------------
-    // 🔥 OPTIMISTIC UPDATE SECTION 🔥
-    // ------------------------------
-
-    // 1) จำ baseline คะแนนก่อน optimistic
+    // --- OPTIMISTIC UPDATE ---
     const beforeScore = Number(window.__userBalance || 0);
-
-    // 2) หักคะแนนบนหน้าจอทันที
     optimisticSpend(cost);
 
-    // 3) ลด stock บนหน้าเว็บทันที ไม่ต้องรอ API reload
+    // ตัดสต็อกหน้าเว็บทันที
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
     if (card) {
       const stockEl = card.querySelector(".rp-reward-stock");
       let stock = Number(card.dataset.stock || 0);
-
       if (stock > 0) {
         stock -= 1;
         card.dataset.stock = stock;
-
         if (stock === 0) {
-          // หมดแล้ว
           stockEl.textContent = "หมดแล้ว";
           card.classList.add("soldout");
           const btnRedeem = card.querySelector(".rp-redeem-btn");
           if (btnRedeem) btnRedeem.disabled = true;
         } else {
-          // มี stock เหลือ
           const max = Number(card.dataset.stockMax || 0);
-          stockEl.textContent = max > 0
-            ? `เหลือ ${stock}/${max} ชิ้น`
-            : `เหลือ ${stock} ชิ้น`;
+          stockEl.textContent = max > 0 ? `เหลือ ${stock}/${max} ชิ้น` : `เหลือ ${stock} ชิ้น`;
         }
       }
     }
 
     UiOverlay.hide();
 
-    // Popup สำเร็จ
+    // ⭐ Popup สำเร็จแบบใหม่ (โชว์รูป + ชื่อ)
     if (window.Swal){
       await Swal.fire({
-        title:"แลกสำเร็จ ✅",
-        html:`ใช้ไป <b>${cost}</b> pt<br><small>แคปหน้าจอนี้ไว้เพื่อนำไปแสดงรับรางวัล</small>`,
-        icon:"success"
+        title: "แลกสำเร็จ! 🎉",
+        // ถ้ามีรูป ให้โชว์รูป
+        imageUrl: img || undefined,
+        imageWidth: 150,
+        imageHeight: 'auto',
+        imageAlt: name,
+        // HTML จัดสวยๆ
+        html: `
+          <h5 class="fw-bold text-dark mt-2">${h(name)}</h5>
+          <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
+          <div class="alert alert-warning small p-2">
+             <i class="fa-solid fa-camera"></i> แคปหน้าจอนี้ไว้เพื่อรับของรางวัล
+          </div>
+        `,
+        confirmButtonText: "ตกลง",
+        confirmButtonColor: "#22c55e"
       });
     } else {
-      alert("แลกสำเร็จ!");
+      alert(`แลก ${name} สำเร็จ!`);
     }
 
-    // 4) Poll เอาคะแนนล่าสุดจาก server (ไม่ต้อง poll stock แล้ว)
-    try {
-      await pollScoreUntil(curUid, beforeScore, 5, 650);
-    } catch {}
-
-    // ⭐ โหลดสต๊อกจาก DB ใหม่หลังจาก apply_points และ update stock แล้ว
-    try {
-      await loadRewards({ include: 1, uid: curUid });
-    } catch {}
+    try { await pollScoreUntil(curUid, beforeScore, 5, 650); } catch {}
+    try { await loadRewards({ include: 1, uid: curUid }); } catch {}
 
   }catch(err){
     console.error(err);
