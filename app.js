@@ -301,20 +301,9 @@ async function initApp(ctx = {}) {
 
     // 6) one-time binds
     if (!window.__MAIN_BOUND) {
+      // เรียก bindUI() แค่ตัวเดียวพอครับ มันจัดการทุกปุ่มให้แล้ว
       if (typeof bindUI === 'function') { try { bindUI(); } catch(e) { console.warn('bindUI failed', e); } }
       window.__MAIN_BOUND = true;
-
-      // ประวัติ
-      document.getElementById('historyBtn')?.addEventListener('click', () => {
-        openHistory && openHistory();
-      });
-
-      // ยืนยันรหัสรับคะแนน
-      document.getElementById('submitCodeBtn')?.addEventListener('click', async () => {
-        const code = (document.getElementById('secretCode')?.value || '').trim();
-        if (!code) return toastErr && toastErr('กรอกรหัสลับก่อน');
-        await redeemCode && redeemCode(code, 'MANUAL');
-      });
     }
 
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
