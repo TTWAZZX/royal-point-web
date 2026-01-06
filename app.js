@@ -476,42 +476,55 @@ async function toggleTorch(on) {
   }
 }
 
+// ฟังก์ชันผูกปุ่มต่างๆ (แก้ไขปุ่มรีเฟรช: บังคับส่งคะแนนให้ของรางวัลทันที)
 function bindUI(){
-  // ปุ่มรีเฟรชคะแนน (แก้ไข: โหลดครั้งเดียว ไม่ Poll 4 รอบ)
+  // 1. ปุ่มรีเฟรชคะแนน (แก้ไขใหม่)
   if (els.btnRefresh && !els.btnRefresh.dataset._rpBound) {
     els.btnRefresh.dataset._rpBound = 1;
     els.btnRefresh.addEventListener("click", async () => {
-      // เพิ่มเอฟเฟกต์หมุนให้รู้ว่ากดแล้ว
-      els.btnRefresh.classList.add('spin'); 
+      // หมุนปุ่ม
+      els.btnRefresh.classList.add('spin');
       
       try {
         await ensureLiffInit(LIFF_ID);
       } catch {}
-      
+
       try {
-        // ⭐ แก้ตรงนี้: ตัด poll: true ออก
-        await refreshUserScore({ bust: true, poll: false });
+        // ⭐ แก้ไข: ดึงคะแนนล่าสุดมาเก็บไว้ในตัวแปรทันที
+        const latestScore = await refreshUserScore({ bust: true, poll: false });
         
+        // ⭐ บังคับอัปเดตตัวแปร Global ทุกตัวให้ตรงกัน (กันเหนียว)
+        window.prevScore = latestScore;
+        window.__userBalance = latestScore;
+
+        // โหลดข้อมูลของรางวัล
         await loadRewards?.();
-        renderRewards?.(Number(window.prevScore || 0));
+        
+        // ⭐ บังคับวาดการ์ดใหม่ด้วยคะแนนที่ได้มาตะกี้ (Direct Injection)
+        if (typeof renderRewards === 'function') {
+             renderRewards(latestScore);
+        }
+
       } catch (e) { 
           console.warn('refresh failed', e); 
+          // Fallback: ถ้า Error จริงๆ ให้อ่านตัวเลขจากหน้าจอมาใช้แทน
+          const domScore = Number(document.getElementById('points')?.textContent.replace(/,/g,'') || 0);
+          if (typeof renderRewards === 'function') renderRewards(domScore);
       } finally {
-          // หยุดหมุนเมื่อเสร็จ
+          // หยุดหมุน
           setTimeout(() => els.btnRefresh.classList.remove('spin'), 500);
       }
     });
   }
 
-  // ปุ่มประวัติ
+  // 2. ปุ่มประวัติ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
-  // ✅ ควบคุมกล้องในโมดัล (กันซ้ำด้วยแฟล็ก + หน่วง 60ms ช่วย iOS)
+  // 3. ควบคุมกล้องในโมดัล
   if (!window.__SCAN_MODAL_WIRED) {
     const scanModalEl = document.getElementById('scoreModal');
     if (scanModalEl) {
       scanModalEl.addEventListener('shown.bs.modal', () => {
-        // หน่วงนิดให้ layout โมดัลนิ่งก่อนค่อย start (แก้อาการ “กด OK แล้วจึงติด” บน iOS)
         setTimeout(() => { startScanner && startScanner(); }, 60);
       });
       scanModalEl.addEventListener('hide.bs.modal',   () => { stopScanner && stopScanner(); });
@@ -520,7 +533,7 @@ function bindUI(){
     window.__SCAN_MODAL_WIRED = true;
   }
 
-  // ปุ่ม start/stop (ควบคุมมือได้)
+  // ปุ่ม start/stop สแกน
   const startBtn = document.getElementById("startScanBtn");
   const stopBtn  = document.getElementById("stopScanBtn");
   startBtn && startBtn.addEventListener("click", () => startScanner && startScanner());
@@ -530,16 +543,12 @@ function bindUI(){
   const torchBtn = document.getElementById("torchBtn");
   if (torchBtn){
     torchBtn.addEventListener("click", async ()=>{
-      try {
-        await toggleTorch(!TORCH_ON);
-        navigator.vibrate?.(8);
-      } catch(e){
-        toastErr("อุปกรณ์นี้ไม่รองรับไฟฉาย");
-      }
+      try { await toggleTorch(!TORCH_ON); navigator.vibrate?.(8); } 
+      catch(e){ toastErr("อุปกรณ์นี้ไม่รองรับไฟฉาย"); }
     });
   }
 
-  // ✅ ปุ่ม “ยืนยันรับคะแนน” (กรอกรหัสลับ)
+  // 4. ปุ่ม Manual Redeem (กรอกรหัส)
   els.submitBtn && els.submitBtn.addEventListener("click", async ()=>{
     const code = (els.secretInput?.value || "").trim();
     if(!code) return toastErr("กรอกรหัสลับก่อน");
@@ -557,7 +566,29 @@ function bindUI(){
     }
   });
 
-  // export ฟังก์ชันกล้องให้เรียกได้จากภายนอกด้วย (เช่นใน HTML)
+  // 5. ⭐ Global Rewards Click (ใส่กลับเข้ามาให้ครับ ไม่งั้นเดี๋ยวแลกของแล้ว Popup ไม่มีรูป)
+  if (!window.__REWARD_DELEGATE_BOUND) {
+    document.addEventListener("click", async (ev) => {
+      const btn = ev.target.closest(".rp-redeem-btn");
+      if (!btn || btn.disabled) return;
+      
+      const card = btn.closest(".rp-reward-card");
+      if (!card) return;
+
+      const id   = card.dataset.id;
+      const cost = Number(card.dataset.cost);
+      const name = card.getAttribute('title') || 'ของรางวัล';
+      const img  = card.querySelector('img')?.src || '';
+
+      if (!id || Number.isNaN(cost)) return;
+      
+      ev.preventDefault();
+      await redeemReward({ id, cost, name, img }, btn);
+    });
+    window.__REWARD_DELEGATE_BOUND = true;
+  }
+  
+  // Scanner exports
   window.startScanner = startScanner;
   window.stopScanner  = stopScanner;
 }
