@@ -1149,7 +1149,7 @@ function renderRewards(currentScore){
   }
 }
 
-// ฟังก์ชันแลกของรางวัล (ฉบับแก้ไข: อ่านคะแนนแม่นยำ 100%)
+// ฟังก์ชันแลกของรางวัล (แก้ไข: ตัดระบบเช็คซ้ำออก แก้ปัญหาจอกระพริบและแต้มหาย)
 let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
@@ -1162,7 +1162,7 @@ async function redeemReward(reward, btn){
   const id   = reward?.id;
   const cost = Math.max(0, Number(reward?.cost) || 0);
   
-  // ระบบค้นหาชื่อ/รูปสำรอง
+  // Fallback ชื่อ/รูป
   let name = reward?.name;
   let img  = reward?.img;
   if (!name || !img) {
@@ -1183,26 +1183,14 @@ async function redeemReward(reward, btn){
 
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // ⭐ [จุดที่แก้ไข] อ่านคะแนนจาก 3 แหล่ง เพื่อความชัวร์ (ตัวแปร -> Global -> หน้าจอ)
+  // เช็คคะแนนแบบแม่นยำ (Variables + DOM)
   let scoreNow = 0;
-  
-  // 1. ลองอ่านจากตัวแปร prevScore (ถ้ามี)
   if (typeof prevScore !== 'undefined') scoreNow = Number(prevScore);
-  
-  // 2. ถ้าเป็น 0 ลองอ่านจาก window.__userBalance
   if (scoreNow === 0 && typeof window.__userBalance === 'number') scoreNow = window.__userBalance;
-
-  // 3. ถ้ายังเป็น 0 อีก (ไม้ตาย) อ่านจากตัวเลขบนหน้าจอเลย
   if (scoreNow === 0) {
       const pointEl = document.getElementById('points');
-      if (pointEl) {
-          // ลบลูกน้ำออกแล้วแปลงเป็นตัวเลข
-          scoreNow = Number(pointEl.textContent.replace(/,/g, '')) || 0;
-      }
+      if (pointEl) scoreNow = Number(pointEl.textContent.replace(/,/g, '')) || 0;
   }
-
-  // Log ดูค่าคะแนน (กด F12 ดูได้ถ้าสงสัย)
-  console.log(`[Redeem] Cost: ${cost}, Current Score: ${scoreNow}`);
 
   if (scoreNow < cost) {
       return toastErr(`คะแนนไม่พอ (มี ${scoreNow} ใช้ ${cost})`);
@@ -1238,7 +1226,7 @@ async function redeemReward(reward, btn){
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
-    // อัปเดตสต็อกทันที
+    // ตัดสต็อกใน Cache ทันที
     if (Array.isArray(window.REWARDS_CACHE)) {
         const cacheIndex = window.REWARDS_CACHE.findIndex(r => r.id === id);
         if (cacheIndex > -1) {
@@ -1247,10 +1235,10 @@ async function redeemReward(reward, btn){
         }
     }
 
-    // หักคะแนนหน้าจอทันที
+    // ตัดแต้มที่หน้าจอทันที (Optimistic Update)
     optimisticSpend(cost);
 
-    // อัปเดตการ์ดหน้าจอ (DOM)
+    // อัปเดตการ์ดสต็อก (DOM)
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
     if (card) {
       const stockEl = card.querySelector(".rp-reward-stock");
@@ -1272,7 +1260,7 @@ async function redeemReward(reward, btn){
 
     UiOverlay.hide();
 
-    // Popup สำเร็จ (มีรูป)
+    // Popup สำเร็จ
     if (window.Swal){
       await Swal.fire({
         title: "แลกสำเร็จ! 🎉",
@@ -1294,8 +1282,10 @@ async function redeemReward(reward, btn){
       alert(`แลก ${name} สำเร็จ!`);
     }
 
-    // Sync ข้อมูลจริง
-    try { await pollScoreUntil(curUid, window.__userBalance, 5, 650); } catch {}
+    // ⭐ [จุดสำคัญ] ตัดบรรทัด pollScoreUntil ออกไปเลยครับ ไม่ต้องเช็คซ้ำแล้ว
+    // จะได้ไม่รีเฟรช 4 รอบ และแต้มจะไม่หาย
+    
+    // โหลดแค่อัปเดตสต็อกของรางวัลก็พอ
     try { await loadRewards({ include: 1, uid: curUid }); } catch {}
 
   }catch(err){
