@@ -477,18 +477,29 @@ async function toggleTorch(on) {
 }
 
 function bindUI(){
-    // ปุ่มรีเฟรชคะแนน (เวอร์ชันฉลาด: bust + poll)
+  // ปุ่มรีเฟรชคะแนน (แก้ไข: โหลดครั้งเดียว ไม่ Poll 4 รอบ)
   if (els.btnRefresh && !els.btnRefresh.dataset._rpBound) {
     els.btnRefresh.dataset._rpBound = 1;
     els.btnRefresh.addEventListener("click", async () => {
+      // เพิ่มเอฟเฟกต์หมุนให้รู้ว่ากดแล้ว
+      els.btnRefresh.classList.add('spin'); 
+      
       try {
         await ensureLiffInit(LIFF_ID);
       } catch {}
+      
       try {
-        await refreshUserScore({ bust: true, poll: true, pollTries: 3, pollInterval: 500 });
+        // ⭐ แก้ตรงนี้: ตัด poll: true ออก
+        await refreshUserScore({ bust: true, poll: false });
+        
         await loadRewards?.();
         renderRewards?.(Number(window.prevScore || 0));
-      } catch (e) { console.warn('refresh failed', e); }
+      } catch (e) { 
+          console.warn('refresh failed', e); 
+      } finally {
+          // หยุดหมุนเมื่อเสร็จ
+          setTimeout(() => els.btnRefresh.classList.remove('spin'), 500);
+      }
     });
   }
 
