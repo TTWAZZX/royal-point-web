@@ -651,7 +651,7 @@ function showAdminEntry(isAdmin) {
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
 
-// ===== refreshUserScore (patched, with bust & poll) =====
+// ฟังก์ชันโหลดคะแนน (ฉบับแก้ไข: ห้ามรีเซ็ตเป็น 0 ถ้าโหลดพลาด)
 async function refreshUserScore(opts = {}) {
   const { bust=false, poll=false, pollTries=5, pollInterval=600 } = opts;
 
@@ -661,15 +661,8 @@ async function refreshUserScore(opts = {}) {
     localStorage.getItem('uid') ||
     '';
 
-  // ไม่มี uid → รีเซ็ตแบบปลอดภัย
-  if (!uid) {
-    console.warn('[refreshUserScore] missing uid');
-    els?.points && (els.points.textContent = '0');
-    document.getElementById('xpPair')
-      ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
-    try { window.setLastUpdated?.(Date.now(), true); } catch {}
-    return 0;
-  }
+  // ถ้าไม่มี UID จริงๆ ถึงจะยอมให้เป็น 0
+  if (!uid) return 0;
 
   // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
@@ -686,12 +679,9 @@ async function refreshUserScore(opts = {}) {
   };
 
   let fromCache = false, data = null;
-
-  // สร้าง URL พร้อม cache-bust ถ้าขอ
   const bustQS = bust ? `&_=${Date.now()}` : '';
   const url = `${API_GET_SCORE}?uid=${encodeURIComponent(uid)}${bustQS}`;
 
-  // 1) ลองเรียก API ปกติ (บังคับไม่แคช)
   try {
     const res  = await fetch(url, {
       cache: 'no-store',
@@ -703,40 +693,41 @@ async function refreshUserScore(opts = {}) {
     });
     const json = await res.json().catch(() => null);
     if (!res.ok || !json || json?.status === 'error') {
+      // ถ้า Error จาก Server (เช่น 500, 502) ให้ถือว่าโหลดพลาด
       throw new Error(json?.message || `HTTP ${res.status}`);
     }
     data = json;
   } catch (e) {
-    console.warn('[refreshUserScore] fetch failed → fallback memory cache', e);
-    if (Number.isFinite(Number(window.__userBalance))) {
-      data = { score: Number(window.__userBalance) };
-      fromCache = true;
+    console.warn('[refreshUserScore] fetch failed, keeping previous score', e);
+    // ⭐ [จุดแก้สำคัญ 1] ถ้าโหลดพลาด อย่าเพิ่งรีเซ็ตเป็น 0 ให้ใช้ค่าเดิมไปก่อน!
+    if (typeof window.__userBalance === 'number') {
+        return window.__userBalance; 
     }
+    return 0; // ถ้าไม่มีค่าเดิมเลยจริงๆ ค่อยยอมคืนค่า 0
   }
 
+  // ⭐ [จุดแก้สำคัญ 2] ถ้า data เป็น null (โหลดไม่ได้) ให้ใช้ค่าเดิม ห้ามปรับเป็น 0
   if (!data) {
-    els?.points && (els.points.textContent = '0');
-    document.getElementById('xpPair')
-      ?.replaceChildren(document.createTextNode('0 / 0 คะแนน'));
-    try { window.setLastUpdated?.(Date.now(), true); } catch {}
+    if (typeof window.__userBalance === 'number') return window.__userBalance;
     return 0;
   }
 
-  // ⭐ [แก้จุดที่ 2] ถ้าหาคะแนนไม่เจอ อย่าเพิ่งปรับเป็น 0 ให้ใช้ของเดิมไปก่อน
   let newScore = pickScore(data);
-  if (newScore === null) {
-      console.warn('[refreshUserScore] invalid score data, keep previous');
-      newScore = (typeof window.prevScore === 'number') ? window.prevScore : 0;
+  
+  // ⭐ [จุดแก้สำคัญ 3] ถ้าค่าที่ได้มาไม่ใช่ตัวเลข (undefined/null) ให้ใช้ค่าเดิม
+  if (newScore === null || isNaN(newScore)) {
+      if (typeof window.__userBalance === 'number') return window.__userBalance;
+      newScore = 0;
   }
 
-  // --- commit state (อย่าเซ็ต prevScore ตรงนี้) ---
+  // --- commit state ---
   window.__userBalance = newScore;
   try { cacheScore?.(uid, newScore); } catch {}
 
-  // อัปเดตการ์ดโปรไฟล์/ธีม/แถบ ฯลฯ ให้ครบ ผ่าน setPoints()
+  // อัปเดต UI (การ์ด/หลอดเลือด/ตัวเลข)
   try { setPoints(newScore); } catch (e) { console.warn('setPoints failed', e); }
 
-  // ===== คำนวณคู่ตัวเลขความคืบหน้า =====
+  // คำนวณ XP Pair
   let need = Number(data?.need ?? data?.next_need);
   let cur  = Number(data?.current ?? newScore);
   let max  = Number(data?.max ?? data?.target);
@@ -754,9 +745,7 @@ async function refreshUserScore(opts = {}) {
         need = 0;
       }
     } catch {
-      max  = newScore || 1;
-      cur  = newScore;
-      need = 0;
+      max  = newScore || 1; cur = newScore; need = 0;
     }
   }
 
@@ -767,7 +756,8 @@ async function refreshUserScore(opts = {}) {
 
   // ถ้าขอ poll เพื่อตามคะแนนจริงหลังทำธุรกรรม
   if (poll) {
-    try { await pollScoreUntil(uid, newScore, pollTries, pollInterval); } catch {}
+    // ลดความถี่การ Poll ลงนิดนึงเพื่อกัน Server รับภาระหนักเกินไป (เป็น 1 วินาที)
+    try { await pollScoreUntil(uid, newScore, pollTries, 1000); } catch {}
   }
 
   return newScore;
