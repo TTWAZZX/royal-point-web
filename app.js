@@ -1159,7 +1159,7 @@ function renderRewards(currentScore){
   }
 }
 
-// กันกดซ้ำ
+// ฟังก์ชันแลกของรางวัล (แก้ไขเรื่องเช็คคะแนนแล้ว)
 let REDEEMING = false;
 async function redeemReward(reward, btn){
   if (REDEEMING) return;
@@ -1172,19 +1172,15 @@ async function redeemReward(reward, btn){
   const id   = reward?.id;
   const cost = Math.max(0, Number(reward?.cost) || 0);
   
-  // ⭐ [FIX 1] ระบบค้นหาชื่อ/รูปสำรอง (Fallback)
-  // กรณีเรียกจากหน้าอื่นแล้วไม่ได้ส่งชื่อ/รูปมา ให้พยายามไปหาเอง
+  // ระบบค้นหาชื่อ/รูปสำรอง
   let name = reward?.name;
   let img  = reward?.img;
-
   if (!name || !img) {
-    // 1. ลองหาใน Cache
     const cached = (window.REWARDS_CACHE || []).find(r => r.id === id);
     if (cached) {
        if (!name) name = cached.name;
        if (!img)  img  = cached.img;
     } else {
-       // 2. ถ้าไม่อยู่ใน Cache ลองหาจากการ์ดในหน้าจอ (DOM)
        const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
        if (card) {
           if (!name) name = card.getAttribute('title');
@@ -1192,17 +1188,20 @@ async function redeemReward(reward, btn){
        }
     }
   }
-  // ค่า Default สุดท้ายถ้าหาไม่เจอจริงๆ
   name = name || id;
   img  = img  || '';
 
   if (!id || !cost) return toastErr("ข้อมูลรางวัลไม่ถูกต้อง");
 
-  // ตรวจสอบคะแนนที่มีอยู่
-  const scoreNow = Number(window.prevScore || 0);
-  if (scoreNow < cost) return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+  // ⭐ [จุดที่แก้ไข] ใช้ window.__userBalance แทน window.prevScore
+  const scoreNow = Number(window.__userBalance || 0);
+  
+  if (scoreNow < cost) {
+      console.warn(`Redeem blocked: Score ${scoreNow} < Cost ${cost}`); // Debug ดูใน Console ได้
+      return toastErr("คะแนนไม่พอสำหรับรางวัลนี้");
+  }
 
-  // Popup ยืนยัน (แสดงชื่อของรางวัลด้วย)
+  // Popup ยืนยัน
   const confirmed = window.Swal
     ? (await Swal.fire({
         title: "ยืนยันการแลก?", 
@@ -1210,6 +1209,7 @@ async function redeemReward(reward, btn){
         icon: "question", 
         showCancelButton: true, 
         confirmButtonText: "แลกเลย",
+        confirmButtonColor: "#3085d6",
         cancelButtonText: "ยกเลิก"
       })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${name}?`);
@@ -1231,7 +1231,7 @@ async function redeemReward(reward, btn){
     if (payload?.status !== "success")
       throw new Error(payload?.message || "spend failed");
 
-    // ⭐ [FIX 2] อัปเดตสต็อกใน Cache ทันที (ป้องกัน render แล้วสต็อกดีดกลับ)
+    // อัปเดตสต็อกทันที
     if (Array.isArray(window.REWARDS_CACHE)) {
         const cacheIndex = window.REWARDS_CACHE.findIndex(r => r.id === id);
         if (cacheIndex > -1) {
@@ -1240,12 +1240,10 @@ async function redeemReward(reward, btn){
         }
     }
 
-    // --- OPTIMISTIC UPDATE ---
-    const beforeScore = Number(window.__userBalance || 0);
     // หักคะแนนหน้าจอทันที
     optimisticSpend(cost);
 
-    // ตัดสต็อกหน้าเว็บทันที (DOM Update)
+    // อัปเดตการ์ดหน้าจอ (DOM)
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
     if (card) {
       const stockEl = card.querySelector(".rp-reward-stock");
@@ -1267,16 +1265,14 @@ async function redeemReward(reward, btn){
 
     UiOverlay.hide();
 
-    // ⭐ Popup สำเร็จแบบใหม่ (โชว์รูป + ชื่อ)
+    // Popup สำเร็จ (มีรูป)
     if (window.Swal){
       await Swal.fire({
         title: "แลกสำเร็จ! 🎉",
-        // ถ้ามีรูป ให้โชว์รูป
         imageUrl: img || undefined,
         imageWidth: 150,
         imageHeight: 'auto',
         imageAlt: name,
-        // HTML จัดสวยๆ
         html: `
           <h5 class="fw-bold text-dark mt-2">${h(name)}</h5>
           <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
@@ -1291,14 +1287,14 @@ async function redeemReward(reward, btn){
       alert(`แลก ${name} สำเร็จ!`);
     }
 
-    // ซิงค์ข้อมูลจริงจาก Server (เผื่อมีอะไรคลาดเคลื่อน)
-    try { await pollScoreUntil(curUid, beforeScore, 5, 650); } catch {}
+    // Sync ข้อมูลจริง
+    try { await pollScoreUntil(curUid, window.__userBalance, 5, 650); } catch {}
     try { await loadRewards({ include: 1, uid: curUid }); } catch {}
 
   }catch(err){
     console.error(err);
     UiOverlay.hide();
-    toastErr("แลกไม่สำเร็จ");
+    toastErr("แลกไม่สำเร็จ: " + (err.message || "Error"));
   }finally{
     setBtnLoading(btn, false);
     REDEEMING = false;
