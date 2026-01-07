@@ -336,7 +336,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// 2. ฟังก์ชันโหลดข้อมูล (จำลอง หรือ เรียก API)
+// ฟังก์ชันโหลดข้อมูล (แก้ใหม่: ตัดตัวแปลงที่ทำให้ข้อมูลเพี้ยนออก)
 async function loadRedemptionHistory() {
     const area = document.getElementById('historyListArea');
     if(!area) return;
@@ -344,17 +344,16 @@ async function loadRedemptionHistory() {
     area.innerHTML = `
       <div class="text-center py-5 text-muted">
         <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
-        <div>กำลังโหลดข้อมูลจาก Server...</div>
+        <div>กำลังโหลดข้อมูล...</div>
       </div>`;
 
     try {
-        // ⭐ เรียกใช้ API admin-actions ของเดิมที่มีอยู่
         const res = await fetch('/api/admin-actions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                action: 'get_history',  // ส่ง action ใหม่ที่เราเพิ่งเพิ่ม
-                adminUid: ADMIN_UID     // ส่ง ID admin ไปยืนยันตัวตน
+                action: 'get_history',
+                adminUid: ADMIN_UID
             })
         });
 
@@ -362,16 +361,8 @@ async function loadRedemptionHistory() {
         
         if (json.status !== 'success') throw new Error(json.message);
 
-        // แปลงข้อมูลจาก DB ให้อยู่ในฟอร์แมตที่หน้าเว็บเราใช้
-        HISTORY_DATA = (json.data || []).map(item => ({
-            id: item.id,
-            date: item.created_at,
-            user: item.profiles?.name || 'ไม่ระบุชื่อ', // ดึงชื่อจากตาราง profiles ที่ join มา
-            uid: item.uid, // (ถ้า API return uid มาด้วย)
-            reward: item.note || 'ของรางวัล', // ปกติ note จะเก็บชื่อของรางวัลไว้
-            cost: Math.abs(item.amount), // แปลงเป็นค่าบวก
-            status: 'completed'
-        }));
+        // ⭐ ใช้ข้อมูลดิบจาก Server เลย (เพราะเราจัด Format มาดีแล้วจากข้อ 1)
+        HISTORY_DATA = json.data || [];
 
         renderHistoryList(HISTORY_DATA);
 
@@ -384,7 +375,7 @@ async function loadRedemptionHistory() {
     }
 }
 
-// 3. ฟังก์ชันแสดงผล (ใช้ Style เดียวกับ m-card)
+// ฟังก์ชันแสดงผล (แก้ใหม่: โชว์รูปรางวัล + ชื่อผู้ใช้ตัวใหญ่)
 function renderHistoryList(list) {
     const area = document.getElementById('historyListArea');
     if(!area) return;
@@ -399,32 +390,35 @@ function renderHistoryList(list) {
     }
 
     area.innerHTML = list.map(item => {
+        // แปลงวันที่
         const d = new Date(item.date);
-        const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
-        const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
         return `
         <div class="m-card mb-2">
             <div class="d-flex justify-content-between align-items-start mb-2">
-                <div class="d-flex align-items-center gap-2">
-                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width:40px; height:40px; color:#64748b;">
-                        <i class="fa-solid fa-gift"></i>
+                <div class="d-flex align-items-center gap-3">
+                    
+                    <div class="position-relative">
+                        <img src="${item.reward_img}" class="rounded-3 border bg-light" 
+                             style="width:55px; height:55px; object-fit:contain;">
                     </div>
+
                     <div>
-                        <div class="fw-bold text-dark" style="font-size:0.95rem;">${item.reward}</div>
-                        <div class="small text-muted">
-                           <i class="fa-regular fa-user me-1"></i>${item.user}
+                        <div class="fw-bold text-dark" style="font-size:1rem;">${item.reward_name}</div>
+                        
+                        <div class="text-primary small fw-semibold">
+                           <i class="fa-regular fa-user me-1"></i>${item.user_name}
                         </div>
+                        
+                        <div class="text-muted" style="font-size:0.65rem;">UID: ${item.user_uid.substring(0, 10)}...</div>
                     </div>
                 </div>
+
                 <div class="text-end">
                     <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2">-${item.cost} pt</span>
-                    <div class="text-muted mt-1" style="font-size:0.7rem;">${dateStr} ${timeStr}</div>
+                    <div class="text-muted mt-1" style="font-size:0.7rem;">${dateStr}</div>
                 </div>
-            </div>
-            <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-2">
-                <div class="small text-muted text-truncate" style="max-width: 150px;">UID: ${item.uid}</div>
-                <div class="small text-success fw-bold"><i class="fa-solid fa-check-circle me-1"></i>สำเร็จ</div>
             </div>
         </div>
         `;

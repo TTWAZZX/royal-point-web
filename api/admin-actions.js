@@ -92,29 +92,11 @@ module.exports = async (req, res) => {
     }
 
     // ==================================================
-    // ⭐ CASE D: จัดการของรางวัล (เพิ่มใหม่ สำหรับ Stock Manager)
-    // ==================================================
-    else if (action === 'reward_update') {
-      if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
-      
-      // อัปเดตข้อมูลลง Table 'rewards' โดยตรง
-      const { data, error } = await supabaseAdmin
-        .from('rewards')
-        .update(rewardData)
-        .eq('id', rewardId)
-        .select()
-      
-      if (error) throw error
-      
-      return res.status(200).json({ status: 'success', data })
-    }
-
-    // ==================================================
-    // ⭐ CASE E: ดึงประวัติการแลก (แก้ให้ตรงกับตาราง redemptions)
+    // ⭐ CASE E: ดึงประวัติการแลก (แบบสมบูรณ์: ชื่อ + รูป)
     // ==================================================
     else if (action === 'get_history') {
       
-      // ดึงจากตาราง redemptions โดยตรง และ Join เอาชื่อผู้ใช้กับชื่อรางวัลมาด้วย
+      // ดึงข้อมูล Join 3 ตาราง: redemptions, users, rewards
       const { data, error } = await supabaseAdmin
         .from('redemptions') 
         .select(`
@@ -122,25 +104,28 @@ module.exports = async (req, res) => {
            created_at,
            cost,
            status,
-           users:user_id ( name, uid ), 
-           rewards:reward_id ( name )
+           users:user_id ( name, uid, picture_url ), 
+           rewards:reward_id ( name, img_url )
         `)
         .order('created_at', { ascending: false })
         .limit(50)
 
-      if (error) {
-         console.error('Fetch history error:', error); // log error ไว้ดูใน vercel ได้
-         throw error;
-      }
+      if (error) throw error
       
-      // จัดรูปแบบข้อมูลส่งกลับไปหน้าบ้าน
+      // จัดระเบียบข้อมูลส่งกลับให้หน้าบ้านใช้ง่ายๆ
       const formatted = (data || []).map(row => ({
          id: row.id,
          date: row.created_at,
-         // ถ้า user หรือ reward ถูกลบไปแล้ว ให้แสดง fallback text
-         user: row.users?.name || 'ไม่ระบุชื่อ',
-         uid:  row.users?.uid  || 'N/A',
-         reward: row.rewards?.name || 'ของรางวัล (ลบแล้ว)', 
+         
+         // ข้อมูลผู้ใช้
+         user_name: row.users?.name || 'ไม่ระบุชื่อ',
+         user_uid:  row.users?.uid  || 'N/A',
+         user_img:  row.users?.picture_url || '',
+         
+         // ข้อมูลของรางวัล (ดึงรูปมาด้วย)
+         reward_name: row.rewards?.name || 'ของรางวัล (ลบแล้ว)', 
+         reward_img:  row.rewards?.img_url || 'https://placehold.co/100?text=No+Image', // รูป default
+         
          cost: row.cost,
          status: row.status
       }))
