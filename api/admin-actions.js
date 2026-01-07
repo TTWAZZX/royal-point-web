@@ -91,6 +91,63 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'success', data })
     }
 
+    // ==================================================
+    // ⭐ CASE D: จัดการของรางวัล (เพิ่มใหม่ สำหรับ Stock Manager)
+    // ==================================================
+    else if (action === 'reward_update') {
+      if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
+      
+      // อัปเดตข้อมูลลง Table 'rewards' โดยตรง
+      const { data, error } = await supabaseAdmin
+        .from('rewards')
+        .update(rewardData)
+        .eq('id', rewardId)
+        .select()
+      
+      if (error) throw error
+      
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    // ==================================================
+    // ⭐ CASE E: ดึงประวัติการแลก (เพิ่มใหม่ตรงนี้ครับ)
+    // ==================================================
+    else if (action === 'get_history') {
+      
+      // ดึงข้อมูลจากตาราง Log (ปกติชื่อ point_logs หรือ transactions)
+      // และ Join กับตาราง users เพื่อเอาชื่อคนแลกมาด้วย
+      const { data, error } = await supabaseAdmin
+        .from('point_logs')  // ⚠️ เช็คชื่อตาราง Log ของคุณ (อาจจะเป็น 'logs', 'transactions', 'point_history')
+        .select(`
+           id,
+           created_at,
+           amount,
+           note,
+           action,
+           users:user_id ( name, uid ) 
+        `)
+        // กรองเฉพาะรายการที่เกี่ยวกับการแลกของ (แก้คำว่า 'redeem' ให้ตรงกับที่คุณบันทึก)
+        // ถ้าไม่แน่ใจ ให้ลบบรรทัด .in() ออก เพื่อดึงมาดูทั้งหมดก่อน
+        .in('action', ['redeem', 'spend']) 
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) throw error
+      
+      // จัด Format ข้อมูลเล็กน้อยก่อนส่งกลับ (เพื่อให้หน้าบ้านใช้ง่าย)
+      const formatted = (data || []).map(row => ({
+         id: row.id,
+         date: row.created_at,
+         user: row.users?.name || 'Unknown', // ดึงชื่อจากตาราง users
+         uid:  row.users?.uid  || 'N/A',
+         reward: row.note || 'Redemption',
+         cost: Math.abs(row.amount),
+         status: 'completed'
+      }))
+
+      return res.status(200).json({ status: 'success', data: formatted })
+    }
+
     else {
       return res.status(400).json({ status: 'error', message: 'Invalid action' })
     }
