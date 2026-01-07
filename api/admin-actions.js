@@ -110,39 +110,39 @@ module.exports = async (req, res) => {
     }
 
     // ==================================================
-    // ⭐ CASE E: ดึงประวัติการแลก (เพิ่มใหม่ตรงนี้ครับ)
+    // ⭐ CASE E: ดึงประวัติการแลก (แก้ให้ตรงกับตาราง redemptions)
     // ==================================================
     else if (action === 'get_history') {
       
-      // ดึงข้อมูลจากตาราง Log (ปกติชื่อ point_logs หรือ transactions)
-      // และ Join กับตาราง users เพื่อเอาชื่อคนแลกมาด้วย
+      // ดึงจากตาราง redemptions โดยตรง และ Join เอาชื่อผู้ใช้กับชื่อรางวัลมาด้วย
       const { data, error } = await supabaseAdmin
-        .from('point_logs')  // ⚠️ เช็คชื่อตาราง Log ของคุณ (อาจจะเป็น 'logs', 'transactions', 'point_history')
+        .from('redemptions') 
         .select(`
            id,
            created_at,
-           amount,
-           note,
-           action,
-           users:user_id ( name, uid ) 
+           cost,
+           status,
+           users:user_id ( name, uid ), 
+           rewards:reward_id ( name )
         `)
-        // กรองเฉพาะรายการที่เกี่ยวกับการแลกของ (แก้คำว่า 'redeem' ให้ตรงกับที่คุณบันทึก)
-        // ถ้าไม่แน่ใจ ให้ลบบรรทัด .in() ออก เพื่อดึงมาดูทั้งหมดก่อน
-        .in('action', ['redeem', 'spend']) 
         .order('created_at', { ascending: false })
         .limit(50)
 
-      if (error) throw error
+      if (error) {
+         console.error('Fetch history error:', error); // log error ไว้ดูใน vercel ได้
+         throw error;
+      }
       
-      // จัด Format ข้อมูลเล็กน้อยก่อนส่งกลับ (เพื่อให้หน้าบ้านใช้ง่าย)
+      // จัดรูปแบบข้อมูลส่งกลับไปหน้าบ้าน
       const formatted = (data || []).map(row => ({
          id: row.id,
          date: row.created_at,
-         user: row.users?.name || 'Unknown', // ดึงชื่อจากตาราง users
+         // ถ้า user หรือ reward ถูกลบไปแล้ว ให้แสดง fallback text
+         user: row.users?.name || 'ไม่ระบุชื่อ',
          uid:  row.users?.uid  || 'N/A',
-         reward: row.note || 'Redemption',
-         cost: Math.abs(row.amount),
-         status: 'completed'
+         reward: row.rewards?.name || 'ของรางวัล (ลบแล้ว)', 
+         cost: row.cost,
+         status: row.status
       }))
 
       return res.status(200).json({ status: 'success', data: formatted })
