@@ -92,11 +92,10 @@ module.exports = async (req, res) => {
     }
 
     // ==================================================
-    // ⭐ CASE E: ดึงประวัติการแลก (แบบสมบูรณ์: ชื่อ + รูป)
+    // ⭐ CASE E: ดึงประวัติการแลก (แก้ให้ตรง DB เป๊ะๆ)
     // ==================================================
     else if (action === 'get_history') {
       
-      // ดึงข้อมูล Join 3 ตาราง: redemptions, users, rewards
       const { data, error } = await supabaseAdmin
         .from('redemptions') 
         .select(`
@@ -104,27 +103,31 @@ module.exports = async (req, res) => {
            created_at,
            cost,
            status,
-           users:user_id ( name, uid, picture_url ), 
-           rewards:reward_id ( name, img_url )
+           users:user_id ( name, uid ),
+           rewards:reward_id ( name, img_url ) 
         `)
+        // หมายเหตุ: 
+        // 1. users: ไม่ดึงรูปภาพเพราะใน DB ไม่มีคอลัมน์รูป
+        // 2. rewards: ดึง img_url (ตามรูป table rewards ของคุณ)
         .order('created_at', { ascending: false })
         .limit(50)
 
-      if (error) throw error
+      if (error) {
+         console.error('Fetch history error:', error);
+         throw error;
+      }
       
-      // จัดระเบียบข้อมูลส่งกลับให้หน้าบ้านใช้ง่ายๆ
+      // จัด Format ข้อมูล
       const formatted = (data || []).map(row => ({
          id: row.id,
          date: row.created_at,
          
-         // ข้อมูลผู้ใช้
          user_name: row.users?.name || 'ไม่ระบุชื่อ',
          user_uid:  row.users?.uid  || 'N/A',
-         user_img:  row.users?.picture_url || '',
+         user_img:  '', // ใน DB ไม่มีรูป ก็ปล่อยว่างไว้ เดี๋ยวหน้าบ้านใส่ Default ให้
          
-         // ข้อมูลของรางวัล (ดึงรูปมาด้วย)
          reward_name: row.rewards?.name || 'ของรางวัล (ลบแล้ว)', 
-         reward_img:  row.rewards?.img_url || 'https://placehold.co/100?text=No+Image', // รูป default
+         reward_img:  row.rewards?.img_url || 'https://placehold.co/100?text=No+Image', // ใช้ img_url
          
          cost: row.cost,
          status: row.status

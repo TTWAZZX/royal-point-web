@@ -375,7 +375,6 @@ async function loadRedemptionHistory() {
     }
 }
 
-// ฟังก์ชันแสดงผล (แก้ใหม่: โชว์รูปรางวัล + ชื่อผู้ใช้ตัวใหญ่)
 function renderHistoryList(list) {
     const area = document.getElementById('historyListArea');
     if(!area) return;
@@ -390,9 +389,17 @@ function renderHistoryList(list) {
     }
 
     area.innerHTML = list.map(item => {
-        // แปลงวันที่
-        const d = new Date(item.date);
-        const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        // จัดรูปแบบวันที่
+        let dateStr = '-';
+        try {
+            const d = new Date(item.date);
+            if(!isNaN(d.getTime())) {
+                dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+            }
+        } catch(e) {}
+
+        // รูปผู้ใช้ (ใช้รูป Default เสมอ เพราะใน DB ไม่มีเก็บ)
+        const userAvatar = 'https://placehold.co/100?text=User';
 
         return `
         <div class="m-card mb-2">
@@ -401,17 +408,19 @@ function renderHistoryList(list) {
                     
                     <div class="position-relative">
                         <img src="${item.reward_img}" class="rounded-3 border bg-light" 
-                             style="width:55px; height:55px; object-fit:contain;">
+                             style="width:55px; height:55px; object-fit:contain;"
+                             onerror="this.src='https://placehold.co/100?text=Err'">
                     </div>
 
                     <div>
                         <div class="fw-bold text-dark" style="font-size:1rem;">${item.reward_name}</div>
                         
-                        <div class="text-primary small fw-semibold">
-                           <i class="fa-regular fa-user me-1"></i>${item.user_name}
+                        <div class="d-flex align-items-center gap-1 mt-1">
+                           <img src="${userAvatar}" class="rounded-circle border" style="width:20px; height:20px;">
+                           <span class="text-primary small fw-semibold">${item.user_name}</span>
                         </div>
                         
-                        <div class="text-muted" style="font-size:0.65rem;">UID: ${item.user_uid.substring(0, 10)}...</div>
+                        <div class="text-muted" style="font-size:0.65rem; margin-left:24px;">UID: ${item.user_uid.substring(0, 8)}...</div>
                     </div>
                 </div>
 
