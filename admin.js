@@ -375,6 +375,7 @@ async function loadRedemptionHistory() {
     }
 }
 
+// ฟังก์ชันแสดงผล (admin.js) - ฉบับ Clean (ซ่อนรูป user/UID)
 function renderHistoryList(list) {
     const area = document.getElementById('historyListArea');
     if(!area) return;
@@ -398,9 +399,6 @@ function renderHistoryList(list) {
             }
         } catch(e) {}
 
-        // รูปผู้ใช้ (ใช้รูป Default เสมอ เพราะใน DB ไม่มีเก็บ)
-        const userAvatar = 'https://placehold.co/100?text=User';
-
         return `
         <div class="m-card mb-2">
             <div class="d-flex justify-content-between align-items-start mb-2">
@@ -415,12 +413,9 @@ function renderHistoryList(list) {
                     <div>
                         <div class="fw-bold text-dark" style="font-size:1rem;">${item.reward_name}</div>
                         
-                        <div class="d-flex align-items-center gap-1 mt-1">
-                           <img src="${userAvatar}" class="rounded-circle border" style="width:20px; height:20px;">
-                           <span class="text-primary small fw-semibold">${item.user_name}</span>
+                        <div class="text-muted small mt-1">
+                           <i class="fa-solid fa-user-check me-1 text-success"></i> ${item.user_name}
                         </div>
-                        
-                        <div class="text-muted" style="font-size:0.65rem; margin-left:24px;">UID: ${item.user_uid.substring(0, 8)}...</div>
                     </div>
                 </div>
 
