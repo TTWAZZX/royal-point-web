@@ -344,30 +344,43 @@ async function loadRedemptionHistory() {
     area.innerHTML = `
       <div class="text-center py-5 text-muted">
         <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
-        <div>กำลังโหลดข้อมูล...</div>
+        <div>กำลังโหลดข้อมูลจาก Server...</div>
       </div>`;
 
     try {
-        // ⭐ TODO: เปลี่ยน URL ตรงนี้เป็น API จริงของคุณ เช่น '/api/admin/redemption-history'
-        // const res = await fetch('/api/admin/redemption-history');
-        // const json = await res.json();
-        // HISTORY_DATA = json.data || [];
+        // ⭐ เรียกใช้ API admin-actions ของเดิมที่มีอยู่
+        const res = await fetch('/api/admin-actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'get_history',  // ส่ง action ใหม่ที่เราเพิ่งเพิ่ม
+                adminUid: ADMIN_UID     // ส่ง ID admin ไปยืนยันตัวตน
+            })
+        });
 
-        // --- MOCK DATA (ใช้ทดสอบไปก่อน) ---
-        await new Promise(r => setTimeout(r, 600)); // จำลองดีเลย์
-        HISTORY_DATA = [
-            { id: 1, date: new Date().toISOString(), user: 'สมชาย ใจดี', uid: 'U123...', reward: 'ปากกาน้องไข่', cost: 70, img: 'https://placehold.co/100', status: 'completed' },
-            { id: 2, date: new Date(Date.now()-3600000).toISOString(), user: 'Sattaya', uid: 'U456...', reward: 'กระเป๋าผ้าลดโลกร้อน', cost: 150, img: 'https://placehold.co/100', status: 'completed' },
-            { id: 3, date: new Date(Date.now()-86400000).toISOString(), user: 'User007', uid: 'U789...', reward: 'แก้วน้ำเก็บความเย็น', cost: 300, img: 'https://placehold.co/100', status: 'completed' },
-            { id: 4, date: new Date(Date.now()-186400000).toISOString(), user: 'Guest', uid: 'U999...', reward: 'คูปองส่วนลด', cost: 50, img: 'https://placehold.co/100', status: 'completed' },
-        ];
-        // --------------------------------
+        const json = await res.json();
+        
+        if (json.status !== 'success') throw new Error(json.message);
+
+        // แปลงข้อมูลจาก DB ให้อยู่ในฟอร์แมตที่หน้าเว็บเราใช้
+        HISTORY_DATA = (json.data || []).map(item => ({
+            id: item.id,
+            date: item.created_at,
+            user: item.profiles?.name || 'ไม่ระบุชื่อ', // ดึงชื่อจากตาราง profiles ที่ join มา
+            uid: item.uid, // (ถ้า API return uid มาด้วย)
+            reward: item.note || 'ของรางวัล', // ปกติ note จะเก็บชื่อของรางวัลไว้
+            cost: Math.abs(item.amount), // แปลงเป็นค่าบวก
+            status: 'completed'
+        }));
 
         renderHistoryList(HISTORY_DATA);
 
     } catch (err) {
         console.error(err);
-        area.innerHTML = `<div class="text-center text-danger py-5">โหลดข้อมูลไม่สำเร็จ</div>`;
+        area.innerHTML = `<div class="text-center text-danger py-5">
+            <i class="fa-solid fa-triangle-exclamation mb-2"></i><br>
+            โหลดข้อมูลไม่สำเร็จ: ${err.message}
+        </div>`;
     }
 }
 
