@@ -109,6 +109,11 @@
           <i class="fa-solid fa-ticket me-1"></i> คูปอง
         </button>
       </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-history" id="tabHistoryBtn">
+          <i class="fa-solid fa-clock-rotate-left me-1"></i> ประวัติ
+        </button>
+      </li>
     </ul>
 
     <div class="tab-content" id="pills-tabContent">
@@ -183,6 +188,25 @@
         </ul>
 
         <div id="couponList" class="pb-5"></div>
+      </div>
+
+      <div class="tab-pane fade" id="pills-history" role="tabpanel">
+        <div class="m-card p-2 mb-3">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="text" id="historySearch" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหาชื่อผู้ใช้ หรือ ของรางวัล..." style="font-size: 0.95rem;" onkeyup="filterHistory()">
+            <button class="btn btn-light rounded-circle ms-2" onclick="loadRedemptionHistory()" style="width:40px; height:40px; background:#f1f5f9;">
+              <i class="fa-solid fa-rotate-right text-secondary"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="historyListArea" class="pb-5">
+          <div class="text-center py-5 text-muted">
+            <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
+            <div>กำลังโหลดข้อมูล...</div>
+          </div>
+        </div>
       </div>
 
     </div>

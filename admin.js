@@ -318,3 +318,113 @@ function bindGlobalEvents() {
     });
   });
 }
+
+// ==========================================
+//ส่วนเสริม: ประวัติการแลกของรางวัล (History)
+// ==========================================
+
+let HISTORY_DATA = [];
+
+// 1. ผูก Event เมื่อกด Tab "ประวัติ" ให้โหลดข้อมูลทันที
+document.addEventListener("DOMContentLoaded", () => {
+    const histBtn = document.getElementById('tabHistoryBtn');
+    if(histBtn) {
+        histBtn.addEventListener('shown.bs.tab', () => {
+            // โหลดข้อมูลเมื่อกดแท็บครั้งแรก (ถ้ายังไม่มีข้อมูล)
+            if(HISTORY_DATA.length === 0) loadRedemptionHistory();
+        });
+    }
+});
+
+// 2. ฟังก์ชันโหลดข้อมูล (จำลอง หรือ เรียก API)
+async function loadRedemptionHistory() {
+    const area = document.getElementById('historyListArea');
+    if(!area) return;
+
+    area.innerHTML = `
+      <div class="text-center py-5 text-muted">
+        <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
+        <div>กำลังโหลดข้อมูล...</div>
+      </div>`;
+
+    try {
+        // ⭐ TODO: เปลี่ยน URL ตรงนี้เป็น API จริงของคุณ เช่น '/api/admin/redemption-history'
+        // const res = await fetch('/api/admin/redemption-history');
+        // const json = await res.json();
+        // HISTORY_DATA = json.data || [];
+
+        // --- MOCK DATA (ใช้ทดสอบไปก่อน) ---
+        await new Promise(r => setTimeout(r, 600)); // จำลองดีเลย์
+        HISTORY_DATA = [
+            { id: 1, date: new Date().toISOString(), user: 'สมชาย ใจดี', uid: 'U123...', reward: 'ปากกาน้องไข่', cost: 70, img: 'https://placehold.co/100', status: 'completed' },
+            { id: 2, date: new Date(Date.now()-3600000).toISOString(), user: 'Sattaya', uid: 'U456...', reward: 'กระเป๋าผ้าลดโลกร้อน', cost: 150, img: 'https://placehold.co/100', status: 'completed' },
+            { id: 3, date: new Date(Date.now()-86400000).toISOString(), user: 'User007', uid: 'U789...', reward: 'แก้วน้ำเก็บความเย็น', cost: 300, img: 'https://placehold.co/100', status: 'completed' },
+            { id: 4, date: new Date(Date.now()-186400000).toISOString(), user: 'Guest', uid: 'U999...', reward: 'คูปองส่วนลด', cost: 50, img: 'https://placehold.co/100', status: 'completed' },
+        ];
+        // --------------------------------
+
+        renderHistoryList(HISTORY_DATA);
+
+    } catch (err) {
+        console.error(err);
+        area.innerHTML = `<div class="text-center text-danger py-5">โหลดข้อมูลไม่สำเร็จ</div>`;
+    }
+}
+
+// 3. ฟังก์ชันแสดงผล (ใช้ Style เดียวกับ m-card)
+function renderHistoryList(list) {
+    const area = document.getElementById('historyListArea');
+    if(!area) return;
+
+    if (list.length === 0) {
+        area.innerHTML = `
+          <div class="text-center py-5 text-muted opacity-50">
+            <i class="fa-solid fa-box-open fa-3x mb-2"></i>
+            <div>ไม่พบประวัติการแลก</div>
+          </div>`;
+        return;
+    }
+
+    area.innerHTML = list.map(item => {
+        const d = new Date(item.date);
+        const dateStr = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+        const timeStr = d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+        return `
+        <div class="m-card mb-2">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="bg-light rounded-circle d-flex align-items-center justify-content-center" style="width:40px; height:40px; color:#64748b;">
+                        <i class="fa-solid fa-gift"></i>
+                    </div>
+                    <div>
+                        <div class="fw-bold text-dark" style="font-size:0.95rem;">${item.reward}</div>
+                        <div class="small text-muted">
+                           <i class="fa-regular fa-user me-1"></i>${item.user}
+                        </div>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2">-${item.cost} pt</span>
+                    <div class="text-muted mt-1" style="font-size:0.7rem;">${dateStr} ${timeStr}</div>
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-2">
+                <div class="small text-muted text-truncate" style="max-width: 150px;">UID: ${item.uid}</div>
+                <div class="small text-success fw-bold"><i class="fa-solid fa-check-circle me-1"></i>สำเร็จ</div>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+// 4. ฟังก์ชันค้นหา (Filter)
+window.filterHistory = () => {
+    const term = document.getElementById('historySearch').value.toLowerCase();
+    const filtered = HISTORY_DATA.filter(x => 
+        (x.user && x.user.toLowerCase().includes(term)) ||
+        (x.reward && x.reward.toLowerCase().includes(term)) ||
+        (x.uid && x.uid.toLowerCase().includes(term))
+    );
+    renderHistoryList(filtered);
+};
