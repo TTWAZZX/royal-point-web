@@ -1,31 +1,38 @@
 const { supabaseAdmin } = require('../lib/supabase')
 
-// ใส่ LINE Channel Access Token ของคุณที่นี่ (หรือใส่ใน .env จะปลอดภัยกว่า)
-const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || "C6KcTxzglAJNBgmfwLu6PnjVJSZbxSE09O3pk81FZVxWuHOv0BLvHN44pRA81EikZUDf+omi6mKoq+12sVg2aqKpbhryNMvSBnTWawXgmwA1u+kHrA7DmtqaAvUQP/gKbVKJ2a4Hggwe8Un2Rd0CIQdB04t89/1O/w1cDnyilFU=";
+// ✅ ดึง Token จาก Vercel (ปลอดภัยที่สุด)
+const LINE_ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 
 module.exports = async (req, res) => {
   try {
-    // 1. ตรวจสอบความปลอดภัย (Optional: เช็ค Secret Key เพื่อกันคนนอกกดเล่น)
-    // if (req.query.key !== process.env.CRON_SECRET) return res.status(401).send('Unauthorized');
+    // ตรวจสอบว่ามี Token หรือยัง
+    if (!LINE_ACCESS_TOKEN) {
+      console.error("❌ ไม่พบ LINE_CHANNEL_ACCESS_TOKEN ในการตั้งค่า Vercel");
+      return res.status(500).json({ error: "Server config error: Missing LINE Token" });
+    }
 
     const REWARD_AMOUNT = 100; // จำนวนแต้มที่จะแจก
     const currentYear = new Date().getFullYear();
 
-    // 2. เรียก SQL แจกแต้ม
+    // 1. เรียก SQL แจกแต้ม (Database Function)
+    // ตรวจสอบให้แน่ใจว่าใน Supabase มีฟังก์ชัน 'process_birthday_rewards' แล้ว
     const { data: users, error } = await supabaseAdmin.rpc('process_birthday_rewards', {
       p_amount: REWARD_AMOUNT,
       p_year: currentYear
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Database RPC Error:", error);
+      throw error;
+    }
 
     if (!users || users.length === 0) {
       return res.status(200).json({ message: 'No birthdays today' });
     }
 
-    // 3. ส่ง LINE ให้ทุกคนที่ได้รับรางวัล (Push Message)
+    // 2. ส่ง LINE Push Message ให้ทุกคนที่ได้รางวัล
     const results = await Promise.all(users.map(async (u) => {
-      const lineUid = u.uid; // หรือ u.line_uid ตามที่ return มา
+      const lineUid = u.uid; 
       if (!lineUid) return null;
 
       try {
@@ -45,7 +52,7 @@ module.exports = async (req, res) => {
                   type: "bubble",
                   hero: {
                     type: "image",
-                    url: "https://lh3.googleusercontent.com/d/1nxeogrQNzIO8Vv2L3g8HKBRCZ61W4TnK", // รูปเค้กสวยๆ
+                    url: "https://lh3.googleusercontent.com/d/1nxeogrQNzIO8Vv2L3g8HKBRCZ61W4TnK", 
                     size: "full",
                     aspectRatio: "20:13",
                     aspectMode: "cover"
@@ -63,7 +70,7 @@ module.exports = async (req, res) => {
                       },
                       {
                         type: "text",
-                        text: `สุขสันต์วันเกิดคุณ ${u.name || 'ลูกค้า'}`,
+                        text: `สุขสันต์วันเกิดคุณ ${u.name || 'สมาชิก'}`,
                         margin: "md",
                         size: "md"
                       },
@@ -85,7 +92,7 @@ module.exports = async (req, res) => {
                         action: {
                           type: "uri",
                           label: "เช็คคะแนนสะสม",
-                          uri: "https://liff.line.me/2007053300-QoEvbXyn" // ใส่ LIFF Link ของคุณ
+                          uri: "https://liff.line.me/2007053300-QoEvbXyn" // เช็ค LIFF ID ของคุณให้ถูกต้อง
                         },
                         style: "primary",
                         color: "#1DB446"
