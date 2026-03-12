@@ -161,8 +161,7 @@ const LOCAL_ADMIN_UIDS = [];
 // ตัวช่วย: ตรวจสิทธิ์จาก server ถ้ามี endpoint ให้ใช้ (optional)
 async function checkAdminFromServer(uid) {
   try {
-    // ถ้ามี endpoint จริงให้แก้ URL ตรงนี้ เช่น /api/admin-check?uid=
-    const r = await fetch(`/api/admin-check?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
+    const r = await fetch(`/api/admin-actions?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
     if (!r.ok) return false;
     const j = await r.json();
     // รองรับหลายรูปแบบผลลัพธ์

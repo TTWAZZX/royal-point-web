@@ -2,6 +2,13 @@ const { supabaseAdmin, getRedis } = require('../lib/supabase')
 const redis = getRedis()
 
 module.exports = async (req, res) => {
+  // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
+  if (req.method === 'GET') {
+    const { uid } = req.query
+    if (!uid || !process.env.ADMIN_UID) return res.json({ isAdmin: false })
+    return res.json({ isAdmin: uid === process.env.ADMIN_UID })
+  }
+
   // 1. ตรวจสอบ Method
   if (req.method !== 'POST') return res.status(405).json({ status: 'error', message: 'Method not allowed' })
 
