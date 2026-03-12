@@ -59,13 +59,14 @@ module.exports = async (req, res) => {
     /* ===============================
        ATOMIC STOCK DECREASE (LOCK)
     ================================ */
-    const { error: eStock } = await supabaseAdmin
+    const { data: stockData, error: eStock } = await supabaseAdmin
       .from('rewards')
       .update({ stock: reward.stock - 1 })
       .eq('id', reward.id)
       .eq('stock', reward.stock) // ⭐ ตัวกันแลกซ้อนของจริง
+      .select('id')
 
-    if (eStock) {
+    if (eStock || !stockData || stockData.length === 0) {
       return res.status(409).json({ status:'error', message:'stock_conflict' })
     }
 

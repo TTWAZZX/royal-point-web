@@ -25,10 +25,10 @@ window.setupLiffGuard = async function setupLiffGuard(opts) {
       liff.getProfile(),
       liff.getIDToken()
     ]);
-    const lineUserId = profile?.userId || '';
 
-    // ใช้ uid จากแอป ถ้าไม่มีให้ใช้ lineUserId ตรง ๆ
-    let uid = window.__UID || sessionStorage.getItem('uid') || lineUserId;
+    // UID ต้องมาจาก LIFF เท่านั้น ห้ามรับจาก storage ที่ user แก้ได้
+    const uid = profile?.userId || '';
+    if (!uid) throw new Error('Cannot retrieve user ID from LINE');
     window.__UID = uid;
     sessionStorage.setItem('uid', uid);
 

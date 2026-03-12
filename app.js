@@ -21,7 +21,7 @@ let CURRENT_UID =
   '';
 
 // ========== DEBUG UTIL ==========
-const DEBUG = true;
+const DEBUG = false;
 const dlog = (...a) => { if (DEBUG) console.log('[RP]', ...a); };
 
 function getArrFromResponse(res) {
@@ -55,11 +55,8 @@ function h(str) {
 }
 
 
-// ===== Admin allowlist (วางบนสุดของ app.js) =====
-const ADMIN_UIDS = [
-  "Ucadb3c0f63ada96c0432a0aede267ff9", // ← UID ของคุณ
-  // เพิ่ม UID คนอื่น ๆ ได้ที่นี่
-];
+// ===== Admin allowlist (UID ถูกย้ายไปตรวจที่ server-side แล้ว) =====
+const ADMIN_UIDS = [];
 
 /** Elements */
 const $ = (x)=>document.getElementById(x);
@@ -158,12 +155,8 @@ function setAppLoading(on){
   if (sk) sk.style.display = on ? 'block' : 'none';
 }
 
-// ==== Admin FAB control (copy-paste) ====
-// ตั้ง whitelist ไว้ในไฟล์นี้ก่อน (เพิ่ม/ลบได้ตามต้องการ)
-const LOCAL_ADMIN_UIDS = [
-  'Ucadb3c0f63ada96c0432a0aede267ff9', // <- UID ของคุณ
-  // 'Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', // เพิ่มคนอื่นได้
-];
+// ==== Admin FAB control — ตรวจสิทธิ์ผ่าน server เท่านั้น ====
+const LOCAL_ADMIN_UIDS = [];
 
 // ตัวช่วย: ตรวจสิทธิ์จาก server ถ้ามี endpoint ให้ใช้ (optional)
 async function checkAdminFromServer(uid) {

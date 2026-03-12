@@ -8,10 +8,9 @@ module.exports = async (req, res) => {
   // 2. รับค่า (เพิ่ม rewardId และ rewardData เข้ามาสำหรับฟังก์ชันใหม่)
   const { action, adminUid, targetUid, amount, delta, note, rewardId, rewardData } = req.body || {}
 
-  // *ควรเช็ค ADMIN_UID จาก env เพื่อความปลอดภัย (ถ้ามี)*
-  // if (adminUid !== process.env.ADMIN_UID) return res.status(403).json(...)
-
-  if (!adminUid) return res.status(400).json({ status: 'error', message: 'Missing adminUid' })
+  if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+    return res.status(403).json({ status: 'error', message: 'Forbidden' })
+  }
 
   try {
     let rpcName = ''
@@ -77,11 +76,20 @@ module.exports = async (req, res) => {
     // ==================================================
     else if (action === 'reward_update') {
       if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
-      
+
+      // whitelist เฉพาะ field ที่ admin แก้ได้ — ป้องกัน mass-assignment
+      const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
+      const safeData = Object.fromEntries(
+        Object.entries(rewardData || {}).filter(([k]) => ALLOWED_REWARD_FIELDS.includes(k))
+      )
+      if (Object.keys(safeData).length === 0) {
+        return res.status(400).json({ status: 'error', message: 'No valid fields to update' })
+      }
+
       // อัปเดตข้อมูลลง Table 'rewards' โดยตรง (เช่น active, stock, name, cost)
       const { data, error } = await supabaseAdmin
         .from('rewards')
-        .update(rewardData) // รับ object ที่ต้องการแก้มาเลย
+        .update(safeData)
         .eq('id', rewardId)
         .select()
       

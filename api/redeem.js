@@ -7,9 +7,9 @@ module.exports = async (req, res) => {
       return res.status(405).json({ status: 'error', message: 'Method not allowed' });
     }
 
-    const { uid, code, points } = req.body || {};
-    if (!uid || (!code && typeof points !== 'number')) {
-      return res.status(400).json({ status: 'error', message: 'uid and (code or points) required' });
+    const { uid, code } = req.body || {};
+    if (!uid || !code) {
+      return res.status(400).json({ status: 'error', message: 'uid and code required' });
     }
 
     // หา user
@@ -70,20 +70,6 @@ module.exports = async (req, res) => {
         return res.status(500).json({ status: 'error', message: 'apply_points_failed' });
       }
 
-    } else {
-      // กรณีเพิ่มแต้มตรง ๆ (admin / ระบบ)
-      add = Number(points) || 0;
-
-      const { error } = await supabaseAdmin.rpc('apply_points', {
-        p_user: user.id,
-        p_amount: add,
-        p_code: 'direct',
-        p_type: 'POINT_ADD',
-        p_actor: uid
-      });
-      if (error) {
-        return res.status(500).json({ status: 'error', message: 'apply_points_failed' });
-      }
     }
 
     // ล้าง cache คะแนนของผู้ใช้

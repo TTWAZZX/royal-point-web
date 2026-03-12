@@ -104,7 +104,8 @@ async function loadPageUsers() {
   if(container && !rows.length) container.innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary"></div><div class="mt-2 text-muted small">กำลังโหลดข้อมูล...</div></div>';
   
   try {
-    const res = await fetch(`${API_LIST}?ts=${Date.now()}`, { cache: "no-store" });
+    const adminUid = getCurrentAdminUid();
+    const res = await fetch(`${API_LIST}?adminUid=${encodeURIComponent(adminUid || '')}&ts=${Date.now()}`, { cache: "no-store" });
     const json = await res.json();
     if (json.status !== "success") throw new Error(json.message || "Load failed");
 

@@ -4,6 +4,11 @@ module.exports = async (req, res) => {
   try {
     if (req.method !== 'GET') return res.status(405).json({ status:'error', message:'Method not allowed' })
 
+    const { adminUid } = req.query
+    if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+      return res.status(403).json({ status:'error', message:'Forbidden' })
+    }
+
     const { data, error } = await supabaseAdmin
       .from('users')
       .select('uid,name,room,dob,passport,tel, user_points(balance)')

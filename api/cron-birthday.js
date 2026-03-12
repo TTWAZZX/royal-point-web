@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
       if (!lineUid) return null;
 
       try {
-        await fetch('https://api.line.me/v2/bot/message/push', {
+        const lineRes = await fetch('https://api.line.me/v2/bot/message/push', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
                   type: "bubble",
                   hero: {
                     type: "image",
-                    url: "https://lh3.googleusercontent.com/d/1nxeogrQNzIO8Vv2L3g8HKBRCZ61W4TnK", 
+                    url: "https://lh3.googleusercontent.com/d/1nxeogrQNzIO8Vv2L3g8HKBRCZ61W4TnK",
                     size: "full",
                     aspectRatio: "20:13",
                     aspectMode: "cover"
@@ -92,7 +92,7 @@ module.exports = async (req, res) => {
                         action: {
                           type: "uri",
                           label: "เช็คคะแนนสะสม",
-                          uri: "https://liff.line.me/2007053300-QoEvbXyn" // เช็ค LIFF ID ของคุณให้ถูกต้อง
+                          uri: "https://liff.line.me/2007053300-QoEvbXyn"
                         },
                         style: "primary",
                         color: "#1DB446"
@@ -104,6 +104,11 @@ module.exports = async (req, res) => {
             ]
           })
         });
+        if (!lineRes.ok) {
+          const errBody = await lineRes.text();
+          console.error(`LINE API error for ${lineUid}: ${lineRes.status}`, errBody);
+          return { uid: lineUid, status: 'failed', code: lineRes.status };
+        }
         return { uid: lineUid, status: 'sent' };
       } catch (err) {
         console.error(`Failed to send LINE to ${lineUid}`, err);
