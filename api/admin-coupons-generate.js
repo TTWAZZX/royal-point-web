@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { randomBytes } from 'crypto';
+const { createClient } = require('@supabase/supabase-js');
+const { randomBytes } = require('crypto');
 
 function genCode(len = 6) {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -9,7 +9,7 @@ function genCode(len = 6) {
   return s;
 }
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' });
   }
@@ -48,5 +48,12 @@ export default async function handler(req, res) {
     return res.status(500).json({ status: 'error', message: error.message });
   }
 
-  return res.status(200).json({ status: 'success', data: { inserted: rows.length } });
-}
+  return res.status(200).json({
+    status: 'success',
+    created: rows.length,
+    data: {
+      inserted: rows.length,
+      codes: rows.map(row => row.code)
+    }
+  });
+};

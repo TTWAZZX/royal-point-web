@@ -12,11 +12,13 @@ const LIFF_ID_ADMIN     = "2007053300-QoEvbXyn"; // ตั้งชื่อไ�
 const API_COUPON_LIST   = "/api/admin-coupons";
 const API_COUPON_GEN    = "/api/admin-coupons-generate";
 const API_ADMIN_ACTIONS = "/api/admin-actions";
+const API_AUDIT_LOGS    = "/api/admin-audit-logs";
 
 // ============ STATE ============
 let ADMIN_UID = "";
 let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
+let AUDIT_ROWS = [];
 
 // ============ UI Helper ============
 const $id = (x) => document.getElementById(x);
@@ -154,6 +156,9 @@ function renderCoupons() {
              </button>
              <button class="btn btn-primary-soft text-primary border-0" onclick="openQrModal('${c.code}')" title="QR Code">
                <i class="fa-solid fa-qrcode"></i>
+             </button>
+             <button class="btn btn-light border text-danger" onclick="deleteCoupon('${c.code}')" title="ลบคูปองที่ยังไม่ใช้">
+               <i class="fa-regular fa-trash-can"></i>
              </button>` 
              : '<button class="btn btn-light disabled border-0"><i class="fa-solid fa-lock text-muted"></i></button>'}
           </div>
@@ -334,6 +339,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if(HISTORY_DATA.length === 0) loadRedemptionHistory();
         });
     }
+
+    const auditBtn = document.getElementById('tabAuditBtn');
+    if (auditBtn) {
+        auditBtn.addEventListener('shown.bs.tab', () => {
+            if (AUDIT_ROWS.length === 0) loadAuditLogs();
+        });
+    }
 });
 
 // ฟังก์ชันโหลดข้อมูล (แก้ใหม่: ตัดตัวแปลงที่ทำให้ข้อมูลเพี้ยนออก)
@@ -438,4 +450,138 @@ window.filterHistory = () => {
         (x.uid && x.uid.toLowerCase().includes(term))
     );
     renderHistoryList(filtered);
+};
+
+function escapeAuditHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+  }[ch]));
+}
+
+function formatAuditDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('th-TH', {
+    timeZone: 'Asia/Bangkok',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+async function loadAuditLogs() {
+  const area = document.getElementById('auditListArea');
+  if (!area) return;
+
+  area.innerHTML = `
+    <div class="text-center py-5 text-muted">
+      <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
+      <div>กำลังโหลดบันทึกระบบ...</div>
+    </div>`;
+
+  try {
+    const res = await fetch(`${API_AUDIT_LOGS}?adminUid=${encodeURIComponent(ADMIN_UID || '')}&limit=100&t=${Date.now()}`, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
+
+    AUDIT_ROWS = Array.isArray(json.data) ? json.data : [];
+    renderAuditLogs(AUDIT_ROWS, json.warning);
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-danger m-3">โหลดบันทึกระบบไม่สำเร็จ: ${escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function renderAuditLogs(list, warning = '') {
+  const area = document.getElementById('auditListArea');
+  if (!area) return;
+
+  if (!list.length) {
+    area.innerHTML = `
+      <div class="text-center py-5 text-muted opacity-75">
+        <i class="fa-solid fa-clipboard-list fa-2x mb-3 opacity-25"></i><br>
+        ${warning ? 'ยังไม่ได้สร้างตาราง audit_logs' : 'ยังไม่มีบันทึกระบบ'}
+      </div>`;
+    return;
+  }
+
+  area.innerHTML = list.map(row => {
+    const isError = row.status === 'error';
+    const statusClass = isError ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success';
+    const actor = row.actor_uid || row.target_uid || '-';
+    const detail = row.detail ? JSON.stringify(row.detail) : '';
+    return `
+      <div class="m-card p-3 mb-2">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div style="min-width:0;">
+            <div class="fw-bold text-dark text-truncate">${escapeAuditHtml(row.event_type)}</div>
+            <div class="small text-muted text-truncate">
+              <i class="fa-regular fa-user me-1"></i>${escapeAuditHtml(actor)}
+              ${row.entity_type ? ` • ${escapeAuditHtml(row.entity_type)}:${escapeAuditHtml(row.entity_id || '-')}` : ''}
+            </div>
+            ${detail ? `<div class="small text-muted text-truncate mt-1">${escapeAuditHtml(detail)}</div>` : ''}
+          </div>
+          <div class="text-end flex-shrink-0">
+            <span class="badge ${statusClass} rounded-pill">${escapeAuditHtml(row.status || 'info')}</span>
+            <div class="small text-muted mt-1" style="font-size:0.7rem;">${escapeAuditHtml(formatAuditDate(row.created_at))}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+window.loadAuditLogs = loadAuditLogs;
+window.filterAuditLogs = () => {
+  const term = (document.getElementById('auditSearch')?.value || '').toLowerCase();
+  const filtered = AUDIT_ROWS.filter(row => {
+    const haystack = [
+      row.event_type,
+      row.actor_uid,
+      row.target_uid,
+      row.entity_type,
+      row.entity_id,
+      row.status,
+      row.detail ? JSON.stringify(row.detail) : ''
+    ].join(' ').toLowerCase();
+    return haystack.includes(term);
+  });
+  renderAuditLogs(filtered);
+};
+
+window.deleteCoupon = async (code) => {
+  const cleanCode = String(code || '').trim();
+  if (!cleanCode) return;
+  const safeCode = cleanCode.replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+
+  const confirm = await Swal.fire({
+    title: 'ลบคูปองนี้?',
+    html: `ลบคูปอง <code>${safeCode}</code><br><span class="text-muted small">ลบได้เฉพาะคูปองที่ยังไม่ใช้</span>`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ลบ',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#dc2626'
+  });
+  if (!confirm.isConfirmed) return;
+
+  sysOverlay.show('กำลังลบคูปอง...');
+  try {
+    const res = await fetch(API_COUPON_LIST, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminUid: ADMIN_UID, code: cleanCode })
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'delete_failed');
+    if (!json.deleted) throw new Error('ไม่พบคูปองที่ยังไม่ใช้ หรือคูปองถูกใช้ไปแล้ว');
+
+    COUPON_ROWS = COUPON_ROWS.filter(row => row.code !== cleanCode);
+    renderCoupons();
+    Swal.fire('ลบแล้ว', 'ลบคูปองเรียบร้อย', 'success');
+  } catch (err) {
+    Swal.fire('ลบไม่สำเร็จ', err.message || 'กรุณาลองใหม่', 'error');
+  } finally {
+    sysOverlay.hide();
+  }
 };

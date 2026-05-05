@@ -5,6 +5,8 @@ const API_GET_SCORE = "/api/get-score";
 const API_REDEEM    = "/api/redeem";
 const API_HISTORY   = "/api/score-history";
 const API_SPEND     = "/api/spend";      // หักแต้มเมื่อแลกของรางวัล
+const API_REDEMPTIONS = "/api/redemptions";
+const API_DAILY_CHECKIN = "/api/daily-checkin";
 /** state & cache (ต้องอยู่ตอนบนของไฟล์) */
 let REWARDS_CACHE = [];
 // กันผูกอีเวนต์โมดัลสแกนซ้ำหลายครั้ง
@@ -54,6 +56,17 @@ function h(str) {
   }[s]));
 }
 
+function resolveCurrentUid() {
+  return (
+    (typeof UID !== 'undefined' && UID) ||
+    window.__UID ||
+    sessionStorage.getItem('uid') ||
+    localStorage.getItem('uid') ||
+    CURRENT_UID ||
+    ''
+  );
+}
+
 
 // ===== Admin allowlist (UID ถูกย้ายไปตรวจที่ server-side แล้ว) =====
 const ADMIN_UIDS = [];
@@ -81,6 +94,7 @@ const els = {
   btnRefresh: $("refreshBtn"),
   btnAdmin: $("btnAdmin"),
   btnHistory: $("historyBtn"),
+  btnDailyCheckin: $("dailyCheckinBtn"),
 
   // โมดัล “สแกน/กรอกรหัส”
   modal: $("scoreModal"),
@@ -99,6 +113,7 @@ let UID = "";
 let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
+let DAILY_CHECKIN_IN_FLIGHT = false;
 
 // === Rank state (new)
 window.USER_RANK   = window.USER_RANK   ?? null; // อันดับ (อาจไม่มีจาก API)
@@ -283,6 +298,7 @@ async function initApp(ctx = {}) {
 
     // 5) โหลดข้อมูลหลัก
     if (typeof refreshUserScore === 'function') await refreshUserScore({ bust: true });
+    if (typeof refreshDailyCheckinStatus === 'function') await refreshDailyCheckinStatus();
     if (typeof loadRewards === 'function') await loadRewards();
     if (typeof renderRewards === 'function') {
       const s = (typeof window.prevScore === 'number')
@@ -319,6 +335,10 @@ async function hydrateAfterRegister(uid) {
     // 1) อัปคะแนนขึ้นหน้าหลัก
     if (typeof refreshUserScore === 'function') {
       await refreshUserScore({ bust: true });
+    }
+
+    if (typeof refreshDailyCheckinStatus === 'function') {
+      await refreshDailyCheckinStatus();
     }
 
     // 2) โหลดของรางวัลทั้งหมด (รวม inactive)
@@ -512,6 +532,12 @@ function bindUI(){
   // 2. ปุ่มประวัติ
   els.btnHistory && els.btnHistory.addEventListener("click", openHistory);
 
+  // 2.1 ปุ่ม Daily Check-in
+  if (els.btnDailyCheckin && !els.btnDailyCheckin.dataset._rpBound) {
+    els.btnDailyCheckin.dataset._rpBound = 1;
+    els.btnDailyCheckin.addEventListener("click", performDailyCheckin);
+  }
+
   // 3. ควบคุมกล้องในโมดัล
   if (!window.__SCAN_MODAL_WIRED) {
     const scanModalEl = document.getElementById('scoreModal');
@@ -684,6 +710,125 @@ function showAdminEntry(isAdmin) {
 
 function toastOk(msg){ return window.Swal ? Swal.fire("สำเร็จ", msg || "", "success") : alert(msg || "สำเร็จ"); }
 function toastErr(msg){ return window.Swal ? Swal.fire("ผิดพลาด", msg || "", "error") : alert(msg || "ผิดพลาด"); }
+
+function setDailyCheckinUi(state = {}) {
+  const btn = document.getElementById('dailyCheckinBtn');
+  const label = document.getElementById('dailyCheckinLabel');
+  const meta = document.getElementById('dailyCheckinMeta');
+  if (!btn || !label) return;
+
+  const checkedIn = Boolean(state.checkedIn);
+  const points = Number(state.points || 5);
+  const streak = Number(state.streak || 1);
+  const unavailable = Boolean(state.unavailable);
+
+  btn.classList.toggle('is-done', checkedIn);
+  btn.classList.toggle('is-unavailable', unavailable);
+  btn.disabled = Boolean(state.disabled);
+
+  if (state.loading) {
+    label.textContent = 'กำลังโหลดเช็คอิน...';
+  } else if (checkedIn) {
+    label.textContent = 'เช็คอินแล้ววันนี้';
+  } else {
+    label.textContent = `เช็คอินวันนี้ +${points} pt`;
+  }
+
+  if (meta) {
+    let text = state.meta || '';
+    if (!text && checkedIn) text = `ต่อเนื่อง ${streak} วัน`;
+    if (!text && !checkedIn && !unavailable) text = streak > 1 ? `วันนี้จะต่อเนื่อง ${streak} วัน` : 'กดรับแต้มประจำวัน';
+    meta.textContent = text;
+    meta.classList.toggle('d-none', !text);
+  }
+
+  if (checkedIn || streak > 1) {
+    try { updateLeftMiniChips({ streakDays: streak, rank: window.USER_RANK }); } catch {}
+  }
+}
+
+async function refreshDailyCheckinStatus() {
+  const uid = resolveCurrentUid();
+  if (!uid) {
+    setDailyCheckinUi({ disabled: true, unavailable: true, meta: 'ยังไม่พบผู้ใช้' });
+    return null;
+  }
+
+  setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
+
+  try {
+    const res = await fetch(`${API_DAILY_CHECKIN}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || json?.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
+    const data = json?.data || {};
+    setDailyCheckinUi({ ...data, disabled: Boolean(data.checkedIn) });
+    return data;
+  } catch (e) {
+    console.warn('[daily-checkin] status failed', e);
+    setDailyCheckinUi({
+      unavailable: true,
+      disabled: !navigator.onLine,
+      meta: navigator.onLine ? 'โหลดสถานะไม่ได้' : 'ออฟไลน์'
+    });
+    return null;
+  }
+}
+
+async function performDailyCheckin() {
+  if (DAILY_CHECKIN_IN_FLIGHT) return;
+  if (!navigator.onLine) return toastErr('ยังเช็คอินไม่ได้ขณะออฟไลน์');
+
+  const uid = resolveCurrentUid();
+  if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
+
+  DAILY_CHECKIN_IN_FLIGHT = true;
+  setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
+
+  try {
+    const res = await fetch(API_DAILY_CHECKIN, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid })
+    });
+    const json = await res.json().catch(() => null);
+    const data = json?.data || {};
+
+    if (res.status === 409 || json?.message === 'already_checked_in') {
+      setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
+      return toastOk('วันนี้เช็คอินแล้ว');
+    }
+
+    if (!res.ok || json?.status === 'error') {
+      throw new Error(json?.message || `HTTP ${res.status}`);
+    }
+
+    const points = Number(data.points || 5);
+    optimisticAdd(points);
+    showScoreDelta(points);
+    setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
+
+    try { await refreshUserScore({ bust: true }); } catch {}
+    try { await loadRewards?.({ include: 0, uid }); } catch {}
+    try { renderRewards?.(Number(window.__userBalance || window.prevScore || 0)); } catch {}
+
+    if (typeof confetti === 'function') {
+      confetti({ particleCount: 45, spread: 58, origin: { y: 0.72 } });
+    }
+
+    return toastOk(`เช็คอินสำเร็จ รับ +${points} คะแนน`);
+  } catch (e) {
+    const msg = String(e?.message || e);
+    const map = {
+      user_not_found: 'ไม่พบผู้ใช้นี้ในระบบ',
+      apply_points_failed: 'เพิ่มแต้มไม่สำเร็จ กรุณาลองใหม่',
+      checkin_failed: 'เช็คอินไม่สำเร็จ กรุณาลองใหม่'
+    };
+    setDailyCheckinUi({ unavailable: true, disabled: false, meta: 'ลองกดใหม่อีกครั้ง' });
+    return toastErr(map[msg] || 'เช็คอินไม่สำเร็จ กรุณาลองใหม่');
+  } finally {
+    DAILY_CHECKIN_IN_FLIGHT = false;
+  }
+}
 
 // ฟังก์ชันโหลดคะแนน (ฉบับแก้ไข: ห้ามรีเซ็ตเป็น 0 ถ้าโหลดพลาด)
 async function refreshUserScore(opts = {}) {
@@ -1133,6 +1278,7 @@ function renderRewards(currentScore){
            data-id="${id}"
            data-cost="${cost}"
            data-stock="${stock}"
+           data-stock-max="${stockMax || 0}"
            title="${name}">
         <div class="rp-reward-img">
           <img
@@ -1164,8 +1310,7 @@ function renderRewards(currentScore){
   if (!rewardRailBound) {
     rail.addEventListener("click", async (ev) => {
       const btn = ev.target.closest(".rp-redeem-btn");
-      if (!btn || btn.disabled) return;
-      const card = btn.closest(".rp-reward-card");
+      const card = ev.target.closest(".rp-reward-card");
       if (!card) return;
       const id   = card.dataset.id;
       const cost = Number(card.dataset.cost);
@@ -1175,12 +1320,54 @@ function renderRewards(currentScore){
       const img  = card.querySelector('img')?.src || '';
 
       if (!id || Number.isNaN(cost)) return;
-      
-      // ⭐ ส่ง name และ img ไปที่ฟังก์ชัน redeemReward ด้วย
-      await redeemReward({ id, cost, name, img }, btn);
+
+      if (btn) {
+        if (btn.disabled) return;
+        await redeemReward({ id, cost, name, img }, btn);
+        return;
+      }
+
+      openRewardPreviewFromCard(card);
     });
     rewardRailBound = true;
   }
+}
+
+function openRewardPreviewFromCard(card) {
+  const modalEl = document.getElementById('rewardPreviewModal');
+  if (!modalEl || !card) return;
+
+  const id = card.dataset.id;
+  const cost = Number(card.dataset.cost || 0);
+  const stock = Number(card.dataset.stock || 0);
+  const stockMax = Number(card.dataset.stockMax || 0);
+  const name = card.getAttribute('title') || 'ของรางวัล';
+  const img = card.querySelector('img')?.src || '';
+  const isLocked = card.classList.contains('locked');
+  const isSoldOut = card.classList.contains('soldout') || stock <= 0;
+
+  const imgEl = document.getElementById('rewardPreviewImg');
+  const nameEl = document.getElementById('rewardPreviewName');
+  const costEl = document.getElementById('rewardPreviewCost');
+  const stockEl = document.getElementById('rewardPreviewStock');
+  const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
+
+  if (imgEl) imgEl.src = img;
+  if (nameEl) nameEl.textContent = name;
+  if (costEl) costEl.textContent = `${cost} pt`;
+  if (stockEl) stockEl.textContent = isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax} ชิ้น` : `เหลือ ${stock} ชิ้น`);
+  if (redeemBtn) {
+    redeemBtn.disabled = isLocked || isSoldOut;
+    redeemBtn.textContent = isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.onclick = async () => {
+      if (redeemBtn.disabled) return;
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+      const cardBtn = card.querySelector('.rp-redeem-btn');
+      await redeemReward({ id, cost, name, img }, cardBtn || redeemBtn);
+    };
+  }
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
 // ฟังก์ชันแลกของรางวัล (ฉบับสมบูรณ์: แก้ปัญหาแต้มหาย + ตัดการเช็คซ้ำ)
@@ -1323,12 +1510,12 @@ async function redeemReward(reward, btn){
     }
 
     // โหลดแค่อัปเดตสต็อกของรางวัลก็พอ (ตอนนี้ window.prevScore ถูกต้องแล้ว ไม่ต้องกลัวบั๊ก)
-    try { await loadRewards({ include: 1, uid: curUid }); } catch {}
+    try { await loadRewards({ include: 0, uid: curUid }); } catch {}
 
   }catch(err){
     console.error(err);
     UiOverlay.hide();
-    toastErr("แลกไม่สำเร็จ: " + (err.message || "Error"));
+    toastErr(mapSpendError(err));
   }finally{
     setBtnLoading(btn, false);
     REDEEMING = false;
@@ -1434,6 +1621,20 @@ async function redeemCode(input, source = 'manual') {
 }
 
 // แปลง res/json → ข้อความสำหรับผู้ใช้ และประเภท error ที่สนใจ
+function mapSpendError(err) {
+  const msg = String(err?.message || err?.status || err || '');
+  const map = {
+    insufficient_points: 'คะแนนไม่พอสำหรับแลกรางวัลนี้',
+    out_of_stock: 'รางวัลนี้หมดแล้ว กรุณาเลือกรางวัลอื่น',
+    stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
+    reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
+    reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
+    user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณาเปิดหน้าแรกผ่าน LINE อีกครั้ง',
+    'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
+  };
+  return map[msg] || 'แลกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+}
+
 function mapRedeemError(res, json) {
   const code = String(json?.code || '').toUpperCase();
   const msg  = String(json?.message || '');
@@ -1527,35 +1728,29 @@ async function openHistory(){
   listEl && (listEl.innerHTML = '');
 
   try{
-    const resp = await fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}`, { cache:'no-store' });
-    const json = await resp.json().catch(()=> ({}));
-    const items = Array.isArray(json) ? json
-      : Array.isArray(json.items) ? json.items
-      : Array.isArray(json.data)  ? json.data
-      : [];
+    const [scoreResult, redeemResult] = await Promise.allSettled([
+      fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' }).then(r => r.json()),
+      fetch(`${API_REDEMPTIONS}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' }).then(r => r.json())
+    ]);
 
-    // เรียงใหม่ (ล่าสุดก่อน)
-    items.sort((a,b)=>{
-      const ta = new Date(a.created_at || a.time || 0).getTime();
-      const tb = new Date(b.created_at || b.time || 0).getTime();
-      if (tb !== ta) return tb - ta;
-      return String(b.id || b.uuid || '').localeCompare(String(a.id || a.uuid || ''));
+    const scoreJson = scoreResult.status === 'fulfilled' ? scoreResult.value : {};
+    const redeemJson = redeemResult.status === 'fulfilled' ? redeemResult.value : {};
+    const pointItems = Array.isArray(scoreJson) ? scoreJson
+      : Array.isArray(scoreJson.items) ? scoreJson.items
+      : Array.isArray(scoreJson.data)  ? scoreJson.data
+      : [];
+    const redemptionItems = Array.isArray(redeemJson.items) ? redeemJson.items : [];
+
+    const timeline = [
+      ...pointItems.map(toPointTimelineItem),
+      ...redemptionItems.map(toRedemptionTimelineItem)
+    ].filter(Boolean).sort((a,b) => {
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return tb - ta;
     });
 
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
-    const fmt = v => { const d = new Date(v); if (isNaN(d)) return ''; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()+543} ${p(d.getHours())}:${p(d.getMinutes())}`; };
-
-    listEl.classList.add('hist-compact');
-    listEl.innerHTML = items.map(it=>{
-      const amt  = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
-      const sign = amt > 0 ? '+' : '';
-      const when = fmt(it.created_at || it.time || '');
-      return `
-        <div class="hc-row">
-          <div class="hc-at">${esc(when)}</div>
-          <div class="hc-amt ${amt>=0?'plus':'minus'}">${sign}${amt}</div>
-        </div>`;
-    }).join('') || `<div class="text-muted text-center py-3">ไม่มีรายการ</div>`;
+    renderUserTimeline(timeline);
   } catch (e){
     console.error(e);
     toastErr('โหลดประวัติไม่สำเร็จ');
@@ -1565,6 +1760,75 @@ async function openHistory(){
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
+}
+
+function historyTypeMeta(type, amount) {
+  const raw = String(type || '').toUpperCase();
+  if (raw.includes('COUPON')) return { icon: 'fa-ticket', label: 'รับคูปอง', tone: 'plus' };
+  if (raw.includes('SPEND') || Number(amount) < 0) return { icon: 'fa-gift', label: 'แลกรางวัล', tone: 'minus' };
+  if (raw.includes('DAILY_CHECKIN')) return { icon: 'fa-calendar-check', label: 'เช็คอินประจำวัน', tone: 'plus' };
+  if (raw.includes('BIRTHDAY')) return { icon: 'fa-cake-candles', label: 'วันเกิด', tone: 'plus' };
+  if (raw.includes('ADMIN')) return { icon: 'fa-user-shield', label: 'แอดมินปรับแต้ม', tone: Number(amount) >= 0 ? 'plus' : 'minus' };
+  return { icon: 'fa-star', label: 'รายการคะแนน', tone: Number(amount) >= 0 ? 'plus' : 'minus' };
+}
+
+function toPointTimelineItem(it) {
+  const amount = Number(it.amount ?? it.points ?? it.point ?? it.delta ?? 0);
+  const meta = historyTypeMeta(it.type || it.activity, amount);
+  return {
+    kind: 'point',
+    created_at: it.created_at || it.time || it.ts,
+    title: meta.label,
+    subtitle: it.code || it.note || it.type || '',
+    amount,
+    icon: meta.icon,
+    tone: meta.tone
+  };
+}
+
+function toRedemptionTimelineItem(it) {
+  const cost = Number(it.cost || 0);
+  return {
+    kind: 'redemption',
+    created_at: it.created_at,
+    title: 'แลกรางวัล',
+    subtitle: it.reward_name || 'ของรางวัล',
+    amount: -cost,
+    icon: 'fa-gift',
+    tone: 'minus',
+    status: it.status || ''
+  };
+}
+
+function renderUserTimeline(items = []) {
+  const host = document.getElementById('historyList');
+  if (!host) return;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+  const fmt = v => {
+    const d = new Date(v);
+    if (isNaN(d)) return '';
+    return d.toLocaleString('th-TH', { timeZone:'Asia/Bangkok', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  };
+
+  host.classList.remove('hist-compact');
+  host.innerHTML = items.length ? items.map(item => {
+    const amount = Number(item.amount || 0);
+    const sign = amount > 0 ? '+' : '';
+    const amountClass = amount >= 0 ? 'text-success' : 'text-danger';
+    return `
+      <div class="list-group-item px-0 py-3 d-flex align-items-center gap-3">
+        <div class="rounded-circle bg-light border d-flex align-items-center justify-content-center flex-shrink-0" style="width:42px;height:42px;">
+          <i class="fa-solid ${esc(item.icon)} ${amount >= 0 ? 'text-success' : 'text-danger'}"></i>
+        </div>
+        <div class="flex-grow-1" style="min-width:0;">
+          <div class="fw-bold text-dark">${esc(item.title)}</div>
+          ${item.subtitle ? `<div class="small text-muted text-truncate">${esc(item.subtitle)}</div>` : ''}
+          <div class="small text-muted">${esc(fmt(item.created_at))}</div>
+        </div>
+        <div class="fw-bold ${amountClass}">${sign}${amount}</div>
+      </div>
+    `;
+  }).join('') : `<div class="text-muted text-center py-3">ยังไม่มีประวัติ</div>`;
 }
 
 // คัดลอก-วางแทนของเดิม
@@ -1975,6 +2239,7 @@ function setLastSync(ts = Date.now(), fromCache = false){
 // อัปเดตชิปเครือข่าย (แสดงเฉพาะตอนออฟไลน์)
 function updateNetChip(){
   const chip = document.getElementById('netChip');
+  toggleOfflineBanner(!navigator.onLine);
   if (!chip) return;
   if (navigator.onLine){
     chip.classList.add('d-none');
@@ -2176,6 +2441,7 @@ async function initAppFast() {
   try {
     await Promise.allSettled([
       (typeof refreshUserScore === 'function' ? refreshUserScore() : Promise.resolve()),
+      (typeof refreshDailyCheckinStatus === 'function' ? refreshDailyCheckinStatus() : Promise.resolve()),
       (typeof loadRewards      === 'function' ? loadRewards()      : Promise.resolve())
     ]);
 

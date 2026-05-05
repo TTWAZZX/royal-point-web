@@ -3042,8 +3042,32 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 .rp-actions-wide{ display:grid; grid-template-columns:1fr; }
 @media (min-width:480px){ .rp-actions-wide{ grid-template-columns:1fr 1fr; } }
+@media (min-width:720px){ .rp-actions-wide{ grid-template-columns:1fr 1fr 1fr; } }
 
 .act-btn{ border-radius:12px; padding:.9rem 1rem; font-weight:700; }
+.rp-checkin-btn{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:.15rem;
+  min-height:58px;
+}
+.rp-checkin-meta{
+  display:block;
+  font-size:.74rem;
+  line-height:1.1;
+  font-weight:700;
+  opacity:.78;
+}
+.rp-checkin-btn.is-done{
+  color:#fff;
+  background:linear-gradient(180deg,#10b981,#059669);
+  border-color:#059669;
+}
+.rp-checkin-btn.is-unavailable{
+  border-style:dashed;
+}
 
 .rp-primary{
   color:#fff; border:none;

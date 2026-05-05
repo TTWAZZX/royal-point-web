@@ -9,6 +9,7 @@
   let prog = 0, timer = null, activeCount = 0;
 
   function startTop() {
+    if (!topWrap || !topBar) return;
     activeCount++;
     if (activeCount > 1) return;
     topWrap.style.display = 'block';
@@ -20,6 +21,7 @@
     }, 200);
   }
   function doneTop() {
+    if (!topWrap || !topBar) return;
     activeCount = Math.max(0, activeCount - 1);
     if (activeCount > 0) return;
     clearInterval(timer);
@@ -31,11 +33,13 @@
   }
 
   function showOverlay(msg = 'กำลังดำเนินการ...') {
+    if (!overlay || !overlayMsg) return startTop();
     overlayMsg.textContent = msg;
     overlay.classList.add('active');
     document.body.style.overflow = 'hidden';
   }
   function hideOverlay() {
+    if (!overlay) return doneTop();
     overlay.classList.remove('active');
     document.body.style.overflow = '';
   }

@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
       return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
     }
 
-    const include = String(req.query.include ?? '1') === '1';
+    const include = String(req.query.include ?? '0') === '1';
 
     let query = supabase
       .from('rewards')

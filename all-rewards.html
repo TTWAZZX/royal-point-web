@@ -149,6 +149,28 @@
 
 </div>
 
+<div class="modal fade" id="rewardPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 overflow-hidden">
+      <button type="button" class="btn-close position-absolute end-0 m-3 bg-white rounded-circle p-2" data-bs-dismiss="modal" aria-label="Close" style="z-index:2;"></button>
+      <img id="rewardPreviewImg" class="w-100 bg-light" src="" alt="Reward preview" style="aspect-ratio:4/3; object-fit:contain;">
+      <div class="p-3">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div style="min-width:0;">
+            <h5 id="rewardPreviewName" class="fw-bold mb-1 text-truncate">ของรางวัล</h5>
+            <div id="rewardPreviewStock" class="small text-muted"></div>
+          </div>
+          <span id="rewardPreviewCost" class="badge bg-success-subtle text-success rounded-pill px-3 py-2">0 pt</span>
+        </div>
+        <button id="rewardPreviewRedeemBtn" type="button" class="btn btn-success w-100 rounded-pill fw-bold mt-3">
+          แลกรางวัล
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="loader.js"></script> 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 
@@ -157,11 +179,72 @@
 // 1. ดึง UID
 const getUid = () => {
   const params = new URLSearchParams(window.location.search);
-  return params.get('uid') || sessionStorage.getItem('uid') || localStorage.getItem('uid');
+  return String(params.get('uid') || sessionStorage.getItem('uid') || localStorage.getItem('uid') || '').trim();
 };
+const LIFF_ID_REWARDS = "2007053300-QoEvbXyn";
 
 // ตัวแปรเก็บคะแนนปัจจุบัน
 let CURRENT_SCORE = 0;
+let REWARD_LIST = [];
+let REDEEMING = false;
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[ch]));
+}
+
+function safeImageUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'https://placehold.co/300x300?text=No+Image';
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+  } catch {}
+  return 'https://placehold.co/300x300?text=No+Image';
+}
+
+function friendlySpendError(err) {
+  const message = String(err?.message || err?.status || err || '');
+  const map = {
+    insufficient_points: 'คะแนนไม่พอสำหรับแลกรางวัลนี้',
+    out_of_stock: 'รางวัลนี้หมดแล้ว กรุณาเลือกรางวัลอื่น',
+    stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
+    reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
+    reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
+    user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณากลับไปหน้าแรกเพื่อเข้าสู่ระบบใหม่',
+    'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
+  };
+  return map[message] || 'ไม่สามารถแลกรางวัลได้ กรุณาลองใหม่อีกครั้ง';
+}
+
+async function resolveUid() {
+  const existing = getUid();
+  if (existing) return existing;
+
+  try {
+    if (!window.liff) return '';
+    await liff.init({ liffId: LIFF_ID_REWARDS });
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: window.location.href });
+      return '';
+    }
+    const profile = await liff.getProfile();
+    const uid = String(profile?.userId || '').trim();
+    if (uid) {
+      sessionStorage.setItem('uid', uid);
+      window.__UID = uid;
+    }
+    return uid;
+  } catch (err) {
+    console.warn('LIFF UID resolve failed:', err);
+    return '';
+  }
+}
 
 /* ===============================
    LOAD DATA (Rewards + Score)
@@ -169,13 +252,15 @@ let CURRENT_SCORE = 0;
 async function loadAllRewards() {
   const grid = document.getElementById('rewardGrid');
   const skel = document.getElementById('skeletonGrid');
-  const uid  = getUid();
+  const uid  = await resolveUid();
   
   try {
     // ⭐ โหลดทั้งของรางวัล และ คะแนนล่าสุด พร้อมกัน
     const [rewardsRes, scoreRes] = await Promise.allSettled([
-       Loading.apiFetch('/api/rewards?include=1', {cache:'no-store'}),
-       fetch(`/api/get-score?uid=${uid}`, {cache:'no-store'}).then(r=>r.json())
+       Loading.apiFetch('/api/rewards?include=0', {cache:'no-store'}),
+       uid
+        ? fetch(`/api/get-score?uid=${encodeURIComponent(uid)}`, {cache:'no-store'}).then(r=>r.json())
+        : Promise.resolve(null)
     ]);
 
     // 1) จัดการคะแนน
@@ -184,10 +269,10 @@ async function loadAllRewards() {
        const d = scoreRes.value.data;
        CURRENT_SCORE = Number(d.score || d.points || d.point || d.balance || 0);
        // บันทึกลง LocalStorage เผื่อใช้ที่อื่น
-       localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
+       if (uid) localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
     } else {
        // ถ้าโหลดไม่ได้ ให้ใช้ค่าเดิมจากเครื่อง
-       CURRENT_SCORE = Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0);
+       CURRENT_SCORE = uid ? Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0) : 0;
     }
 
     // 2) จัดการของรางวัล
@@ -196,9 +281,9 @@ async function loadAllRewards() {
         const j = rewardsRes.value;
         list = (j.items || j.data || []).map(x => ({
           id: x.id,
-          name: x.name,
+          name: String(x.name || ''),
           cost: Number(x.cost || 0),
-          img: x.img || 'https://placehold.co/300x300?text=No+Image',
+          img: safeImageUrl(x.img),
           stock: Number(x.stock ?? 0),
           stock_max: Number(x.stock_max ?? 0),
           sort_index: Number(x.sort_index ?? 999),
@@ -212,7 +297,8 @@ async function loadAllRewards() {
       return a.sort_index - b.sort_index;
     });
 
-    renderGrid(list);
+    REWARD_LIST = list;
+    renderGrid(REWARD_LIST);
 
     skel.classList.add('d-none');
     grid.classList.remove('d-none');
@@ -228,36 +314,45 @@ async function loadAllRewards() {
 ================================ */
 function renderGrid(list) {
   const wrap = document.getElementById('rewardGrid');
+  if (!wrap) return;
+
+  if (!Array.isArray(list) || list.length === 0) {
+    wrap.innerHTML = `<div class="col-12 text-center text-muted mt-5">ยังไม่มีของรางวัลที่เปิดให้แลก</div>`;
+    return;
+  }
   
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
     const isLocked  = !isSoldOut && (CURRENT_SCORE < r.cost); // ⭐ เช็คคะแนน
-
-    // Escape ชื่อเพื่อความปลอดภัย
-    const safeName = r.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
-    const safeImg  = r.img.replace(/'/g, "\\'").replace(/"/g, "&quot;");
 
     // สร้างคลาส
     let cls = 'reward-card';
     if (isSoldOut) cls += ' soldout';
     else if (isLocked) cls += ' locked';
 
+    const id = escapeHtml(r.id);
+    const name = escapeHtml(r.name || 'ของรางวัล');
+    const img = escapeHtml(safeImageUrl(r.img));
+    const cost = Number(r.cost || 0);
+    const stock = Number(r.stock || 0);
+    const stockMax = Number(r.stock_max || 0);
+
     return `
-    <div class="${cls}" id="card-${r.id}">
-      <img src="${r.img}" alt="${r.name}" loading="lazy">
-      <div class="reward-cost">${r.cost} pt</div>
+    <div class="${cls}" id="card-${id}" data-reward-id="${id}" data-cost="${cost}" data-stock="${stock}" data-stock-max="${stockMax}">
+      <img src="${img}" alt="${name}" loading="lazy" onerror="this.src='https://placehold.co/300x300?text=No+Image'">
+      <div class="reward-cost">${cost} pt</div>
       
-      <div class="reward-stock" id="stock-${r.id}" 
-           data-stock="${r.stock}" 
-           data-max="${r.stock_max}">
-        ${isSoldOut ? 'หมดแล้ว' : `เหลือ ${r.stock}/${r.stock_max}`}
+      <div class="reward-stock" id="stock-${id}"
+           data-stock="${stock}"
+           data-max="${stockMax}">
+        ${isSoldOut ? 'หมดแล้ว' : `เหลือ ${stock}/${stockMax}`}
       </div>
 
-      <div class="reward-name">${r.name}</div>
+      <div class="reward-name">${name}</div>
       <div class="reward-footer">
         <button
+          type="button"
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          onclick="redeemReward('${r.id}', '${safeName}', ${r.cost}, '${safeImg}')"
           ${isSoldOut || isLocked ? 'disabled' : ''}>
           ${isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
         </button>
@@ -266,10 +361,58 @@ function renderGrid(list) {
   `}).join('');
 }
 
+document.getElementById('rewardGrid')?.addEventListener('click', (event) => {
+  const button = event.target.closest('button');
+  const card = event.target.closest('.reward-card');
+  const rewardId = card?.dataset.rewardId;
+  const reward = REWARD_LIST.find(item => String(item.id) === String(rewardId));
+  if (!reward) return;
+
+  if (button) {
+    if (button.disabled) return;
+    redeemReward(reward.id, reward.name, Number(reward.cost || 0), reward.img, button);
+    return;
+  }
+
+  openRewardPreview(reward, card);
+});
+
+function openRewardPreview(reward, card) {
+  const modalEl = document.getElementById('rewardPreviewModal');
+  if (!modalEl || !reward) return;
+
+  const cost = Number(reward.cost || 0);
+  const stock = Number(reward.stock || 0);
+  const stockMax = Number(reward.stock_max || 0);
+  const isSoldOut = stock <= 0;
+  const isLocked = !isSoldOut && CURRENT_SCORE < cost;
+
+  document.getElementById('rewardPreviewImg').src = reward.img || 'https://placehold.co/300x300?text=No+Image';
+  document.getElementById('rewardPreviewName').textContent = reward.name || 'ของรางวัล';
+  document.getElementById('rewardPreviewCost').textContent = `${cost} pt`;
+  document.getElementById('rewardPreviewStock').textContent = isSoldOut ? 'หมดแล้ว' : `เหลือ ${stock}/${stockMax}`;
+
+  const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
+  if (redeemBtn) {
+    redeemBtn.disabled = isSoldOut || isLocked;
+    redeemBtn.textContent = isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.onclick = async () => {
+      if (redeemBtn.disabled) return;
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+      const cardButton = card?.querySelector('button');
+      await redeemReward(reward.id, reward.name, cost, reward.img, cardButton || redeemBtn);
+    };
+  }
+
+  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+}
+
 /* ===============================
    REDEEM FUNCTION (Updated)
 ================================ */
-async function redeemReward(rewardId, rewardName, cost, rewardImg) {
+async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
+  if (REDEEMING) return;
+
   const uid = getUid();
   if (!uid) {
     Swal.fire('แจ้งเตือน', 'กรุณากลับไปหน้าหลักเพื่อเข้าสู่ระบบใหม่', 'warning');
@@ -285,7 +428,7 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg) {
   // 2. Popup ยืนยันสวยๆ (เหมือนหน้าหลัก)
   const confirm = await Swal.fire({
     title: 'ยืนยันการแลก?',
-    html: `ต้องการแลก <b>${rewardName}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
+    html: `ต้องการแลก <b>${escapeHtml(rewardName)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: 'แลกเลย',
@@ -294,6 +437,13 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg) {
   });
 
   if (!confirm.isConfirmed) return;
+
+  REDEEMING = true;
+  const previousText = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'กำลังแลก...';
+  }
 
   try {
     // 3. เรียก API
@@ -316,9 +466,9 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg) {
         imageUrl: rewardImg || undefined,
         imageWidth: 150,
         imageHeight: 'auto',
-        imageAlt: rewardName,
+        imageAlt: String(rewardName || 'ของรางวัล'),
         html: `
-          <h5 class="fw-bold text-dark mt-2">${rewardName}</h5>
+          <h5 class="fw-bold text-dark mt-2">${escapeHtml(rewardName)}</h5>
           <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
           <div class="alert alert-warning small p-2">
              <i class="fa-solid fa-camera"></i> แคปหน้าจอนี้ไว้เพื่อรับของรางวัล
@@ -328,9 +478,17 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg) {
         confirmButtonColor: "#22c55e"
     });
 
+    try { await loadAllRewards(); } catch {}
+
   } catch (err) {
     console.error(err);
-    Swal.fire('ผิดพลาด', err.message || 'ไม่สามารถแลกได้', 'error');
+    Swal.fire('ผิดพลาด', friendlySpendError(err), 'error');
+  } finally {
+    REDEEMING = false;
+    if (button && document.body.contains(button)) {
+      button.disabled = false;
+      button.textContent = previousText || 'แลกรางวัล';
+    }
   }
 }
 

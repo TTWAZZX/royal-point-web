@@ -1,5 +1,27 @@
-const { supabaseAdmin, getRedis } = require('../lib/supabase')
+const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const redis = getRedis()
+
+const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
+
+function getSafeRewardData(rewardData = {}) {
+  const safeData = Object.fromEntries(
+    Object.entries(rewardData || {}).filter(([k]) => ALLOWED_REWARD_FIELDS.includes(k))
+  )
+
+  for (const key of ['cost', 'stock', 'stock_max', 'sort_index']) {
+    if (key in safeData) {
+      const value = Number(safeData[key])
+      if (!Number.isFinite(value)) delete safeData[key]
+      else safeData[key] = value
+    }
+  }
+
+  if ('active' in safeData) safeData.active = !!safeData.active
+  if ('name' in safeData) safeData.name = String(safeData.name || '').trim()
+  if ('img_url' in safeData) safeData.img_url = String(safeData.img_url || '').trim()
+
+  return safeData
+}
 
 module.exports = async (req, res) => {
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
@@ -81,14 +103,33 @@ module.exports = async (req, res) => {
     // ==================================================
     // ⭐ CASE D: จัดการของรางวัล (เพิ่มใหม่ สำหรับ Stock Manager)
     // ==================================================
+    else if (action === 'reward_create') {
+      const safeData = getSafeRewardData({
+        active: true,
+        stock: 0,
+        stock_max: 0,
+        sort_index: 9999,
+        ...(rewardData || {})
+      })
+
+      if (!safeData.name || !Number.isFinite(safeData.cost)) {
+        return res.status(400).json({ status: 'error', message: 'Missing reward name or cost' })
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('rewards')
+        .insert(safeData)
+        .select()
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data })
+    }
+
     else if (action === 'reward_update') {
       if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
 
-      // whitelist เฉพาะ field ที่ admin แก้ได้ — ป้องกัน mass-assignment
-      const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
-      const safeData = Object.fromEntries(
-        Object.entries(rewardData || {}).filter(([k]) => ALLOWED_REWARD_FIELDS.includes(k))
-      )
+      const safeData = getSafeRewardData(rewardData)
       if (Object.keys(safeData).length === 0) {
         return res.status(400).json({ status: 'error', message: 'No valid fields to update' })
       }
@@ -103,6 +144,23 @@ module.exports = async (req, res) => {
       if (error) throw error
       
       // ไม่ต้องเรียก RPC จบการทำงานแล้วส่งผลลัพธ์กลับเลย
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    else if (action === 'reward_delete') {
+      if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
+
+      const { data, error } = await supabaseAdmin
+        .from('rewards')
+        .delete()
+        .eq('id', rewardId)
+        .select('id')
+
+      if (error) throw error
+      if (!data || data.length === 0) {
+        return res.status(404).json({ status: 'error', message: 'Reward not found' })
+      }
+
       return res.status(200).json({ status: 'success', data })
     }
 
@@ -163,6 +221,10 @@ module.exports = async (req, res) => {
     if (error) {
       console.error('RPC Error:', error)
       return res.status(500).json({ status: 'error', message: error.message })
+    }
+
+    if (action === 'adjust' || action === 'reset') {
+      await clearScoreCache(redis, targetUid)
     }
 
     res.status(200).json({ status: 'success' })

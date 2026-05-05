@@ -99,6 +99,12 @@
     <button id="historyBtn" class="btn btn-outline-secondary act-btn tap-20">
       <i class="fa-regular fa-clock me-2"></i> ประวัติการรับคะแนน
     </button>
+    <button id="dailyCheckinBtn" class="btn btn-outline-success act-btn tap-20 rp-checkin-btn" type="button">
+      <span>
+        <i class="fa-solid fa-calendar-check me-2"></i><span id="dailyCheckinLabel">เช็คอินวันนี้ +5 pt</span>
+      </span>
+      <span id="dailyCheckinMeta" class="rp-checkin-meta d-none"></span>
+    </button>
   </section>
 
   <!-- Ads -->
@@ -238,6 +244,28 @@
     <div class="modal-content bg-black">
       <button class="btn btn-light position-absolute end-0 m-2" data-bs-dismiss="modal" aria-label="Close">✕</button>
       <img id="avatarPreviewImg" alt="Full profile" class="w-100 h-auto rounded-3">
+    </div>
+  </div>
+</div>
+
+<!-- Reward Preview Modal -->
+<div class="modal fade" id="rewardPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 overflow-hidden">
+      <button type="button" class="btn-close position-absolute end-0 m-3 bg-white rounded-circle p-2" data-bs-dismiss="modal" aria-label="Close" style="z-index:2;"></button>
+      <img id="rewardPreviewImg" class="w-100 bg-light" src="" alt="Reward preview" style="aspect-ratio:4/3; object-fit:contain;">
+      <div class="p-3">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div style="min-width:0;">
+            <h5 id="rewardPreviewName" class="fw-bold mb-1 text-truncate">ของรางวัล</h5>
+            <div id="rewardPreviewStock" class="small text-muted"></div>
+          </div>
+          <span id="rewardPreviewCost" class="badge bg-success-subtle text-success rounded-pill px-3 py-2">0 pt</span>
+        </div>
+        <button id="rewardPreviewRedeemBtn" type="button" class="btn btn-success w-100 rounded-pill fw-bold mt-3">
+          แลกรางวัล
+        </button>
+      </div>
     </div>
   </div>
 </div>

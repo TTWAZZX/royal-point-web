@@ -14,8 +14,10 @@ module.exports = async (req, res) => {
     }
 
     const uid = String(req.query.uid || '').trim();
-    const limit  = Math.min(parseInt(req.query.limit  || '25', 10), 100);
-    const offset = Math.max(parseInt(req.query.offset || '0',  10), 0);
+    const parsedLimit = parseInt(req.query.limit || '25', 10);
+    const parsedOffset = parseInt(req.query.offset || '0', 10);
+    const limit = Math.max(1, Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 25, 100));
+    const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
     if (!uid) return res.status(400).json({ status: 'error', message: 'uid required' });
 
     // map uid -> user_id
@@ -31,14 +33,15 @@ module.exports = async (req, res) => {
 
     // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
     const { data, error } = await supabase
-  .from('point_transactions')
-  .select('id, amount, code, type, created_by, created_at')
-  .eq('user_id', user.id)
-  .order('created_at', { ascending: false }) // = order by t.created_at desc
-  .order('id',         { ascending: false }); // = order by t.id desc
+      .from('point_transactions')
+      .select('id, amount, code, type, created_by, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false }) // = order by t.created_at desc
+      .order('id',         { ascending: false }) // = order by t.id desc
+      .range(offset, offset + limit - 1);
 
     if (error) {
-      return res.status(200).json({ status: 'error', message: 'db_error' });
+      return res.status(500).json({ status: 'error', message: 'db_error' });
     }
 
     return res.status(200).json({
@@ -47,6 +50,6 @@ module.exports = async (req, res) => {
       nextOffset: offset + (data?.length || 0)
     });
   } catch (e) {
-    return res.status(200).json({ status: 'error', message: 'unhandled_error' });
+    return res.status(500).json({ status: 'error', message: 'unhandled_error' });
   }
 };

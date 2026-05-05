@@ -4,10 +4,11 @@ module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).json({ status:'error', message:'Method not allowed' })
     const { uid, name, room, dob, passport, tel } = req.body || {}
-    if (!uid) return res.status(400).json({ status:'error', message:'uid required' })
+    const cleanUid = String(uid || '').trim()
+    if (!cleanUid) return res.status(400).json({ status:'error', message:'uid required' })
 
     const row = {
-      uid: String(uid).trim(),
+      uid: cleanUid,
       name: (name||'').trim() || null,
       room: (room||'').trim() || null,
       dob: (dob||'').trim() || null,
