@@ -1,4 +1,18 @@
 {
+  "rewrites": [
+    {
+      "source": "/api/admin-audit-logs",
+      "destination": "/api/admin-actions?action=audit_logs"
+    },
+    {
+      "source": "/api/admin-coupons-generate",
+      "destination": "/api/admin-coupons?action=generate"
+    },
+    {
+      "source": "/api/redemptions",
+      "destination": "/api/score-history?kind=redemptions"
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron-birthday",

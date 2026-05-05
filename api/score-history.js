@@ -32,6 +32,34 @@ module.exports = async (req, res) => {
     }
 
     // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
+    if (req.query.kind === 'redemptions') {
+      const { data, error } = await supabase
+        .from('redemptions')
+        .select(`
+          id,
+          created_at,
+          cost,
+          status,
+          rewards:reward_id ( name, img_url )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      const items = (data || []).map(row => ({
+        id: row.id,
+        created_at: row.created_at,
+        cost: Number(row.cost || 0),
+        status: row.status || '',
+        reward_name: row.rewards?.name || 'ของรางวัล',
+        reward_img: row.rewards?.img_url || ''
+      }));
+
+      return res.status(200).json({ status: 'success', items });
+    }
+
     const { data, error } = await supabase
       .from('point_transactions')
       .select('id, amount, code, type, created_by, created_at')
