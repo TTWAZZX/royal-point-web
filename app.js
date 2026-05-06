@@ -767,6 +767,60 @@ function setDailyCheckinUi(state = {}) {
   if (checkedIn || streak > 1) {
     try { updateLeftMiniChips({ streakDays: streak, rank: window.USER_RANK }); } catch {}
   }
+
+  updateSafetyStreakBadge({ checkedIn, streak, unavailable, loading: Boolean(state.loading) });
+}
+
+function getSafetyStreakLevel(streak = 0) {
+  const days = Number(streak || 0);
+  if (days >= 30) return { level: 'champion', title: 'Safety Champion', next: null };
+  if (days >= 15) return { level: 'champion', title: 'Gold Safety Streak', next: 30 };
+  if (days >= 7) return { level: 'steady', title: 'Silver Safety Streak', next: 15 };
+  if (days >= 3) return { level: 'steady', title: 'Bronze Safety Streak', next: 7 };
+  return { level: 'starter', title: 'Safety Starter', next: 3 };
+}
+
+function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = false, loading = false } = {}) {
+  const badge = document.getElementById('safetyStreakBadge');
+  const titleEl = document.getElementById('safetyStreakTitle');
+  const textEl = document.getElementById('safetyStreakText');
+  const daysEl = document.getElementById('safetyStreakDays');
+  if (!badge || !titleEl || !textEl || !daysEl) return;
+
+  if (loading) {
+    badge.classList.remove('d-none');
+    badge.dataset.level = 'starter';
+    titleEl.textContent = 'กำลังโหลด Safety Streak';
+    textEl.textContent = 'กำลังตรวจสถานะเช็คอินวันนี้';
+    daysEl.textContent = '...';
+    return;
+  }
+
+  if (unavailable) {
+    badge.classList.remove('d-none');
+    badge.dataset.level = 'starter';
+    titleEl.textContent = 'Safety Streak ยังไม่พร้อม';
+    textEl.textContent = navigator.onLine ? 'โหลดข้อมูลเช็คอินไม่ได้' : 'ออฟไลน์อยู่ ระบบจะแสดงอีกครั้งเมื่อออนไลน์';
+    daysEl.textContent = '-';
+    return;
+  }
+
+  const days = Math.max(0, Number(streak || 0));
+  const meta = getSafetyStreakLevel(days);
+  badge.classList.remove('d-none');
+  badge.dataset.level = meta.level;
+  titleEl.textContent = meta.title;
+  daysEl.textContent = `${days} วัน`;
+
+  if (checkedIn) {
+    textEl.textContent = meta.next
+      ? `วันนี้รักษา streak แล้ว อีก ${Math.max(meta.next - days, 0)} วันถึงระดับถัดไป`
+      : 'รักษามาตรฐานต่อเนื่องระดับสูงสุดแล้ว';
+  } else if (days > 1) {
+    textEl.textContent = `เช็คอินวันนี้เพื่อรักษา streak ต่อเนื่อง ${days} วัน`;
+  } else {
+    textEl.textContent = 'เช็คอินวันนี้เพื่อเริ่มสะสม Safety Streak';
+  }
 }
 
 async function refreshDailyCheckinStatus() {
