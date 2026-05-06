@@ -44,7 +44,7 @@
       background: var(--c-primary); color: #fff; border-color: var(--c-primary); 
       box-shadow: 0 4px 6px rgba(14, 165, 233, 0.2);
     }
-    .safety-subnav-card { position: sticky; top: 74px; z-index: 20; }
+    .safety-subnav-card { position: relative; z-index: 1; margin-bottom: 14px; }
     .safety-subtabs { gap: 6px; padding-bottom: 0; }
     .safety-subtabs .nav-link {
       border-radius: 12px; padding: 8px 12px; font-size: 0.86rem;
@@ -54,7 +54,9 @@
       background: #0f172a; border-color: #0f172a; color: #fff;
       box-shadow: 0 4px 10px rgba(15, 23, 42, 0.14);
     }
+    .safety-subtab-content { position: relative; z-index: 0; }
     .safety-subtab-content .tab-pane { outline: none; }
+    .safety-subtab-content > .tab-pane > .m-card:first-child { margin-top: 0; }
 
     /* === Cards (Mobile Style) === */
     .m-card {

@@ -25,6 +25,15 @@ let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
 
+function scrollSafetySubtabIntoView() {
+    const anchor = document.querySelector('.safety-subnav-card');
+    if (!anchor) return;
+    const targetTop = Math.max(0, anchor.getBoundingClientRect().top + window.scrollY - 76);
+    if (Math.abs(window.scrollY - targetTop) > 12) {
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+}
+
 // ============ UI Helper ============
 const $id = (x) => document.getElementById(x);
 
@@ -374,6 +383,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const safetyPulseSubBtn = document.getElementById('tabSafetyPulseSubBtn');
     if (safetyPulseSubBtn) {
         safetyPulseSubBtn.addEventListener('shown.bs.tab', () => {
+            scrollSafetySubtabIntoView();
             if (!SAFETY_PULSE) loadSafetyPulse();
         });
     }
@@ -381,6 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const safetyQuestionsSubBtn = document.getElementById('tabSafetyQuestionsSubBtn');
     if (safetyQuestionsSubBtn) {
         safetyQuestionsSubBtn.addEventListener('shown.bs.tab', () => {
+            scrollSafetySubtabIntoView();
             if (!SAFETY_QUESTIONS.length) loadSafetyQuestions();
         });
     }
@@ -388,7 +399,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const safetySettingsSubBtn = document.getElementById('tabSafetySettingsSubBtn');
     if (safetySettingsSubBtn) {
         safetySettingsSubBtn.addEventListener('shown.bs.tab', () => {
+            scrollSafetySubtabIntoView();
             loadSafetySettings();
+        });
+    }
+
+    const safetyReportsSubBtn = document.getElementById('tabSafetyReportsSubBtn');
+    if (safetyReportsSubBtn) {
+        safetyReportsSubBtn.addEventListener('shown.bs.tab', () => {
+            scrollSafetySubtabIntoView();
         });
     }
 });
