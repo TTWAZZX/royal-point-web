@@ -32,6 +32,16 @@ const sysOverlay = window.pageOverlay || {
   hide: () => console.log('Loaded')
 };
 
+function toastOk(message) {
+  if (window.Swal) return Swal.fire('สำเร็จ', message || '', 'success');
+  return alert(message || 'สำเร็จ');
+}
+
+function toastErr(message) {
+  if (window.Swal) return Swal.fire('ผิดพลาด', message || '', 'error');
+  return alert(message || 'ผิดพลาด');
+}
+
 // ============ INIT ============
 document.addEventListener("DOMContentLoaded", async () => {
   await initAdminSystem();
@@ -664,11 +674,27 @@ function renderSafetyQuestions() {
         <div style="min-width:0;">
           <div class="small text-muted">${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</div>
           <div class="fw-bold text-dark">${escapeAuditHtml(item.question || '')}</div>
+          ${renderSafetyOptionPreview(item.options)}
         </div>
         <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="deleteSafetyQuestion('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-trash"></i></button>
       </div>
     </div>
   `).join('');
+}
+
+function renderSafetyOptionPreview(options = []) {
+  if (!Array.isArray(options) || !options.length) return '';
+  return `
+    <div class="mt-2 d-grid gap-1">
+      ${options.map(option => `
+        <div class="small border rounded-2 px-2 py-1 bg-light">
+          <span class="fw-bold">${escapeAuditHtml(option.label || '')}</span>
+          <span class="text-muted"> / answer: ${escapeAuditHtml(option.answer || '')}</span>
+          ${option.description ? `<div class="text-muted">${escapeAuditHtml(option.description)}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
 
 async function saveSafetyQuestion() {
@@ -725,6 +751,8 @@ async function generateSafetyQuestions() {
       <div class="border rounded-3 p-2 mb-2">
         <div class="small text-muted">AI suggestion ${index + 1} • ${escapeAuditHtml(data.model || '')}</div>
         <div class="fw-bold mb-2">${escapeAuditHtml(item.question || '')}</div>
+        ${renderSafetyOptionPreview(item.options)}
+        <button class="btn btn-sm btn-success ms-1" onclick="saveAiSafetyQuestion(${index})">Save with choices</button>
         <button class="btn btn-sm btn-outline-success" onclick="useAiSafetyQuestion(${index})">ใช้คำถามนี้</button>
       </div>
     `).join('') || '<div class="small text-muted">No suggestion</div>';
@@ -742,6 +770,24 @@ function useAiSafetyQuestion(index) {
   if (text) text.value = item.question || '';
   if (category && item.category) category.value = item.category;
   window.__SELECTED_AI_OPTIONS = item.options || null;
+  toastOk('เลือกคำถาม AI แล้ว กดเพิ่มคำถามเพื่อบันทึกพร้อมช้อยส์');
+}
+
+async function saveAiSafetyQuestion(index) {
+  const item = window.__AI_SAFETY_QUESTIONS?.[index];
+  if (!item?.question) return toastErr('ไม่พบคำถาม AI');
+  try {
+    await adminAction({
+      action: 'safety_question_create',
+      category: item.category || document.getElementById('safetyQuestionCategory')?.value || 'general',
+      question: item.question,
+      options: item.options || undefined
+    });
+    await loadSafetyQuestions();
+    toastOk('บันทึกคำถาม AI พร้อมช้อยส์แล้ว');
+  } catch (err) {
+    toastErr(err.message || 'save_failed');
+  }
 }
 
 async function loadSafetyPulse() {
@@ -966,6 +1012,7 @@ window.saveSafetyQuestion = saveSafetyQuestion;
 window.deleteSafetyQuestion = deleteSafetyQuestion;
 window.generateSafetyQuestions = generateSafetyQuestions;
 window.useAiSafetyQuestion = useAiSafetyQuestion;
+window.saveAiSafetyQuestion = saveAiSafetyQuestion;
 window.updateRiskCase = updateRiskCase;
 window.loadMonthlySafetySummary = loadMonthlySafetySummary;
 window.exportSafetyPulseCsv = exportSafetyPulseCsv;
