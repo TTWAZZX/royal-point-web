@@ -1028,6 +1028,39 @@ async function askDailySafetyCheckin(questionData) {
   return result.isConfirmed ? result.value : null;
 }
 
+function needsSafetyPhotoReminder(safetyPayload = {}) {
+  return ['minor_risk', 'need_support'].includes(String(safetyPayload.safetyAnswer || safetyPayload.safety_answer || '').trim());
+}
+
+function showSafetyPhotoReminder({ points = 5, weeklyBonusAwarded = false, bonus = 10 } = {}) {
+  const rewardText = weeklyBonusAwarded
+    ? `บันทึกสถานะแล้ว ได้รับ +${points} คะแนน และโบนัส Weekly Mission +${bonus}`
+    : `บันทึกสถานะแล้ว ได้รับ +${points} คะแนน`;
+
+  if (!window.Swal) {
+    return alert(`${rewardText}\n\nกรุณาส่งรูปสถานการณ์หรือจุดเสี่ยงลงในแชท LINE OA จอห์นี่ เพื่อให้แอดมิน monitor ต่อได้`);
+  }
+
+  return Swal.fire({
+    icon: 'warning',
+    title: 'กรุณาส่งรูปในแชทจอห์นี่',
+    html: `
+      <div class="text-start">
+        <div class="mb-2">${h(rewardText)}</div>
+        <div class="border rounded-3 p-2 bg-light small text-muted">
+          เนื่องจากคุณเลือกคำตอบที่ต้องติดตาม กรุณาส่งรูปสถานการณ์หรือจุดเสี่ยงลงในแชท LINE OA จอห์นี่ เพื่อให้แอดมิน monitor ได้ถูกต้อง
+        </div>
+        <div class="small text-muted mt-2">ไม่ต้องอัปโหลดรูปในระบบนี้ ใช้ระบบส่งรูปในแชท LINE OA ตามเดิม</div>
+      </div>
+    `,
+    confirmButtonText: 'รับทราบ',
+    customClass: {
+      popup: 'rp-safety-swal',
+      confirmButton: 'rp-safety-confirm'
+    }
+  });
+}
+
 async function performDailyCheckin() {
   if (DAILY_CHECKIN_IN_FLIGHT) return;
   if (!navigator.onLine) return toastErr('ยังเช็คอินไม่ได้ขณะออฟไลน์');
@@ -1072,6 +1105,14 @@ async function performDailyCheckin() {
 
     if (typeof confetti === 'function') {
       confetti({ particleCount: 45, spread: 58, origin: { y: 0.72 } });
+    }
+
+    if (needsSafetyPhotoReminder(safetyPayload)) {
+      return showSafetyPhotoReminder({
+        points: data.points || points,
+        weeklyBonusAwarded: Boolean(data.weeklyBonusAwarded),
+        bonus: data.weeklyMission?.bonus || 10
+      });
     }
 
     return toastOk(data.weeklyBonusAwarded
