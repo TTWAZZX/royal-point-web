@@ -19,6 +19,7 @@ let ADMIN_UID = "";
 let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
 let AUDIT_ROWS = [];
+let SAFETY_PULSE = null;
 
 // ============ UI Helper ============
 const $id = (x) => document.getElementById(x);
@@ -346,6 +347,13 @@ document.addEventListener("DOMContentLoaded", () => {
             if (AUDIT_ROWS.length === 0) loadAuditLogs();
         });
     }
+
+    const safetyBtn = document.getElementById('tabSafetyBtn');
+    if (safetyBtn) {
+        safetyBtn.addEventListener('shown.bs.tab', () => {
+            if (!SAFETY_PULSE) loadSafetyPulse();
+        });
+    }
 });
 
 // ฟังก์ชันโหลดข้อมูล (แก้ใหม่: ตัดตัวแปลงที่ทำให้ข้อมูลเพี้ยนออก)
@@ -548,6 +556,126 @@ window.filterAuditLogs = () => {
   });
   renderAuditLogs(filtered);
 };
+
+function todayBangkokInputValue() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+async function loadSafetyPulse() {
+  const area = document.getElementById('safetyPulseArea');
+  if (!area) return;
+
+  const dateInput = document.getElementById('safetyPulseDate');
+  if (dateInput && !dateInput.value) dateInput.value = todayBangkokInputValue();
+  const date = dateInput?.value || todayBangkokInputValue();
+
+  area.innerHTML = `
+    <div class="text-center py-5 text-muted">
+      <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
+      <div>กำลังโหลด Safety Pulse...</div>
+    </div>`;
+
+  try {
+    const url = `${API_ADMIN_ACTIONS}?action=safety_pulse&adminUid=${encodeURIComponent(ADMIN_UID || '')}&date=${encodeURIComponent(date)}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
+
+    SAFETY_PULSE = json.data || null;
+    renderSafetyPulse(SAFETY_PULSE);
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-danger m-3">โหลด Safety Pulse ไม่สำเร็จ: ${escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function renderSafetyPulse(data) {
+  const area = document.getElementById('safetyPulseArea');
+  if (!area) return;
+  if (!data) {
+    area.innerHTML = '<div class="text-center py-5 text-muted">ยังไม่มีข้อมูล Safety Pulse</div>';
+    return;
+  }
+
+  const total = Number(data.totalUsers || 0);
+  const checkedIn = Number(data.checkedIn || 0);
+  const rate = Number(data.participationRate || 0);
+  const ready = Number(data.ready || 0);
+  const risk = Number(data.risk || 0);
+  const support = Number(data.support || 0);
+  const departments = Array.isArray(data.departments) ? data.departments : [];
+  const riskItems = Array.isArray(data.riskItems) ? data.riskItems : [];
+
+  const metric = (label, value, tone = 'primary') => `
+    <div class="col-6">
+      <div class="m-card h-100">
+        <div class="small text-muted">${escapeAuditHtml(label)}</div>
+        <div class="fs-3 fw-bold text-${tone}">${escapeAuditHtml(value)}</div>
+      </div>
+    </div>`;
+
+  const departmentHtml = departments.length ? departments.map(dep => {
+    const depRate = checkedIn > 0 ? Math.round((Number(dep.checkins || 0) / checkedIn) * 100) : 0;
+    return `
+      <div class="m-card mb-2">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <div class="fw-bold text-dark">${escapeAuditHtml(dep.room || 'ไม่ระบุ')}</div>
+            <div class="small text-muted">เช็คอิน ${Number(dep.checkins || 0)} คน • พร้อม ${Number(dep.ready || 0)} • เสี่ยง ${Number(dep.risk || 0)}</div>
+          </div>
+          <span class="badge bg-primary-subtle text-primary rounded-pill">${depRate}%</span>
+        </div>
+      </div>`;
+  }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีข้อมูลแผนกวันนี้</div>';
+
+  const riskHtml = riskItems.length ? riskItems.map(item => {
+    const status = item.answer === 'need_support' || item.mood === 'support' ? 'ต้องติดตาม' : 'จุดเสี่ยง';
+    return `
+      <div class="m-card mb-2 border-start border-4 border-warning">
+        <div class="d-flex justify-content-between gap-2">
+          <div style="min-width:0;">
+            <div class="fw-bold text-dark text-truncate">${escapeAuditHtml(item.name)}</div>
+            <div class="small text-muted">${escapeAuditHtml(item.room)} • ${escapeAuditHtml(status)}</div>
+            ${item.note ? `<div class="small text-muted mt-1 text-truncate">${escapeAuditHtml(item.note)}</div>` : ''}
+          </div>
+          <span class="badge bg-warning-subtle text-warning rounded-pill flex-shrink-0">${escapeAuditHtml(status)}</span>
+        </div>
+      </div>`;
+  }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีรายการความเสี่ยงวันนี้</div>';
+
+  area.innerHTML = `
+    <div class="m-card border-0 text-white mb-3" style="background:linear-gradient(135deg,#0f766e,#0ea5e9);">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="small opacity-75">Safety Pulse</div>
+          <div class="fs-4 fw-bold">${escapeAuditHtml(data.date)}</div>
+        </div>
+        <div class="text-end">
+          <div class="fs-2 fw-bold">${rate}%</div>
+          <div class="small opacity-75">participation</div>
+        </div>
+      </div>
+      <div class="progress mt-3" style="height:8px;">
+        <div class="progress-bar bg-light" style="width:${Math.max(0, Math.min(rate, 100))}%"></div>
+      </div>
+      <div class="small mt-2 opacity-75">${checkedIn}/${total} คนเช็คอินวันนี้</div>
+    </div>
+
+    <div class="row g-2 mb-3">
+      ${metric('เช็คอินแล้ว', `${checkedIn}/${total}`, 'primary')}
+      ${metric('พร้อมทำงาน', ready, 'success')}
+      ${metric('พบจุดเสี่ยง', risk, risk > 0 ? 'warning' : 'secondary')}
+      ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary')}
+    </div>
+
+    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-building-user me-1"></i> แผนก/Section</div>
+    <div class="mb-3">${departmentHtml}</div>
+
+    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> รายการที่ควรติดตาม</div>
+    ${riskHtml}
+  `;
+}
+
+window.loadSafetyPulse = loadSafetyPulse;
 
 window.deleteCoupon = async (code) => {
   const cleanCode = String(code || '').trim();

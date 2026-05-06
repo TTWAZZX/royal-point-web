@@ -2,6 +2,7 @@ const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const redis = getRedis()
 
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
+const TIME_ZONE = 'Asia/Bangkok'
 
 function getSafeRewardData(rewardData = {}) {
   const safeData = Object.fromEntries(
@@ -21,6 +22,87 @@ function getSafeRewardData(rewardData = {}) {
   if ('img_url' in safeData) safeData.img_url = String(safeData.img_url || '').trim()
 
   return safeData
+}
+
+function bangkokDate(offsetDays = 0) {
+  const now = new Date()
+  const bangkokNow = new Date(now.toLocaleString('en-US', { timeZone: TIME_ZONE }))
+  bangkokNow.setDate(bangkokNow.getDate() + offsetDays)
+  const year = bangkokNow.getFullYear()
+  const month = String(bangkokNow.getMonth() + 1).padStart(2, '0')
+  const day = String(bangkokNow.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+async function getSafetyPulse(dateText = '') {
+  const checkinDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || '')) ? String(dateText) : bangkokDate()
+
+  const [{ count: totalUsers, error: userCountError }, checkinsResult] = await Promise.all([
+    supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+    supabaseAdmin
+      .from('daily_checkins')
+      .select(`
+        id,
+        uid,
+        checkin_date,
+        safety_answer,
+        safety_mood,
+        safety_note,
+        risk_flag,
+        created_at,
+        users:user_id ( name, uid, room )
+      `)
+      .eq('checkin_date', checkinDate)
+      .order('created_at', { ascending: false })
+  ])
+
+  if (userCountError) throw userCountError
+  if (checkinsResult.error) throw checkinsResult.error
+
+  const rows = checkinsResult.data || []
+  const uniqueUids = new Set(rows.map(row => row.uid).filter(Boolean))
+  const ready = rows.filter(row => row.safety_answer === 'ready' || row.safety_mood === 'ready').length
+  const risk = rows.filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk').length
+  const support = rows.filter(row => row.safety_answer === 'need_support' || row.safety_mood === 'support').length
+  const total = Number(totalUsers || 0)
+
+  const departmentsMap = new Map()
+  for (const row of rows) {
+    const room = row.users?.room || 'ไม่ระบุ'
+    const current = departmentsMap.get(room) || { room, checkins: 0, ready: 0, risk: 0, support: 0 }
+    current.checkins += 1
+    if (row.safety_answer === 'ready' || row.safety_mood === 'ready') current.ready += 1
+    if (row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk') current.risk += 1
+    if (row.safety_answer === 'need_support' || row.safety_mood === 'support') current.support += 1
+    departmentsMap.set(room, current)
+  }
+
+  const riskItems = rows
+    .filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_answer === 'need_support' || row.safety_mood === 'risk' || row.safety_mood === 'support')
+    .slice(0, 20)
+    .map(row => ({
+      id: row.id,
+      uid: row.uid,
+      name: row.users?.name || 'ไม่ระบุชื่อ',
+      room: row.users?.room || 'ไม่ระบุ',
+      answer: row.safety_answer || '',
+      mood: row.safety_mood || '',
+      note: row.safety_note || '',
+      riskFlag: Boolean(row.risk_flag),
+      created_at: row.created_at
+    }))
+
+  return {
+    date: checkinDate,
+    totalUsers: total,
+    checkedIn: uniqueUids.size,
+    participationRate: total > 0 ? Math.round((uniqueUids.size / total) * 100) : 0,
+    ready,
+    risk,
+    support,
+    departments: Array.from(departmentsMap.values()).sort((a, b) => b.risk - a.risk || b.checkins - a.checkins || a.room.localeCompare(b.room)),
+    riskItems
+  }
 }
 
 module.exports = async (req, res) => {
@@ -55,6 +137,20 @@ module.exports = async (req, res) => {
           return res.status(200).json({ status: 'success', data: [], warning: 'audit_logs table not found' })
         }
         return res.status(500).json({ status: 'error', message })
+      }
+    }
+
+    if (req.query.action === 'safety_pulse') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+          return res.status(403).json({ status: 'error', message: 'Forbidden' })
+        }
+
+        const data = await getSafetyPulse(req.query.date)
+        return res.status(200).json({ status: 'success', data })
+      } catch (e) {
+        return res.status(500).json({ status: 'error', message: String(e?.message || e) })
       }
     }
 
