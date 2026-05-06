@@ -818,12 +818,12 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
 
   if (checkedIn) {
     textEl.textContent = meta.next
-      ? `วันนี้รักษา streak แล้ว อีก ${Math.max(meta.next - days, 0)} วันถึงระดับถัดไป`
-      : 'รักษามาตรฐานต่อเนื่องระดับสูงสุดแล้ว';
+      ? `รักษาแล้ว | อีก ${Math.max(meta.next - days, 0)} วัน`
+      : 'รักษาระดับสูงสุดแล้ว';
   } else if (days > 1) {
-    textEl.textContent = `เช็คอินวันนี้เพื่อรักษา streak ต่อเนื่อง ${days} วัน`;
+    textEl.textContent = 'เช็คอินเพื่อรักษาต่อ';
   } else {
-    textEl.textContent = 'เช็คอินวันนี้เพื่อเริ่มสะสม Safety Streak';
+    textEl.textContent = 'เริ่ม Safety Streak วันนี้';
   }
 }
 
