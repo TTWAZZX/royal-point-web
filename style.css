@@ -3247,8 +3247,23 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-safety-streak[data-level="champion"] .rp-safety-streak__icon{ color:#92400e; background:#fef3c7; }
 .rp-safety-streak[data-level="champion"] .rp-safety-streak__title{ color:#78350f; }
 @media (max-width:420px){
-  .rp-safety-streak{ grid-template-columns:auto 1fr; }
-  .rp-safety-streak__days{ grid-column:2; width:max-content; }
+  .rp-safety-streak{
+    grid-template-columns:auto 1fr;
+    align-items:start;
+    gap:.62rem .7rem;
+  }
+  .rp-safety-streak__body{
+    min-width:0;
+  }
+  .rp-safety-streak__text{
+    overflow-wrap:anywhere;
+  }
+  .rp-safety-streak__days{
+    grid-column:1 / -1;
+    justify-self:start;
+    width:max-content;
+    margin-left:calc(38px + .7rem);
+  }
 }
 .rp-weekly-mission{
   margin-top:.7rem;

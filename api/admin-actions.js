@@ -150,6 +150,69 @@ function safeSafetySettings(row) {
   }
 }
 
+const SAFETY_CATEGORY_CONTEXT = {
+  general: {
+    label: 'ทั่วไป',
+    focus: 'daily readiness, hazard awareness, housekeeping, safe work planning, and speaking up before work starts',
+    mustInclude: ['ความพร้อมก่อนเริ่มงาน', 'การสังเกตจุดเสี่ยง', 'การแจ้งหัวหน้างานหรือ จป. เมื่อไม่มั่นใจ'],
+    avoid: ['deep PPE-specific inspection', 'chemical handling details', 'ergonomics-only wording']
+  },
+  ppe: {
+    label: 'PPE',
+    focus: 'personal protective equipment selection, fit, condition, replacement, and correct use for the planned task',
+    mustInclude: ['อุปกรณ์ป้องกันส่วนบุคคล', 'สภาพ/ขนาด/ความพอดี', 'การเปลี่ยนหรือขออุปกรณ์เมื่อไม่พร้อม'],
+    avoid: ['chemical storage as the main topic', 'general mood questions without PPE context']
+  },
+  chemical: {
+    label: 'สารเคมี',
+    focus: 'chemical labels, SDS awareness, storage, spills, ventilation, containers, and safe handling readiness',
+    mustInclude: ['ฉลากหรือ SDS', 'การรั่วไหล/หก/กลิ่นผิดปกติ', 'ภาชนะและพื้นที่จัดเก็บสารเคมี'],
+    avoid: ['PPE-only questions without chemical context', 'medical diagnosis or asking for private health details']
+  },
+  ergonomics: {
+    label: 'Ergonomics',
+    focus: 'posture, lifting, repetitive work, workstation setup, tool height, fatigue prevention, and task rotation',
+    mustInclude: ['ท่าทางการทำงาน', 'การยก/ดัน/ลากหรือทำซ้ำ', 'การปรับอุปกรณ์หรือขอช่วยเหลือก่อนบาดเจ็บ'],
+    avoid: ['chemical, PPE, or environmental compliance as the main topic']
+  },
+  environment: {
+    label: 'สิ่งแวดล้อม',
+    focus: 'waste segregation, spills, water/energy use, dust, odor, noise, drainage, and environmental incident reporting',
+    mustInclude: ['ของเสีย/น้ำเสีย/การรั่วไหล', 'ฝุ่น/กลิ่น/เสียง/สภาพแวดล้อมผิดปกติ', 'การแจ้งเหตุด้านสิ่งแวดล้อม'],
+    avoid: ['employee discipline', 'general safety readiness without environmental context']
+  },
+  near_miss: {
+    label: 'Near miss',
+    focus: 'near miss observation, unsafe conditions, unsafe acts, stopping work safely, reporting, and learning before injury',
+    mustInclude: ['เหตุเกือบเกิดอุบัติเหตุ', 'สภาพหรือพฤติกรรมไม่ปลอดภัย', 'การรายงานเพื่อป้องกันซ้ำโดยไม่กล่าวโทษ'],
+    avoid: ['blame, punishment, or asking who caused the event']
+  }
+}
+
+function normalizeQuestionText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[“”"'.!?;:()[\]{}<>/\\|,，。！？ๆฯ]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+async function getExistingSafetyQuestionTexts() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('safety_questions')
+      .select('question')
+      .limit(300)
+    if (error) throw error
+    return (data || []).map(row => row.question).filter(Boolean)
+  } catch (error) {
+    if (/safety_questions|schema cache|relation .* does not exist|Could not find the table/i.test(String(error?.message || error))) {
+      return []
+    }
+    throw error
+  }
+}
+
 async function getSafetySettings() {
   try {
     const { data, error } = await supabaseAdmin
@@ -177,7 +240,7 @@ async function getSafetySettings() {
   }
 }
 
-async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 'practical', count = 10 }) {
+async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 'practical', count = 10, existingQuestions = [] }) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     const error = new Error('gemini_key_missing')
@@ -186,16 +249,32 @@ async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 
   }
 
   const safeCount = Math.max(1, Math.min(Number(count || 10), 10))
+  const safeCategory = SAFETY_CATEGORY_CONTEXT[category] ? String(category) : 'general'
+  const categoryContext = SAFETY_CATEGORY_CONTEXT[safeCategory]
+  const existingNormalized = new Set((existingQuestions || []).map(normalizeQuestionText).filter(Boolean))
+  const duplicateExamples = (existingQuestions || [])
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 80)
   const prompt = `
 Create ${safeCount} Thai daily safety check-in questions for an enterprise workplace.
-Category: ${category}
+Selected category key: ${safeCategory}
+Selected category label: ${categoryContext.label}
+Category focus: ${categoryContext.focus}
+Every question must directly fit the selected category. Do not switch to another category.
+Must include ideas from this category: ${categoryContext.mustInclude.join(', ')}
+Avoid for this category: ${categoryContext.avoid.join(', ')}
 Style: ${tone}
-Scope: occupational safety, occupational health, environment, near miss prevention, fit for work.
+Scope: occupational safety, occupational health, environment, near miss prevention, fit for work, only when relevant to the selected category.
 Governance: non-punitive, privacy-aware, no blame, no medical diagnosis, no requests for sensitive personal health details.
 Return only JSON with this shape:
 {"questions":[{"category":"...","question":"...","options":[{"label":"...","description":"...","answer":"ready","answerText":"...","mood":"ready","riskFlag":false},{"label":"...","description":"...","answer":"minor_risk","answerText":"...","mood":"risk","riskFlag":true},{"label":"...","description":"...","answer":"need_support","answerText":"...","mood":"support","riskFlag":true}]}]}
 Questions must be short, clear, non-punitive, and suitable for daily check-in.
 Questions must focus on workplace readiness or hazard reporting, not employee discipline.
+Set every returned category exactly to "${safeCategory}".
+Do not duplicate or closely paraphrase any existing question.
+Existing questions to avoid:
+${duplicateExamples.length ? duplicateExamples.map((item, index) => `${index + 1}. ${item}`).join('\n') : '- none'}
 Each question must have exactly 3 options.
 Keep the answer codes exactly as ready, minor_risk, and need_support so the app can score risk consistently.
 Make option labels and descriptions specific to the question and category.
@@ -226,15 +305,26 @@ Do not reuse generic labels such as "พร้อมและปลอดภั�
 
       const text = payload?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || ''
       const parsed = JSON.parse(text)
+      const batchNormalized = new Set()
       const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
         .filter(item => item?.question)
-        .map(item => ({
-          category: String(item.category || category || 'general').trim().slice(0, 60),
-          question: String(item.question || '').trim().slice(0, 240),
-          options: normalizeSafetyOptions(item.options),
-          source: 'gemini',
-          model
-        }))
+        .map(item => {
+          const question = String(item.question || '').trim().slice(0, 240)
+          return {
+            category: safeCategory,
+            question,
+            options: normalizeSafetyOptions(item.options),
+            source: 'gemini',
+            model,
+            normalized: normalizeQuestionText(question)
+          }
+        })
+        .filter(item => {
+          if (!item.normalized || existingNormalized.has(item.normalized) || batchNormalized.has(item.normalized)) return false
+          batchNormalized.add(item.normalized)
+          return true
+        })
+        .map(({ normalized, ...item }) => item)
 
       if (questions.length) return { model, questions }
       throw new Error(`Gemini ${model} returned no questions`)
@@ -612,6 +702,11 @@ module.exports = async (req, res) => {
     if (action === 'safety_question_create') {
       const cleanQuestion = String(question || '').trim()
       if (!cleanQuestion) return res.status(400).json({ status: 'error', message: 'question_required' })
+      const existingQuestions = await getExistingSafetyQuestionTexts()
+      const cleanNormalized = normalizeQuestionText(cleanQuestion)
+      if (cleanNormalized && existingQuestions.some(item => normalizeQuestionText(item) === cleanNormalized)) {
+        return res.status(409).json({ status: 'error', message: 'duplicate_question' })
+      }
 
       const { data, error } = await supabaseAdmin
         .from('safety_questions')
@@ -711,7 +806,8 @@ module.exports = async (req, res) => {
 
     else if (action === 'safety_generate_questions') {
       try {
-        const generated = await generateSafetyQuestionsWithGemini({ category, tone, count })
+        const existingQuestions = await getExistingSafetyQuestionTexts()
+        const generated = await generateSafetyQuestionsWithGemini({ category, tone, count, existingQuestions })
         await auditEvent(supabaseAdmin, {
           type: 'safety_ai_generate_questions',
           actorUid: adminUid,
