@@ -613,16 +613,24 @@ function renderSafetyPulse(data) {
       </div>
     </div>`;
 
-  const departmentHtml = departments.length ? departments.map(dep => {
-    const depRate = checkedIn > 0 ? Math.round((Number(dep.checkins || 0) / checkedIn) * 100) : 0;
+  const departmentHtml = departments.length ? departments.map((dep, index) => {
+    const depRate = Number(dep.participationRate || 0);
+    const depTotal = Number(dep.totalUsers || 0);
+    const depCheckins = Number(dep.checkins || 0);
+    const rankClass = index === 0 ? 'text-warning' : index === 1 ? 'text-secondary' : index === 2 ? 'text-primary' : 'text-muted';
+    const rankIcon = index < 3 ? 'fa-trophy' : 'fa-ranking-star';
     return `
       <div class="m-card mb-2">
-        <div class="d-flex justify-content-between align-items-start gap-2">
-          <div>
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <div style="min-width:0;">
+            <div class="small ${rankClass} fw-bold"><i class="fa-solid ${rankIcon} me-1"></i> อันดับ ${index + 1}</div>
             <div class="fw-bold text-dark">${escapeAuditHtml(dep.room || 'ไม่ระบุ')}</div>
-            <div class="small text-muted">เช็คอิน ${Number(dep.checkins || 0)} คน • พร้อม ${Number(dep.ready || 0)} • เสี่ยง ${Number(dep.risk || 0)}</div>
+            <div class="small text-muted">เช็คอิน ${depCheckins}/${depTotal} คน • พร้อม ${Number(dep.ready || 0)} • เสี่ยง ${Number(dep.risk || 0)}</div>
           </div>
           <span class="badge bg-primary-subtle text-primary rounded-pill">${depRate}%</span>
+        </div>
+        <div class="progress" style="height:7px;">
+          <div class="progress-bar ${depRate >= 80 ? 'bg-success' : depRate >= 50 ? 'bg-primary' : 'bg-warning'}" style="width:${Math.max(0, Math.min(depRate, 100))}%"></div>
         </div>
       </div>`;
   }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีข้อมูลแผนกวันนี้</div>';
@@ -667,7 +675,7 @@ function renderSafetyPulse(data) {
       ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary')}
     </div>
 
-    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-building-user me-1"></i> แผนก/Section</div>
+    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-ranking-star me-1"></i> Department Safety Leaderboard</div>
     <div class="mb-3">${departmentHtml}</div>
 
     <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> รายการที่ควรติดตาม</div>

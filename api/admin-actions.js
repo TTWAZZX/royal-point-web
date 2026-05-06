@@ -37,8 +37,8 @@ function bangkokDate(offsetDays = 0) {
 async function getSafetyPulse(dateText = '') {
   const checkinDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || '')) ? String(dateText) : bangkokDate()
 
-  const [{ count: totalUsers, error: userCountError }, checkinsResult] = await Promise.all([
-    supabaseAdmin.from('users').select('*', { count: 'exact', head: true }),
+  const [usersResult, checkinsResult] = await Promise.all([
+    supabaseAdmin.from('users').select('id,uid,room'),
     supabaseAdmin
       .from('daily_checkins')
       .select(`
@@ -56,26 +56,42 @@ async function getSafetyPulse(dateText = '') {
       .order('created_at', { ascending: false })
   ])
 
-  if (userCountError) throw userCountError
+  if (usersResult.error) throw usersResult.error
   if (checkinsResult.error) throw checkinsResult.error
 
+  const users = usersResult.data || []
   const rows = checkinsResult.data || []
   const uniqueUids = new Set(rows.map(row => row.uid).filter(Boolean))
   const ready = rows.filter(row => row.safety_answer === 'ready' || row.safety_mood === 'ready').length
   const risk = rows.filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk').length
   const support = rows.filter(row => row.safety_answer === 'need_support' || row.safety_mood === 'support').length
-  const total = Number(totalUsers || 0)
+  const total = users.length
 
   const departmentsMap = new Map()
+  for (const user of users) {
+    const room = user.room || 'ไม่ระบุ'
+    const current = departmentsMap.get(room) || { room, totalUsers: 0, checkins: 0, ready: 0, risk: 0, support: 0, participationRate: 0 }
+    current.totalUsers += 1
+    departmentsMap.set(room, current)
+  }
+
   for (const row of rows) {
     const room = row.users?.room || 'ไม่ระบุ'
-    const current = departmentsMap.get(room) || { room, checkins: 0, ready: 0, risk: 0, support: 0 }
+    const current = departmentsMap.get(room) || { room, totalUsers: 0, checkins: 0, ready: 0, risk: 0, support: 0, participationRate: 0 }
     current.checkins += 1
     if (row.safety_answer === 'ready' || row.safety_mood === 'ready') current.ready += 1
     if (row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk') current.risk += 1
     if (row.safety_answer === 'need_support' || row.safety_mood === 'support') current.support += 1
     departmentsMap.set(room, current)
   }
+
+  const departments = Array.from(departmentsMap.values())
+    .map(dep => ({
+      ...dep,
+      participationRate: dep.totalUsers > 0 ? Math.round((dep.checkins / dep.totalUsers) * 100) : 0,
+      pending: Math.max(Number(dep.totalUsers || 0) - Number(dep.checkins || 0), 0)
+    }))
+    .sort((a, b) => b.participationRate - a.participationRate || b.checkins - a.checkins || a.risk - b.risk || a.room.localeCompare(b.room))
 
   const riskItems = rows
     .filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_answer === 'need_support' || row.safety_mood === 'risk' || row.safety_mood === 'support')
@@ -100,7 +116,7 @@ async function getSafetyPulse(dateText = '') {
     ready,
     risk,
     support,
-    departments: Array.from(departmentsMap.values()).sort((a, b) => b.risk - a.risk || b.checkins - a.checkins || a.room.localeCompare(b.room)),
+    departments,
     riskItems
   }
 }
