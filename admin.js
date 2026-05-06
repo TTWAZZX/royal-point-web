@@ -370,6 +370,27 @@ document.addEventListener("DOMContentLoaded", () => {
             loadSafetySettings();
         });
     }
+
+    const safetyPulseSubBtn = document.getElementById('tabSafetyPulseSubBtn');
+    if (safetyPulseSubBtn) {
+        safetyPulseSubBtn.addEventListener('shown.bs.tab', () => {
+            if (!SAFETY_PULSE) loadSafetyPulse();
+        });
+    }
+
+    const safetyQuestionsSubBtn = document.getElementById('tabSafetyQuestionsSubBtn');
+    if (safetyQuestionsSubBtn) {
+        safetyQuestionsSubBtn.addEventListener('shown.bs.tab', () => {
+            if (!SAFETY_QUESTIONS.length) loadSafetyQuestions();
+        });
+    }
+
+    const safetySettingsSubBtn = document.getElementById('tabSafetySettingsSubBtn');
+    if (safetySettingsSubBtn) {
+        safetySettingsSubBtn.addEventListener('shown.bs.tab', () => {
+            loadSafetySettings();
+        });
+    }
 });
 
 // ฟังก์ชันโหลดข้อมูล (แก้ใหม่: ตัดตัวแปลงที่ทำให้ข้อมูลเพี้ยนออก)
