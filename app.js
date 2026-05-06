@@ -1067,10 +1067,12 @@ async function performDailyCheckin() {
 
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
-  if (DAILY_CHECKIN_STATUS?.checkinRule?.enabled && !DAILY_CHECKIN_STATUS.checkinRule.allowed) {
-    return toastErr(`Open ${DAILY_CHECKIN_STATUS.checkinRule.startTime}-${DAILY_CHECKIN_STATUS.checkinRule.endTime}`);
+  const latestStatus = await refreshDailyCheckinStatus();
+  if (latestStatus?.checkedIn) return toastOk('วันนี้เช็คอินแล้ว');
+  if (latestStatus?.checkinRule?.enabled && !latestStatus.checkinRule.allowed) {
+    return toastErr(`Open ${latestStatus.checkinRule.startTime}-${latestStatus.checkinRule.endTime}`);
   }
-  const safetyPayload = await askDailySafetyCheckin(DAILY_CHECKIN_STATUS?.safetyQuestion);
+  const safetyPayload = await askDailySafetyCheckin(latestStatus?.safetyQuestion || DAILY_CHECKIN_STATUS?.safetyQuestion);
   if (!safetyPayload) return;
 
   DAILY_CHECKIN_IN_FLIGHT = true;
@@ -1086,6 +1088,11 @@ async function performDailyCheckin() {
     const data = json?.data || {};
 
     if (res.status === 409 || json?.message === 'already_checked_in') {
+      if (json?.message === 'safety_question_expired') {
+        if (data?.safetyQuestion) DAILY_CHECKIN_STATUS = { ...(DAILY_CHECKIN_STATUS || {}), ...data };
+        setDailyCheckinUi({ ...data, checkedIn: false, disabled: false });
+        return toastErr('คำถามมีการเปลี่ยนแปลง กรุณากดเช็คอินใหม่อีกครั้ง');
+      }
       setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
       return toastOk('วันนี้เช็คอินแล้ว');
     }

@@ -13,6 +13,7 @@ const SAFETY_ACTIONS = new Set([
   'safety_question_create',
   'safety_question_update',
   'safety_question_delete',
+  'safety_question_hard_delete',
   'safety_generate_questions',
   'safety_risk_update',
   'safety_streak_reset',
@@ -683,6 +684,27 @@ module.exports = async (req, res) => {
         entityId: id,
         status: 'success',
         detail: { active: false }
+      })
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    else if (action === 'safety_question_hard_delete') {
+      if (!id) return res.status(400).json({ status: 'error', message: 'id_required' })
+      const { data, error } = await supabaseAdmin
+        .from('safety_questions')
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .single()
+
+      if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_question_delete',
+        actorUid: adminUid,
+        entityType: 'safety_question',
+        entityId: id,
+        status: 'success',
+        detail: { deleted: true }
       })
       return res.status(200).json({ status: 'success', data })
     }

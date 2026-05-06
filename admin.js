@@ -735,11 +735,21 @@ function renderSafetyQuestions() {
     <div class="border rounded-3 p-2 mb-2 ${item.active ? '' : 'opacity-50'}">
       <div class="d-flex justify-content-between gap-2">
         <div style="min-width:0;">
-          <div class="small text-muted">${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</div>
+          <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
+            <span>${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</span>
+            <span class="badge ${item.active ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}">${item.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}</span>
+          </div>
           <div class="fw-bold text-dark">${escapeAuditHtml(item.question || '')}</div>
           ${renderSafetyOptionPreview(item.options)}
         </div>
-        <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="deleteSafetyQuestion('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-trash"></i></button>
+        <div class="d-grid gap-1 flex-shrink-0" style="min-width:44px;">
+          <button class="btn btn-sm ${item.active ? 'btn-outline-warning' : 'btn-outline-success'}" onclick="toggleSafetyQuestion('${escapeAuditHtml(item.id)}', ${item.active ? 'false' : 'true'})" title="${item.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}">
+            <i class="fa-solid ${item.active ? 'fa-eye-slash' : 'fa-eye'}"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSafetyQuestion('${escapeAuditHtml(item.id)}')" title="ลบถาวร">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
       </div>
     </div>
   `).join('');
@@ -792,19 +802,32 @@ async function saveSafetyQuestion() {
 async function deleteSafetyQuestion(id) {
   if (!id) return;
   const confirm = await Swal.fire({
-    title: 'ปิดใช้งานคำถามนี้?',
+    title: 'ลบคำถามนี้ถาวร?',
+    text: 'คำถามจะหายจากรายการแอดมินและจะไม่ถูกใช้ตอนเช็คอินอีก',
     icon: 'warning',
     showCancelButton: true,
-    confirmButtonText: 'ปิดใช้งาน',
+    confirmButtonText: 'ลบถาวร',
+    confirmButtonColor: '#dc2626',
     cancelButtonText: 'ยกเลิก'
   });
   if (!confirm.isConfirmed) return;
   try {
-    await adminAction({ action: 'safety_question_delete', id });
+    await adminAction({ action: 'safety_question_hard_delete', id });
     await loadSafetyQuestions();
-    toastOk('ปิดใช้งานแล้ว');
+    toastOk('ลบคำถามแล้ว');
   } catch (err) {
     toastErr(err.message || 'delete_failed');
+  }
+}
+
+async function toggleSafetyQuestion(id, active) {
+  if (!id) return;
+  try {
+    await adminAction({ action: 'safety_question_update', id, active: Boolean(active) });
+    await loadSafetyQuestions();
+    toastOk(active ? 'เปิดใช้งานคำถามแล้ว' : 'ปิดใช้งานคำถามแล้ว');
+  } catch (err) {
+    toastErr(err.message || 'update_failed');
   }
 }
 
@@ -1386,6 +1409,7 @@ window.resetSafetyStreak = resetSafetyStreak;
 window.loadSafetyQuestions = loadSafetyQuestions;
 window.saveSafetyQuestion = saveSafetyQuestion;
 window.deleteSafetyQuestion = deleteSafetyQuestion;
+window.toggleSafetyQuestion = toggleSafetyQuestion;
 window.generateSafetyQuestions = generateSafetyQuestions;
 window.useAiSafetyQuestion = useAiSafetyQuestion;
 window.saveAiSafetyQuestion = saveAiSafetyQuestion;

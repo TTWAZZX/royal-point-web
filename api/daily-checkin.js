@@ -301,6 +301,7 @@ async function applyWeeklyMissionBonus(user, uid) {
 
 function sendStatus(res, statusCode, payload) {
   const { error, ...body } = payload
+  res.setHeader('Cache-Control', 'no-store, max-age=0')
   return res.status(statusCode).json({
     status: payload.error ? 'error' : 'success',
     ...body
@@ -445,6 +446,20 @@ module.exports = async (req, res) => {
 
     const streak = await nextStreak(cleanUid, safetySettings?.streakResetDate)
     const safety = normalizeSafetyPayload(source)
+    if (safety.safety_question_id && safety.safety_question_id !== safetyQuestion.id) {
+      return sendStatus(res, 409, {
+        error: true,
+        message: 'safety_question_expired',
+        data: {
+          checkedIn: false,
+          today,
+          points: CHECKIN_POINTS,
+          safetyQuestion,
+          checkinRule
+        }
+      })
+    }
+
     const insertPayload = {
       user_id: user.id,
       uid: cleanUid,
