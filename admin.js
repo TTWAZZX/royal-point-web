@@ -747,21 +747,35 @@ function renderSafetyQuestions() {
   const area = document.getElementById('safetyQuestionsArea');
   if (!area) return;
   if (!SAFETY_QUESTIONS.length) {
-    area.innerHTML = '<div class="small text-muted">ยังไม่มีคำถาม แอดมินเพิ่มเองหรือให้ AI ช่วยคิดได้</div>';
+    area.innerHTML = `
+      <div class="safety-empty-state">
+        <i class="fa-solid fa-clipboard-question d-block mb-2"></i>
+        ยังไม่มีคำถาม แอดมินเพิ่มเองหรือให้ AI ช่วยคิดได้
+      </div>`;
     return;
   }
-  area.innerHTML = SAFETY_QUESTIONS.map(item => `
-    <div class="border rounded-3 p-2 mb-2 ${item.active ? '' : 'opacity-50'}">
+  const activeCount = SAFETY_QUESTIONS.filter(item => item.active).length;
+  const inactiveCount = SAFETY_QUESTIONS.length - activeCount;
+  area.innerHTML = `
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+      <div class="small text-muted">ทั้งหมด ${SAFETY_QUESTIONS.length} คำถาม</div>
+      <div class="d-flex gap-1">
+        <span class="badge bg-success-subtle text-success">ใช้งาน ${activeCount}</span>
+        <span class="badge bg-secondary-subtle text-secondary">ปิด ${inactiveCount}</span>
+      </div>
+    </div>
+    ${SAFETY_QUESTIONS.map(item => `
+    <div class="safety-question-item ${item.active ? '' : 'is-inactive'}">
       <div class="d-flex justify-content-between gap-2">
         <div style="min-width:0;">
           <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
             <span>${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</span>
             <span class="badge ${item.active ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}">${item.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}</span>
           </div>
-          <div class="fw-bold text-dark">${escapeAuditHtml(item.question || '')}</div>
+          <div class="fw-bold text-dark mt-1">${escapeAuditHtml(item.question || '')}</div>
           ${renderSafetyOptionPreview(item.options)}
         </div>
-        <div class="d-grid gap-1 flex-shrink-0" style="min-width:44px;">
+        <div class="safety-question-actions">
           <button class="btn btn-sm ${item.active ? 'btn-outline-warning' : 'btn-outline-success'}" onclick="toggleSafetyQuestion('${escapeAuditHtml(item.id)}', ${item.active ? 'false' : 'true'})" title="${item.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}">
             <i class="fa-solid ${item.active ? 'fa-eye-slash' : 'fa-eye'}"></i>
           </button>
@@ -771,7 +785,7 @@ function renderSafetyQuestions() {
         </div>
       </div>
     </div>
-  `).join('');
+  `).join('')}`;
 }
 
 function renderSafetyOptionPreview(options = []) {
@@ -782,7 +796,9 @@ function renderSafetyOptionPreview(options = []) {
     need_support: { label: 'คำตอบ: ต้องติดตาม', tone: 'danger' }
   };
   return `
-    <div class="mt-2 d-grid gap-1">
+    <details class="safety-option-details">
+      <summary><i class="fa-solid fa-list-check me-1"></i> ดูช้อยส์และผลลัพธ์ ${options.length} รายการ</summary>
+      <div class="mt-2 d-grid gap-1">
       ${options.map(option => {
         const meta = answerMeta[option.answer] || { label: `คำตอบ: ${option.answer || '-'}`, tone: 'secondary' };
         return `
@@ -795,7 +811,8 @@ function renderSafetyOptionPreview(options = []) {
           ${option.answerText ? `<div class="text-dark mt-1"><i class="fa-solid fa-check me-1 text-success"></i>${escapeAuditHtml(option.answerText)}</div>` : ''}
         </div>
       `}).join('')}
-    </div>
+      </div>
+    </details>
   `;
 }
 
