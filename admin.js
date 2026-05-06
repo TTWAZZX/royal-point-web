@@ -20,6 +20,8 @@ let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
 let AUDIT_ROWS = [];
 let SAFETY_PULSE = null;
+let SAFETY_QUESTIONS = [];
+let MONTHLY_SAFETY = null;
 
 // ============ UI Helper ============
 const $id = (x) => document.getElementById(x);
@@ -352,6 +354,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (safetyBtn) {
         safetyBtn.addEventListener('shown.bs.tab', () => {
             if (!SAFETY_PULSE) loadSafetyPulse();
+            if (!SAFETY_QUESTIONS.length) loadSafetyQuestions();
+            loadSafetySettings();
         });
     }
 });
@@ -482,6 +486,29 @@ function formatAuditDate(value) {
 async function loadAuditLogs() {
   const area = document.getElementById('auditListArea');
   if (!area) return;
+  const riskItems = [];
+
+  const riskWorkflowHtml = riskItems.length ? `
+    <div class="fw-bold text-dark mt-3 mb-2"><i class="fa-solid fa-list-check me-1"></i> Risk Case Workflow</div>
+    ${riskItems.map(item => {
+      const riskStatus = item.riskStatus || 'new';
+      return `
+        <div class="m-card mb-2">
+          <div class="d-flex justify-content-between gap-2 align-items-start">
+            <div style="min-width:0;">
+              <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
+              <div class="small text-muted">${escapeAuditHtml(item.room || '')} • ${escapeAuditHtml(riskStatus)}</div>
+              ${item.note ? `<div class="small text-muted mt-1">${escapeAuditHtml(item.note)}</div>` : ''}
+              ${item.riskAdminNote ? `<div class="small text-primary mt-1">Admin: ${escapeAuditHtml(item.riskAdminNote)}</div>` : ''}
+            </div>
+            <div class="d-flex gap-1 flex-shrink-0">
+              ${riskStatus !== 'resolved' ? `<button class="btn btn-sm btn-outline-primary" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','acknowledged')">รับทราบ</button><button class="btn btn-sm btn-outline-success" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','resolved')">ปิดเคส</button>` : '<span class="badge bg-success-subtle text-success">Resolved</span>'}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('')}
+  ` : '';
 
   area.innerHTML = `
     <div class="text-center py-5 text-muted">
@@ -559,6 +586,162 @@ window.filterAuditLogs = () => {
 
 function todayBangkokInputValue() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+function currentMonthBangkokValue() {
+  return todayBangkokInputValue().slice(0, 7);
+}
+
+async function adminAction(body) {
+  const res = await fetch(API_ADMIN_ACTIONS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminUid: ADMIN_UID, ...body })
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.status !== 'success') throw new Error(json.message || 'request_failed');
+  return json.data;
+}
+
+async function loadSafetySettings() {
+  const enabled = document.getElementById('safetyTimeEnabled');
+  if (!enabled) return;
+  try {
+    const url = `${API_ADMIN_ACTIONS}?action=safety_settings&adminUid=${encodeURIComponent(ADMIN_UID || '')}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
+    enabled.checked = Boolean(json.data?.checkinTimeEnabled);
+    const start = document.getElementById('safetyStartTime');
+    const end = document.getElementById('safetyEndTime');
+    if (start) start.value = json.data?.checkinStartTime || '06:00';
+    if (end) end.value = json.data?.checkinEndTime || '18:00';
+  } catch (err) {
+    console.warn('[safety-settings] load failed', err);
+  }
+}
+
+async function saveSafetySettings() {
+  try {
+    await adminAction({
+      action: 'safety_settings_update',
+      checkinTimeEnabled: Boolean(document.getElementById('safetyTimeEnabled')?.checked),
+      checkinStartTime: document.getElementById('safetyStartTime')?.value || '06:00',
+      checkinEndTime: document.getElementById('safetyEndTime')?.value || '18:00'
+    });
+    toastOk('บันทึกเวลาเช็คอินแล้ว');
+  } catch (err) {
+    toastErr(err.message || 'save_failed');
+  }
+}
+
+async function loadSafetyQuestions() {
+  const area = document.getElementById('safetyQuestionsArea');
+  if (!area) return;
+  area.innerHTML = '<div class="small text-muted">Loading questions...</div>';
+  try {
+    const url = `${API_ADMIN_ACTIONS}?action=safety_questions&includeInactive=1&adminUid=${encodeURIComponent(ADMIN_UID || '')}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
+    SAFETY_QUESTIONS = Array.isArray(json.data) ? json.data : [];
+    renderSafetyQuestions();
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-danger py-2">Load questions failed: ${escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function renderSafetyQuestions() {
+  const area = document.getElementById('safetyQuestionsArea');
+  if (!area) return;
+  if (!SAFETY_QUESTIONS.length) {
+    area.innerHTML = '<div class="small text-muted">ยังไม่มีคำถาม แอดมินเพิ่มเองหรือให้ AI ช่วยคิดได้</div>';
+    return;
+  }
+  area.innerHTML = SAFETY_QUESTIONS.map(item => `
+    <div class="border rounded-3 p-2 mb-2 ${item.active ? '' : 'opacity-50'}">
+      <div class="d-flex justify-content-between gap-2">
+        <div style="min-width:0;">
+          <div class="small text-muted">${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</div>
+          <div class="fw-bold text-dark">${escapeAuditHtml(item.question || '')}</div>
+        </div>
+        <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="deleteSafetyQuestion('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-trash"></i></button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function saveSafetyQuestion() {
+  const text = (document.getElementById('safetyQuestionText')?.value || '').trim();
+  if (!text) return toastErr('กรุณาใส่คำถาม');
+  try {
+    await adminAction({
+      action: 'safety_question_create',
+      category: document.getElementById('safetyQuestionCategory')?.value || 'general',
+      question: text,
+      options: window.__SELECTED_AI_OPTIONS || undefined
+    });
+    window.__SELECTED_AI_OPTIONS = null;
+    document.getElementById('safetyQuestionText').value = '';
+    await loadSafetyQuestions();
+    toastOk('เพิ่มคำถามแล้ว');
+  } catch (err) {
+    toastErr(err.message || 'save_failed');
+  }
+}
+
+async function deleteSafetyQuestion(id) {
+  if (!id) return;
+  const confirm = await Swal.fire({
+    title: 'ปิดใช้งานคำถามนี้?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'ปิดใช้งาน',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!confirm.isConfirmed) return;
+  try {
+    await adminAction({ action: 'safety_question_delete', id });
+    await loadSafetyQuestions();
+    toastOk('ปิดใช้งานแล้ว');
+  } catch (err) {
+    toastErr(err.message || 'delete_failed');
+  }
+}
+
+async function generateSafetyQuestions() {
+  const area = document.getElementById('aiQuestionSuggestions');
+  if (!area) return;
+  area.innerHTML = '<div class="small text-muted">AI is generating...</div>';
+  try {
+    const data = await adminAction({
+      action: 'safety_generate_questions',
+      category: document.getElementById('safetyQuestionCategory')?.value || 'general',
+      tone: 'enterprise practical',
+      count: 3
+    });
+    const questions = Array.isArray(data?.questions) ? data.questions : [];
+    area.innerHTML = questions.map((item, index) => `
+      <div class="border rounded-3 p-2 mb-2">
+        <div class="small text-muted">AI suggestion ${index + 1} • ${escapeAuditHtml(data.model || '')}</div>
+        <div class="fw-bold mb-2">${escapeAuditHtml(item.question || '')}</div>
+        <button class="btn btn-sm btn-outline-success" onclick="useAiSafetyQuestion(${index})">ใช้คำถามนี้</button>
+      </div>
+    `).join('') || '<div class="small text-muted">No suggestion</div>';
+    window.__AI_SAFETY_QUESTIONS = questions;
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-warning py-2">${err.message === 'gemini_key_missing' ? 'ต้องเพิ่ม GEMINI_API_KEY ใน .env.local และ Vercel Environment Variables ก่อนใช้ AI' : escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function useAiSafetyQuestion(index) {
+  const item = window.__AI_SAFETY_QUESTIONS?.[index];
+  if (!item) return;
+  const text = document.getElementById('safetyQuestionText');
+  const category = document.getElementById('safetyQuestionCategory');
+  if (text) text.value = item.question || '';
+  if (category && item.category) category.value = item.category;
+  window.__SELECTED_AI_OPTIONS = item.options || null;
 }
 
 async function loadSafetyPulse() {
@@ -680,10 +863,112 @@ function renderSafetyPulse(data) {
 
     <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> รายการที่ควรติดตาม</div>
     ${riskHtml}
+    ${renderRiskWorkflow(riskItems)}
   `;
 }
 
+function renderRiskWorkflow(riskItems = []) {
+  if (!riskItems.length) return '';
+  return `
+    <div class="fw-bold text-dark mt-3 mb-2"><i class="fa-solid fa-list-check me-1"></i> Risk Case Workflow</div>
+    ${riskItems.map(item => {
+      const riskStatus = item.riskStatus || 'new';
+      return `
+        <div class="m-card mb-2">
+          <div class="d-flex justify-content-between gap-2 align-items-start">
+            <div style="min-width:0;">
+              <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
+              <div class="small text-muted">${escapeAuditHtml(item.room || '')} • ${escapeAuditHtml(riskStatus)}</div>
+              ${item.note ? `<div class="small text-muted mt-1">${escapeAuditHtml(item.note)}</div>` : ''}
+              ${item.riskAdminNote ? `<div class="small text-primary mt-1">Admin: ${escapeAuditHtml(item.riskAdminNote)}</div>` : ''}
+            </div>
+            <div class="d-flex gap-1 flex-shrink-0">
+              ${riskStatus !== 'resolved' ? `<button class="btn btn-sm btn-outline-primary" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','acknowledged')">รับทราบ</button><button class="btn btn-sm btn-outline-success" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','resolved')">ปิดเคส</button>` : '<span class="badge bg-success-subtle text-success">Resolved</span>'}
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('')}
+  `;
+}
+
+async function updateRiskCase(id, status) {
+  if (!id) return;
+  const noteResult = await Swal.fire({
+    title: status === 'resolved' ? 'ปิดเคสความเสี่ยง' : 'รับทราบเคสความเสี่ยง',
+    input: 'textarea',
+    inputPlaceholder: 'บันทึกของแอดมิน (ถ้ามี)',
+    showCancelButton: true,
+    confirmButtonText: 'บันทึก',
+    cancelButtonText: 'ยกเลิก'
+  });
+  if (!noteResult.isConfirmed) return;
+  try {
+    await adminAction({ action: 'safety_risk_update', id, status, note: noteResult.value || '' });
+    await loadSafetyPulse();
+    toastOk('อัปเดตเคสแล้ว');
+  } catch (err) {
+    toastErr(err.message || 'update_failed');
+  }
+}
+
+async function loadMonthlySafetySummary() {
+  const area = document.getElementById('monthlySafetyArea');
+  const monthInput = document.getElementById('safetyMonth');
+  if (!area) return;
+  if (monthInput && !monthInput.value) monthInput.value = currentMonthBangkokValue();
+  const month = monthInput?.value || currentMonthBangkokValue();
+  area.innerHTML = '<div class="small text-muted">Loading monthly summary...</div>';
+  try {
+    const url = `${API_ADMIN_ACTIONS}?action=safety_monthly_summary&adminUid=${encodeURIComponent(ADMIN_UID || '')}&month=${encodeURIComponent(month)}&t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
+    MONTHLY_SAFETY = json.data || null;
+    const data = MONTHLY_SAFETY || {};
+    area.innerHTML = `
+      <div class="row g-2">
+        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Check-ins</div><div class="fw-bold">${Number(data.totalCheckins || 0)}</div></div></div>
+        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Avg rate</div><div class="fw-bold">${Number(data.averageParticipationRate || 0)}%</div></div></div>
+        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Risk</div><div class="fw-bold text-warning">${Number(data.risk || 0)}</div></div></div>
+        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Support</div><div class="fw-bold text-danger">${Number(data.support || 0)}</div></div></div>
+      </div>
+    `;
+  } catch (err) {
+    area.innerHTML = `<div class="alert alert-danger py-2">Monthly summary failed: ${escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function exportSafetyPulseCsv() {
+  if (!SAFETY_PULSE) return toastErr('ยังไม่มีข้อมูล Safety Pulse ให้ export');
+  const rows = [
+    ['type', 'date', 'name', 'room', 'checked_in', 'total_users', 'risk', 'support', 'status', 'note'],
+    ['summary', SAFETY_PULSE.date, '', '', SAFETY_PULSE.checkedIn, SAFETY_PULSE.totalUsers, SAFETY_PULSE.risk, SAFETY_PULSE.support, '', ''],
+    ...(SAFETY_PULSE.departments || []).map(dep => ['department', SAFETY_PULSE.date, '', dep.room, dep.checkins, dep.totalUsers, dep.risk, dep.support, '', '']),
+    ...(SAFETY_PULSE.riskItems || []).map(item => ['risk', SAFETY_PULSE.date, item.name, item.room, '', '', item.riskFlag ? 1 : 0, item.answer === 'need_support' ? 1 : 0, item.riskStatus || 'new', item.note || ''])
+  ];
+  const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `safety-pulse-${SAFETY_PULSE.date || todayBangkokInputValue()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 window.loadSafetyPulse = loadSafetyPulse;
+window.saveSafetySettings = saveSafetySettings;
+window.loadSafetyQuestions = loadSafetyQuestions;
+window.saveSafetyQuestion = saveSafetyQuestion;
+window.deleteSafetyQuestion = deleteSafetyQuestion;
+window.generateSafetyQuestions = generateSafetyQuestions;
+window.useAiSafetyQuestion = useAiSafetyQuestion;
+window.updateRiskCase = updateRiskCase;
+window.loadMonthlySafetySummary = loadMonthlySafetySummary;
+window.exportSafetyPulseCsv = exportSafetyPulseCsv;
 
 window.deleteCoupon = async (code) => {
   const cleanCode = String(code || '').trim();

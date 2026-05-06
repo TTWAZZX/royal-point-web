@@ -3,6 +3,34 @@ const redis = getRedis()
 
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
 const TIME_ZONE = 'Asia/Bangkok'
+const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite'
+]
+const SAFETY_DEFAULT_OPTIONS = [
+  {
+    label: 'พร้อมและปลอดภัย',
+    description: 'พร้อมเริ่มงานตามมาตรฐานความปลอดภัย',
+    answer: 'ready',
+    mood: 'ready',
+    riskFlag: false
+  },
+  {
+    label: 'พบจุดเสี่ยงเล็กน้อย',
+    description: 'รับทราบและจะระวังหรือแจ้งหัวหน้างาน',
+    answer: 'minor_risk',
+    mood: 'risk',
+    riskFlag: true
+  },
+  {
+    label: 'ต้องการให้ติดตาม',
+    description: 'มีประเด็นที่ควรให้ จป./หัวหน้างานช่วยดู',
+    answer: 'need_support',
+    mood: 'support',
+    riskFlag: true
+  }
+]
 
 function getSafeRewardData(rewardData = {}) {
   const safeData = Object.fromEntries(
@@ -34,12 +62,174 @@ function bangkokDate(offsetDays = 0) {
   return `${year}-${month}-${day}`
 }
 
+function normalizeSafetyOptions(options) {
+  const source = Array.isArray(options) && options.length ? options : SAFETY_DEFAULT_OPTIONS
+  return source.slice(0, 4).map((option, index) => {
+    const answer = String(option?.answer || (index === 0 ? 'ready' : index === 1 ? 'minor_risk' : 'need_support')).trim()
+    const safeAnswer = ['ready', 'minor_risk', 'need_support'].includes(answer) ? answer : 'ready'
+    const mood = String(option?.mood || (safeAnswer === 'minor_risk' ? 'risk' : safeAnswer === 'need_support' ? 'support' : 'ready')).trim()
+    const safeMood = ['ready', 'tired', 'risk', 'support'].includes(mood) ? mood : 'ready'
+    return {
+      label: String(option?.label || SAFETY_DEFAULT_OPTIONS[index]?.label || 'ตัวเลือก').trim().slice(0, 80),
+      description: String(option?.description || SAFETY_DEFAULT_OPTIONS[index]?.description || '').trim().slice(0, 180),
+      answer: safeAnswer,
+      mood: safeMood,
+      riskFlag: Boolean(option?.riskFlag ?? safeAnswer !== 'ready')
+    }
+  })
+}
+
+function safeSafetyQuestion(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    category: row.category || 'general',
+    question: row.question || '',
+    options: normalizeSafetyOptions(row.options),
+    active: Boolean(row.active),
+    source: row.source || 'admin',
+    created_by: row.created_by || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null
+  }
+}
+
+function safeSafetySettings(row) {
+  return {
+    checkinTimeEnabled: Boolean(row?.checkin_time_enabled),
+    checkinStartTime: row?.checkin_start_time || '06:00',
+    checkinEndTime: row?.checkin_end_time || '18:00',
+    updatedBy: row?.updated_by || null,
+    updatedAt: row?.updated_at || null
+  }
+}
+
+async function getSafetySettings() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('safety_settings')
+      .select('checkin_time_enabled,checkin_start_time,checkin_end_time,updated_by,updated_at')
+      .eq('id', 'global')
+      .maybeSingle()
+
+    if (error) throw error
+    return safeSafetySettings(data)
+  } catch (error) {
+    if (/safety_settings|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
+      return safeSafetySettings(null)
+    }
+    throw error
+  }
+}
+
+async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 'practical', count = 3 }) {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    const error = new Error('gemini_key_missing')
+    error.statusCode = 400
+    throw error
+  }
+
+  const safeCount = Math.max(1, Math.min(Number(count || 3), 5))
+  const prompt = `
+Create ${safeCount} Thai daily safety check-in questions for an enterprise workplace.
+Category: ${category}
+Style: ${tone}
+Scope: occupational safety, occupational health, environment, near miss prevention, fit for work.
+Return only JSON with this shape:
+{"questions":[{"category":"...","question":"...","options":[{"label":"พร้อมและปลอดภัย","description":"...","answer":"ready","mood":"ready","riskFlag":false},{"label":"พบจุดเสี่ยงเล็กน้อย","description":"...","answer":"minor_risk","mood":"risk","riskFlag":true},{"label":"ต้องการให้ติดตาม","description":"...","answer":"need_support","mood":"support","riskFlag":true}]}]}
+Questions must be short, clear, non-punitive, and suitable for daily check-in.
+`.trim()
+
+  let lastError = null
+  for (const model of GEMINI_MODELS) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.7
+          }
+        })
+      })
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.error?.message || `Gemini ${model} failed`)
+
+      const text = payload?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('') || ''
+      const parsed = JSON.parse(text)
+      const questions = (Array.isArray(parsed?.questions) ? parsed.questions : [])
+        .filter(item => item?.question)
+        .map(item => ({
+          category: String(item.category || category || 'general').trim().slice(0, 60),
+          question: String(item.question || '').trim().slice(0, 240),
+          options: normalizeSafetyOptions(item.options),
+          source: 'gemini',
+          model
+        }))
+
+      if (questions.length) return { model, questions }
+      throw new Error(`Gemini ${model} returned no questions`)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  const error = new Error(lastError?.message || 'gemini_generation_failed')
+  error.statusCode = 502
+  throw error
+}
+
+function monthWindow(monthText = '') {
+  const match = String(monthText || '').match(/^(\d{4})-(\d{2})$/)
+  const nowDate = bangkokDate()
+  const fallback = nowDate.slice(0, 7)
+  const month = match ? String(monthText) : fallback
+  const [year, monthNumber] = month.split('-').map(Number)
+  const start = `${year}-${String(monthNumber).padStart(2, '0')}-01`
+  const endDate = new Date(Date.UTC(year, monthNumber, 0))
+  const end = `${year}-${String(monthNumber).padStart(2, '0')}-${String(endDate.getUTCDate()).padStart(2, '0')}`
+  return { month, start, end }
+}
+
 async function getSafetyPulse(dateText = '') {
   const checkinDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || '')) ? String(dateText) : bangkokDate()
 
-  const [usersResult, checkinsResult] = await Promise.all([
+  const [usersResult, checkinsInitialResult] = await Promise.all([
     supabaseAdmin.from('users').select('id,uid,room'),
     supabaseAdmin
+      .from('daily_checkins')
+      .select(`
+        id,
+        uid,
+        checkin_date,
+        safety_answer,
+        safety_mood,
+        safety_note,
+        risk_flag,
+        risk_status,
+        risk_admin_note,
+        risk_ack_by,
+        risk_ack_at,
+        risk_resolved_by,
+        risk_resolved_at,
+        created_at,
+        users:user_id ( name, uid, room )
+      `)
+      .eq('checkin_date', checkinDate)
+      .order('created_at', { ascending: false })
+  ])
+
+  if (usersResult.error) throw usersResult.error
+  let checkinsResult = checkinsInitialResult
+  if (checkinsResult.error && /risk_status|risk_admin_note|risk_ack|risk_resolved|schema cache|column .* does not exist/i.test(String(checkinsResult.error.message || checkinsResult.error.details || ''))) {
+    checkinsResult = await supabaseAdmin
       .from('daily_checkins')
       .select(`
         id,
@@ -54,9 +244,7 @@ async function getSafetyPulse(dateText = '') {
       `)
       .eq('checkin_date', checkinDate)
       .order('created_at', { ascending: false })
-  ])
-
-  if (usersResult.error) throw usersResult.error
+  }
   if (checkinsResult.error) throw checkinsResult.error
 
   const users = usersResult.data || []
@@ -105,6 +293,12 @@ async function getSafetyPulse(dateText = '') {
       mood: row.safety_mood || '',
       note: row.safety_note || '',
       riskFlag: Boolean(row.risk_flag),
+      riskStatus: row.risk_status || (row.risk_flag ? 'new' : 'none'),
+      riskAdminNote: row.risk_admin_note || '',
+      riskAckBy: row.risk_ack_by || null,
+      riskAckAt: row.risk_ack_at || null,
+      riskResolvedBy: row.risk_resolved_by || null,
+      riskResolvedAt: row.risk_resolved_at || null,
       created_at: row.created_at
     }))
 
@@ -118,6 +312,76 @@ async function getSafetyPulse(dateText = '') {
     support,
     departments,
     riskItems
+  }
+}
+
+async function getSafetyMonthlySummary(monthText = '') {
+  const window = monthWindow(monthText)
+  const [usersResult, checkinsResult] = await Promise.all([
+    supabaseAdmin.from('users').select('id,uid,room'),
+    supabaseAdmin
+      .from('daily_checkins')
+      .select('id,uid,checkin_date,safety_answer,safety_mood,risk_flag,users:user_id ( room )')
+      .gte('checkin_date', window.start)
+      .lte('checkin_date', window.end)
+  ])
+
+  if (usersResult.error) throw usersResult.error
+  if (checkinsResult.error) throw checkinsResult.error
+
+  const users = usersResult.data || []
+  const rows = checkinsResult.data || []
+  const totalUsers = users.length
+  const dailyMap = new Map()
+  const departmentMap = new Map()
+
+  for (const user of users) {
+    const room = user.room || 'ไม่ระบุ'
+    const current = departmentMap.get(room) || { room, totalUsers: 0, checkins: 0, risk: 0, support: 0 }
+    current.totalUsers += 1
+    departmentMap.set(room, current)
+  }
+
+  for (const row of rows) {
+    const date = row.checkin_date
+    const isRisk = Boolean(row.risk_flag) || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk'
+    const isSupport = row.safety_answer === 'need_support' || row.safety_mood === 'support'
+    const daily = dailyMap.get(date) || { date, checkins: 0, risk: 0, support: 0 }
+    daily.checkins += 1
+    if (isRisk) daily.risk += 1
+    if (isSupport) daily.support += 1
+    dailyMap.set(date, daily)
+
+    const room = row.users?.room || 'ไม่ระบุ'
+    const dep = departmentMap.get(room) || { room, totalUsers: 0, checkins: 0, risk: 0, support: 0 }
+    dep.checkins += 1
+    if (isRisk) dep.risk += 1
+    if (isSupport) dep.support += 1
+    departmentMap.set(room, dep)
+  }
+
+  const activeDays = dailyMap.size
+  const risk = rows.filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk').length
+  const support = rows.filter(row => row.safety_answer === 'need_support' || row.safety_mood === 'support').length
+  const possible = Math.max(totalUsers * Math.max(activeDays, 1), 1)
+
+  return {
+    month: window.month,
+    start: window.start,
+    end: window.end,
+    totalUsers,
+    totalCheckins: rows.length,
+    activeDays,
+    averageParticipationRate: Math.round((rows.length / possible) * 100),
+    risk,
+    support,
+    daily: Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+    departments: Array.from(departmentMap.values())
+      .map(dep => ({
+        ...dep,
+        averagePerUser: dep.totalUsers > 0 ? Number((dep.checkins / dep.totalUsers).toFixed(1)) : 0
+      }))
+      .sort((a, b) => b.checkins - a.checkins || b.risk - a.risk || a.room.localeCompare(b.room))
   }
 }
 
@@ -166,6 +430,65 @@ module.exports = async (req, res) => {
         const data = await getSafetyPulse(req.query.date)
         return res.status(200).json({ status: 'success', data })
       } catch (e) {
+        if (/safety_questions|schema cache|relation .* does not exist/i.test(String(e?.message || e))) {
+          return res.status(200).json({ status: 'success', data: [], warning: 'safety_questions table not found' })
+        }
+        return res.status(500).json({ status: 'error', message: String(e?.message || e) })
+      }
+    }
+
+    if (req.query.action === 'safety_monthly_summary') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+          return res.status(403).json({ status: 'error', message: 'Forbidden' })
+        }
+
+        const data = await getSafetyMonthlySummary(req.query.month)
+        return res.status(200).json({ status: 'success', data })
+      } catch (e) {
+        if (/safety_questions|schema cache|relation .* does not exist|Could not find the table/i.test(String(e?.message || e))) {
+          return res.status(200).json({ status: 'success', data: [], warning: 'safety_questions table not found' })
+        }
+        return res.status(500).json({ status: 'error', message: String(e?.message || e) })
+      }
+    }
+
+    if (req.query.action === 'safety_questions') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+          return res.status(403).json({ status: 'error', message: 'Forbidden' })
+        }
+
+        const includeInactive = String(req.query.includeInactive || '') === '1'
+        let query = supabaseAdmin
+          .from('safety_questions')
+          .select('id,category,question,options,active,source,created_by,created_at,updated_at')
+          .order('created_at', { ascending: false })
+          .limit(100)
+        if (!includeInactive) query = query.eq('active', true)
+        const { data, error } = await query
+        if (error) throw error
+        return res.status(200).json({ status: 'success', data: (data || []).map(safeSafetyQuestion) })
+      } catch (e) {
+        if (/safety_questions|schema cache|relation .* does not exist|Could not find the table/i.test(String(e?.message || e))) {
+          return res.status(200).json({ status: 'success', data: [], warning: 'safety_questions table not found' })
+        }
+        return res.status(500).json({ status: 'error', message: String(e?.message || e) })
+      }
+    }
+
+    if (req.query.action === 'safety_settings') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
+          return res.status(403).json({ status: 'error', message: 'Forbidden' })
+        }
+
+        const data = await getSafetySettings()
+        return res.status(200).json({ status: 'success', data })
+      } catch (e) {
         return res.status(500).json({ status: 'error', message: String(e?.message || e) })
       }
     }
@@ -179,7 +502,27 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ status: 'error', message: 'Method not allowed' })
 
   // 2. รับค่า (เพิ่ม rewardId และ rewardData เข้ามาสำหรับฟังก์ชันใหม่)
-  const { action, adminUid, targetUid, amount, delta, note, rewardId, rewardData } = req.body || {}
+  const {
+    action,
+    adminUid,
+    targetUid,
+    amount,
+    delta,
+    note,
+    rewardId,
+    rewardData,
+    id,
+    category,
+    question,
+    options,
+    active,
+    tone,
+    count,
+    status,
+    checkinTimeEnabled,
+    checkinStartTime,
+    checkinEndTime
+  } = req.body || {}
 
   if (!adminUid || adminUid !== process.env.ADMIN_UID) {
     return res.status(403).json({ status: 'error', message: 'Forbidden' })
@@ -188,6 +531,129 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'safety_question_create') {
+      const cleanQuestion = String(question || '').trim()
+      if (!cleanQuestion) return res.status(400).json({ status: 'error', message: 'question_required' })
+
+      const { data, error } = await supabaseAdmin
+        .from('safety_questions')
+        .insert({
+          category: String(category || 'general').trim().slice(0, 60) || 'general',
+          question: cleanQuestion.slice(0, 240),
+          options: normalizeSafetyOptions(options),
+          active: active !== false,
+          source: 'admin',
+          created_by: adminUid,
+          updated_at: new Date().toISOString()
+        })
+        .select('id,category,question,options,active,source,created_by,created_at,updated_at')
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data: safeSafetyQuestion(data) })
+    }
+
+    else if (action === 'safety_question_update') {
+      if (!id) return res.status(400).json({ status: 'error', message: 'id_required' })
+      const update = { updated_at: new Date().toISOString() }
+      if (category !== undefined) update.category = String(category || 'general').trim().slice(0, 60) || 'general'
+      if (question !== undefined) update.question = String(question || '').trim().slice(0, 240)
+      if (options !== undefined) update.options = normalizeSafetyOptions(options)
+      if (active !== undefined) update.active = Boolean(active)
+      if (question !== undefined && !update.question) return res.status(400).json({ status: 'error', message: 'question_required' })
+
+      const { data, error } = await supabaseAdmin
+        .from('safety_questions')
+        .update(update)
+        .eq('id', id)
+        .select('id,category,question,options,active,source,created_by,created_at,updated_at')
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data: safeSafetyQuestion(data) })
+    }
+
+    else if (action === 'safety_question_delete') {
+      if (!id) return res.status(400).json({ status: 'error', message: 'id_required' })
+      const { data, error } = await supabaseAdmin
+        .from('safety_questions')
+        .update({ active: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('id')
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    else if (action === 'safety_generate_questions') {
+      try {
+        const generated = await generateSafetyQuestionsWithGemini({ category, tone, count })
+        return res.status(200).json({ status: 'success', data: generated })
+      } catch (error) {
+        return res.status(error.statusCode || 500).json({ status: 'error', message: String(error.message || error) })
+      }
+    }
+
+    else if (action === 'safety_risk_update') {
+      if (!id) return res.status(400).json({ status: 'error', message: 'id_required' })
+      const cleanStatus = String(status || '').trim()
+      if (!['new', 'acknowledged', 'resolved'].includes(cleanStatus)) {
+        return res.status(400).json({ status: 'error', message: 'invalid_status' })
+      }
+
+      const now = new Date().toISOString()
+      const update = {
+        risk_status: cleanStatus,
+        risk_admin_note: String(note || '').trim().slice(0, 500) || null
+      }
+      if (cleanStatus === 'acknowledged') {
+        update.risk_ack_by = adminUid
+        update.risk_ack_at = now
+      }
+      if (cleanStatus === 'resolved') {
+        update.risk_resolved_by = adminUid
+        update.risk_resolved_at = now
+      }
+      if (cleanStatus === 'new') {
+        update.risk_ack_by = null
+        update.risk_ack_at = null
+        update.risk_resolved_by = null
+        update.risk_resolved_at = null
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('daily_checkins')
+        .update(update)
+        .eq('id', id)
+        .select('id,risk_status,risk_admin_note,risk_ack_by,risk_ack_at,risk_resolved_by,risk_resolved_at')
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    else if (action === 'safety_settings_update') {
+      const timePattern = /^\d{2}:\d{2}$/
+      const start = timePattern.test(String(checkinStartTime || '')) ? String(checkinStartTime) : '06:00'
+      const end = timePattern.test(String(checkinEndTime || '')) ? String(checkinEndTime) : '18:00'
+      const { data, error } = await supabaseAdmin
+        .from('safety_settings')
+        .upsert({
+          id: 'global',
+          checkin_time_enabled: Boolean(checkinTimeEnabled),
+          checkin_start_time: start,
+          checkin_end_time: end,
+          updated_by: adminUid,
+          updated_at: new Date().toISOString()
+        })
+        .select('checkin_time_enabled,checkin_start_time,checkin_end_time,updated_by,updated_at')
+        .single()
+
+      if (error) throw error
+      return res.status(200).json({ status: 'success', data: safeSafetySettings(data) })
+    }
 
     // ==================================================
     // 🟢 CASE A: ปรับแต้มรายคน (ของเดิม ห้ามลบ)

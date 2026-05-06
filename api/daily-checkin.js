@@ -6,10 +6,21 @@ const CHECKIN_POINTS = 5
 const WEEKLY_MISSION_TARGET = 5
 const WEEKLY_MISSION_BONUS = 10
 const TIME_ZONE = 'Asia/Bangkok'
-const CHECKIN_SELECT = 'id,points,streak,checkin_date,created_at,safety_question_id,safety_answer,safety_mood,safety_note,risk_flag'
+const CHECKIN_SELECT = 'id,points,streak,checkin_date,created_at,safety_question_id,safety_answer,safety_mood,safety_note,risk_flag,risk_status'
 const CHECKIN_BASE_SELECT = 'id,points,streak,checkin_date,created_at'
 const SAFETY_ANSWERS = new Set(['ready', 'minor_risk', 'need_support'])
 const SAFETY_MOODS = new Set(['ready', 'tired', 'risk', 'support'])
+const DEFAULT_SAFETY_OPTIONS = [
+  { label: 'พร้อมและปลอดภัย', description: 'พร้อมเริ่มงานตามมาตรฐานความปลอดภัย', answer: 'ready', mood: 'ready', riskFlag: false },
+  { label: 'พบจุดเสี่ยงเล็กน้อย', description: 'รับทราบและจะระวัง หรือแจ้งหัวหน้างาน', answer: 'minor_risk', mood: 'risk', riskFlag: true },
+  { label: 'ต้องการให้ติดตาม', description: 'มีประเด็นที่ควรให้ จป./หัวหน้างานช่วยดู', answer: 'need_support', mood: 'support', riskFlag: true }
+]
+const DEFAULT_SAFETY_QUESTION = {
+  id: 'safe_start',
+  category: 'general',
+  question: 'ก่อนเริ่มงานวันนี้ คุณพร้อมทำงานอย่างปลอดภัยหรือมีจุดเสี่ยงที่ควรแจ้งไหม',
+  options: DEFAULT_SAFETY_OPTIONS
+}
 
 function bangkokDate(offsetDays = 0) {
   const now = new Date()
@@ -83,6 +94,103 @@ async function loadCheckin(uid, checkinDate) {
 
   if (error) throw error
   return data || null
+}
+
+function normalizeQuestionOptions(options) {
+  const source = Array.isArray(options) && options.length ? options : DEFAULT_SAFETY_OPTIONS
+  return source.slice(0, 4).map((option, index) => {
+    const answer = SAFETY_ANSWERS.has(option?.answer) ? option.answer : DEFAULT_SAFETY_OPTIONS[index]?.answer || 'ready'
+    const mood = SAFETY_MOODS.has(option?.mood) ? option.mood : (answer === 'minor_risk' ? 'risk' : answer === 'need_support' ? 'support' : 'ready')
+    return {
+      label: String(option?.label || DEFAULT_SAFETY_OPTIONS[index]?.label || 'ตัวเลือก').trim().slice(0, 80),
+      description: String(option?.description || DEFAULT_SAFETY_OPTIONS[index]?.description || '').trim().slice(0, 180),
+      answer,
+      mood,
+      riskFlag: Boolean(option?.riskFlag ?? answer !== 'ready')
+    }
+  })
+}
+
+function safeQuestion(row) {
+  if (!row) return DEFAULT_SAFETY_QUESTION
+  return {
+    id: row.id || DEFAULT_SAFETY_QUESTION.id,
+    category: row.category || 'general',
+    question: row.question || DEFAULT_SAFETY_QUESTION.question,
+    options: normalizeQuestionOptions(row.options)
+  }
+}
+
+async function getTodaySafetyQuestion(today) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('safety_questions')
+      .select('id,category,question,options')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(30)
+
+    if (error) throw error
+    const rows = data || []
+    if (!rows.length) return DEFAULT_SAFETY_QUESTION
+    let sum = 0
+    for (const ch of today) sum += ch.charCodeAt(0)
+    return safeQuestion(rows[sum % rows.length])
+  } catch (error) {
+    if (/safety_questions|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
+      return DEFAULT_SAFETY_QUESTION
+    }
+    throw error
+  }
+}
+
+async function getSafetySettings() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('safety_settings')
+      .select('checkin_time_enabled,checkin_start_time,checkin_end_time')
+      .eq('id', 'global')
+      .maybeSingle()
+
+    if (error) throw error
+    return {
+      enabled: Boolean(data?.checkin_time_enabled),
+      startTime: data?.checkin_start_time || '06:00',
+      endTime: data?.checkin_end_time || '18:00'
+    }
+  } catch (error) {
+    if (/safety_settings|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
+      return { enabled: false, startTime: '06:00', endTime: '18:00' }
+    }
+    throw error
+  }
+}
+
+function currentBangkokTimeText() {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date())
+}
+
+function getCheckinRule(settings) {
+  const start = settings?.startTime || '06:00'
+  const end = settings?.endTime || '18:00'
+  const now = currentBangkokTimeText()
+  let allowed = true
+  if (settings?.enabled) {
+    allowed = start <= end ? now >= start && now <= end : now >= start || now <= end
+  }
+  return {
+    enabled: Boolean(settings?.enabled),
+    allowed,
+    now,
+    startTime: start,
+    endTime: end,
+    reason: allowed ? null : 'checkin_time_closed'
+  }
 }
 
 async function nextStreak(uid) {
@@ -183,7 +291,7 @@ function sendStatus(res, statusCode, payload) {
 
 function isMissingSafetyColumns(error) {
   const message = String(error?.message || error?.details || '')
-  return /safety_|risk_flag|column .* does not exist|Could not find .* column/i.test(message)
+  return /safety_|risk_flag|risk_status|column .* does not exist|Could not find .* column/i.test(message)
 }
 
 function normalizeSafetyPayload(source = {}) {
@@ -214,7 +322,8 @@ function toSafetyResponse(row) {
     answer: row.safety_answer || null,
     mood: row.safety_mood || null,
     note: row.safety_note || null,
-    riskFlag: Boolean(row.risk_flag)
+    riskFlag: Boolean(row.risk_flag),
+    riskStatus: row.risk_status || (row.risk_flag ? 'new' : 'none')
   }
 }
 
@@ -244,6 +353,11 @@ module.exports = async (req, res) => {
 
     const today = bangkokDate()
     const existing = await loadCheckin(cleanUid, today)
+    const [safetyQuestion, safetySettings] = await Promise.all([
+      getTodaySafetyQuestion(today),
+      getSafetySettings()
+    ])
+    const checkinRule = getCheckinRule(safetySettings)
 
     if (req.method === 'GET') {
       const streak = existing ? Number(existing.streak || 1) : await nextStreak(cleanUid)
@@ -256,7 +370,30 @@ module.exports = async (req, res) => {
           streak,
           checkedInAt: existing?.created_at || null,
           safety: toSafetyResponse(existing),
+          safetyQuestion,
+          checkinRule,
           weeklyMission
+        }
+      })
+    }
+
+    if (!checkinRule.allowed) {
+      await auditEvent(supabaseAdmin, {
+        type: 'daily_checkin_blocked',
+        actorUid: cleanUid,
+        entityType: 'daily_checkin',
+        status: 'warning',
+        detail: { reason: 'checkin_time_closed', today, checkinRule }
+      })
+      return sendStatus(res, 403, {
+        error: true,
+        message: 'checkin_time_closed',
+        data: {
+          checkedIn: false,
+          today,
+          points: CHECKIN_POINTS,
+          checkinRule,
+          safetyQuestion
         }
       })
     }
@@ -281,6 +418,8 @@ module.exports = async (req, res) => {
           streak: Number(existing.streak || 1),
           checkedInAt: existing.created_at || null,
           safety: toSafetyResponse(existing),
+          safetyQuestion,
+          checkinRule,
           weeklyMission
         }
       })
@@ -294,7 +433,8 @@ module.exports = async (req, res) => {
       checkin_date: today,
       points: CHECKIN_POINTS,
       streak,
-      ...safety
+      ...safety,
+      risk_status: safety.risk_flag ? 'new' : 'none'
     }
 
     let { data: inserted, error: insertError } = await supabaseAdmin
@@ -304,7 +444,7 @@ module.exports = async (req, res) => {
       .single()
 
     if (insertError && isMissingSafetyColumns(insertError)) {
-      const { safety_question_id, safety_answer, safety_mood, safety_note, risk_flag, ...basePayload } = insertPayload
+      const { safety_question_id, safety_answer, safety_mood, safety_note, risk_flag, risk_status, ...basePayload } = insertPayload
       const fallback = await supabaseAdmin
         .from('daily_checkins')
         .insert(basePayload)
@@ -375,8 +515,11 @@ module.exports = async (req, res) => {
           answer: safety.safety_answer,
           mood: safety.safety_mood,
           note: safety.safety_note,
-          riskFlag: safety.risk_flag
+          riskFlag: safety.risk_flag,
+          riskStatus: safety.risk_flag ? 'new' : 'none'
         },
+        safetyQuestion,
+        checkinRule,
         weeklyMission,
         weeklyBonusAwarded,
         totalAdded: CHECKIN_POINTS + (weeklyBonusAwarded ? WEEKLY_MISSION_BONUS : 0)

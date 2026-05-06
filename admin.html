@@ -232,6 +232,56 @@
           </div>
         </div>
 
+        <div class="m-card mb-3">
+          <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-clock me-1 text-primary"></i> Check-in Window</div>
+          <div class="row g-2 align-items-center">
+            <div class="col-12">
+              <label class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="safetyTimeEnabled">
+                <span class="form-check-label small">จำกัดเวลาเช็คอิน</span>
+              </label>
+            </div>
+            <div class="col-6"><input type="time" id="safetyStartTime" class="form-control" value="06:00"></div>
+            <div class="col-6"><input type="time" id="safetyEndTime" class="form-control" value="18:00"></div>
+            <div class="col-12"><button class="btn btn-primary w-100" onclick="saveSafetySettings()"><i class="fa-solid fa-floppy-disk me-1"></i> บันทึกเวลา</button></div>
+          </div>
+        </div>
+
+        <div class="m-card mb-3">
+          <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-clipboard-question me-1 text-success"></i> Safety Questions</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <select id="safetyQuestionCategory" class="form-select">
+                <option value="general">ทั่วไป</option>
+                <option value="ppe">PPE</option>
+                <option value="chemical">สารเคมี</option>
+                <option value="ergonomics">Ergonomics</option>
+                <option value="environment">สิ่งแวดล้อม</option>
+                <option value="near_miss">Near miss</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <button class="btn btn-outline-success w-100" onclick="generateSafetyQuestions()"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> AI ช่วยคิด</button>
+            </div>
+            <div class="col-12">
+              <textarea id="safetyQuestionText" class="form-control" rows="2" maxlength="240" placeholder="พิมพ์คำถาม Safety Check-in"></textarea>
+            </div>
+            <div class="col-12"><button class="btn btn-success w-100" onclick="saveSafetyQuestion()"><i class="fa-solid fa-plus me-1"></i> เพิ่มคำถาม</button></div>
+          </div>
+          <div id="aiQuestionSuggestions" class="mt-3"></div>
+          <div id="safetyQuestionsArea" class="mt-3"></div>
+        </div>
+
+        <div class="m-card mb-3">
+          <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-chart-line me-1 text-info"></i> Monthly Summary</div>
+          <div class="input-group mb-2">
+            <input type="month" id="safetyMonth" class="form-control">
+            <button class="btn btn-outline-primary" onclick="loadMonthlySafetySummary()">สรุปเดือน</button>
+            <button class="btn btn-outline-secondary" onclick="exportSafetyPulseCsv()">CSV</button>
+          </div>
+          <div id="monthlySafetyArea"></div>
+        </div>
+
         <div id="safetyPulseArea" class="pb-5">
           <div class="text-center py-5 text-muted">
             <div class="spinner-border text-primary spinner-border-sm mb-2"></div>

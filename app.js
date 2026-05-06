@@ -114,6 +114,7 @@ let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
 let DAILY_CHECKIN_IN_FLIGHT = false;
+let DAILY_CHECKIN_STATUS = null;
 const DAILY_SAFETY_QUESTIONS = [
   {
     id: 'ppe_ready',
@@ -743,10 +744,12 @@ function setDailyCheckinUi(state = {}) {
   const points = Number(state.points || 5);
   const streak = Number(state.streak || 1);
   const unavailable = Boolean(state.unavailable);
+  const rule = state.checkinRule || null;
+  const closed = Boolean(rule && rule.enabled && !rule.allowed && !checkedIn);
 
   btn.classList.toggle('is-done', checkedIn);
-  btn.classList.toggle('is-unavailable', unavailable);
-  btn.disabled = Boolean(state.disabled);
+  btn.classList.toggle('is-unavailable', unavailable || closed);
+  btn.disabled = Boolean(state.disabled || closed);
 
   if (state.loading) {
     label.textContent = 'กำลังโหลดเช็คอิน...';
@@ -889,6 +892,10 @@ async function refreshDailyCheckinStatus() {
     const json = await res.json().catch(() => null);
     if (!res.ok || json?.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
     const data = json?.data || {};
+    if (data?.checkinRule?.enabled && !data.checkinRule.allowed && !data.checkedIn) {
+      data.meta = `Open ${data.checkinRule.startTime}-${data.checkinRule.endTime}`;
+    }
+    DAILY_CHECKIN_STATUS = data;
     setDailyCheckinUi({ ...data, disabled: Boolean(data.checkedIn) });
     return data;
   } catch (e) {
@@ -909,9 +916,13 @@ function getDailySafetyQuestion(dateText = '') {
   return DAILY_SAFETY_QUESTIONS[sum % DAILY_SAFETY_QUESTIONS.length];
 }
 
-async function askDailySafetyCheckin() {
+async function askDailySafetyCheckin(questionData) {
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-  const question = getDailySafetyQuestion(today);
+  const question = {
+    id: questionData?.id || getDailySafetyQuestion(today).id,
+    text: questionData?.question || questionData?.text || getDailySafetyQuestion(today).text,
+    options: Array.isArray(questionData?.options) ? questionData.options : null
+  };
 
   if (!window.Swal) {
     const ok = confirm(`${question.text}\n\nกด OK หากพร้อมทำงานปลอดภัยวันนี้`);
@@ -922,6 +933,43 @@ async function askDailySafetyCheckin() {
       safetyMood: 'ready',
       safetyNote: ''
     };
+  }
+
+  if (question.options && question.options.length) {
+    const optionHtml = question.options.slice(0, 4).map((option, index) => `
+        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
+          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="${h(option.answer || 'ready')}" data-mood="${h(option.mood || 'ready')}" ${index === 0 ? 'checked' : ''}>
+          <span><b>${h(option.label || 'Option')}</b><br><small class="text-muted">${h(option.description || '')}</small></span>
+        </label>
+    `).join('');
+
+    const dynamicResult = await Swal.fire({
+      title: 'Safety Check-in',
+      html: `
+        <div class="text-start">
+          <div class="fw-bold mb-3">${h(question.text)}</div>
+          ${optionHtml}
+          <textarea id="safetyNote" class="form-control" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+        </div>
+      `,
+      confirmButtonText: 'ยืนยันเช็คอิน +5 pt',
+      cancelButtonText: 'ยังก่อน',
+      showCancelButton: true,
+      focusConfirm: false,
+      preConfirm: () => {
+        const selected = document.querySelector('input[name="safetyAnswer"]:checked');
+        const answer = selected?.value || 'ready';
+        const note = document.getElementById('safetyNote')?.value || '';
+        return {
+          safetyQuestionId: question.id,
+          safetyAnswer: answer,
+          safetyMood: selected?.dataset?.mood || (answer === 'minor_risk' ? 'risk' : answer === 'need_support' ? 'support' : 'ready'),
+          safetyNote: note.trim().slice(0, 300)
+        };
+      }
+    });
+
+    return dynamicResult.isConfirmed ? dynamicResult.value : null;
   }
 
   const result = await Swal.fire({
@@ -969,7 +1017,10 @@ async function performDailyCheckin() {
 
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
-  const safetyPayload = await askDailySafetyCheckin();
+  if (DAILY_CHECKIN_STATUS?.checkinRule?.enabled && !DAILY_CHECKIN_STATUS.checkinRule.allowed) {
+    return toastErr(`Open ${DAILY_CHECKIN_STATUS.checkinRule.startTime}-${DAILY_CHECKIN_STATUS.checkinRule.endTime}`);
+  }
+  const safetyPayload = await askDailySafetyCheckin(DAILY_CHECKIN_STATUS?.safetyQuestion);
   if (!safetyPayload) return;
 
   DAILY_CHECKIN_IN_FLIGHT = true;
