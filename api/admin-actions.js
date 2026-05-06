@@ -1,4 +1,5 @@
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
+const { auditEvent } = require('../lib/audit')
 const redis = getRedis()
 
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
@@ -8,11 +9,50 @@ const GEMINI_MODELS = [
   'gemini-2.5-flash-lite',
   'gemini-3.1-flash-lite'
 ]
+const SAFETY_ACTIONS = new Set([
+  'safety_question_create',
+  'safety_question_update',
+  'safety_question_delete',
+  'safety_generate_questions',
+  'safety_risk_update',
+  'safety_streak_reset',
+  'safety_settings_update'
+])
+
+function uidList(value = '') {
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function getAdminRole(uid = '') {
+  const cleanUid = String(uid || '').trim()
+  if (!cleanUid) return null
+  if (cleanUid === process.env.ADMIN_UID) return 'super_admin'
+  if (uidList(process.env.SAFETY_ADMIN_UIDS).includes(cleanUid)) return 'safety_admin'
+  if (uidList(process.env.SAFETY_VIEWER_UIDS).includes(cleanUid)) return 'safety_viewer'
+  return null
+}
+
+function hasAdminAccess(uid = '', scope = 'full') {
+  const role = getAdminRole(uid)
+  if (!role) return false
+  if (scope === 'full') return role === 'super_admin'
+  if (scope === 'safety_write') return role === 'super_admin' || role === 'safety_admin'
+  if (scope === 'safety_read') return role === 'super_admin' || role === 'safety_admin' || role === 'safety_viewer'
+  return false
+}
+
+function forbidden(res) {
+  return res.status(403).json({ status: 'error', message: 'Forbidden' })
+}
 const SAFETY_DEFAULT_OPTIONS = [
   {
     label: 'พร้อมและปลอดภัย',
     description: 'พร้อมเริ่มงานตามมาตรฐานความปลอดภัย',
     answer: 'ready',
+    answerText: 'พร้อมทำงาน ไม่มีประเด็นความเสี่ยง',
     mood: 'ready',
     riskFlag: false
   },
@@ -20,6 +60,7 @@ const SAFETY_DEFAULT_OPTIONS = [
     label: 'พบจุดเสี่ยงเล็กน้อย',
     description: 'รับทราบและจะระวังหรือแจ้งหัวหน้างาน',
     answer: 'minor_risk',
+    answerText: 'พบความเสี่ยง ควรเฝ้าระวังหรือติดตาม',
     mood: 'risk',
     riskFlag: true
   },
@@ -27,6 +68,7 @@ const SAFETY_DEFAULT_OPTIONS = [
     label: 'ต้องการให้ติดตาม',
     description: 'มีประเด็นที่ควรให้ จป./หัวหน้างานช่วยดู',
     answer: 'need_support',
+    answerText: 'ต้องการให้แอดมินหรือหัวหน้างานติดตาม',
     mood: 'support',
     riskFlag: true
   }
@@ -64,7 +106,8 @@ function bangkokDate(offsetDays = 0) {
 
 function normalizeSafetyOptions(options) {
   const source = Array.isArray(options) && options.length ? options : SAFETY_DEFAULT_OPTIONS
-  return source.slice(0, 4).map((option, index) => {
+  return [0, 1, 2].map((index) => {
+    const option = source[index] || SAFETY_DEFAULT_OPTIONS[index] || {}
     const answer = String(option?.answer || (index === 0 ? 'ready' : index === 1 ? 'minor_risk' : 'need_support')).trim()
     const safeAnswer = ['ready', 'minor_risk', 'need_support'].includes(answer) ? answer : 'ready'
     const mood = String(option?.mood || (safeAnswer === 'minor_risk' ? 'risk' : safeAnswer === 'need_support' ? 'support' : 'ready')).trim()
@@ -73,6 +116,7 @@ function normalizeSafetyOptions(options) {
       label: String(option?.label || SAFETY_DEFAULT_OPTIONS[index]?.label || 'ตัวเลือก').trim().slice(0, 80),
       description: String(option?.description || SAFETY_DEFAULT_OPTIONS[index]?.description || '').trim().slice(0, 180),
       answer: safeAnswer,
+      answerText: String(option?.answerText || option?.answer_text || SAFETY_DEFAULT_OPTIONS[index]?.answerText || '').trim().slice(0, 120),
       mood: safeMood,
       riskFlag: Boolean(option?.riskFlag ?? safeAnswer !== 'ready')
     }
@@ -99,6 +143,7 @@ function safeSafetySettings(row) {
     checkinTimeEnabled: Boolean(row?.checkin_time_enabled),
     checkinStartTime: row?.checkin_start_time || '06:00',
     checkinEndTime: row?.checkin_end_time || '18:00',
+    streakResetDate: row?.streak_reset_date || null,
     updatedBy: row?.updated_by || null,
     updatedAt: row?.updated_at || null
   }
@@ -108,13 +153,22 @@ async function getSafetySettings() {
   try {
     const { data, error } = await supabaseAdmin
       .from('safety_settings')
-      .select('checkin_time_enabled,checkin_start_time,checkin_end_time,updated_by,updated_at')
+      .select('checkin_time_enabled,checkin_start_time,checkin_end_time,streak_reset_date,updated_by,updated_at')
       .eq('id', 'global')
       .maybeSingle()
 
     if (error) throw error
     return safeSafetySettings(data)
   } catch (error) {
+    if (/streak_reset_date|schema cache|column .* does not exist/i.test(String(error?.message || error))) {
+      const { data, error: fallbackError } = await supabaseAdmin
+        .from('safety_settings')
+        .select('checkin_time_enabled,checkin_start_time,checkin_end_time,updated_by,updated_at')
+        .eq('id', 'global')
+        .maybeSingle()
+      if (fallbackError) throw fallbackError
+      return safeSafetySettings(data)
+    }
     if (/safety_settings|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
       return safeSafetySettings(null)
     }
@@ -122,7 +176,7 @@ async function getSafetySettings() {
   }
 }
 
-async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 'practical', count = 3 }) {
+async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 'practical', count = 10 }) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     const error = new Error('gemini_key_missing')
@@ -130,15 +184,22 @@ async function generateSafetyQuestionsWithGemini({ category = 'general', tone = 
     throw error
   }
 
-  const safeCount = Math.max(1, Math.min(Number(count || 3), 5))
+  const safeCount = Math.max(1, Math.min(Number(count || 10), 10))
   const prompt = `
 Create ${safeCount} Thai daily safety check-in questions for an enterprise workplace.
 Category: ${category}
 Style: ${tone}
 Scope: occupational safety, occupational health, environment, near miss prevention, fit for work.
+Governance: non-punitive, privacy-aware, no blame, no medical diagnosis, no requests for sensitive personal health details.
 Return only JSON with this shape:
-{"questions":[{"category":"...","question":"...","options":[{"label":"พร้อมและปลอดภัย","description":"...","answer":"ready","mood":"ready","riskFlag":false},{"label":"พบจุดเสี่ยงเล็กน้อย","description":"...","answer":"minor_risk","mood":"risk","riskFlag":true},{"label":"ต้องการให้ติดตาม","description":"...","answer":"need_support","mood":"support","riskFlag":true}]}]}
+{"questions":[{"category":"...","question":"...","options":[{"label":"...","description":"...","answer":"ready","answerText":"...","mood":"ready","riskFlag":false},{"label":"...","description":"...","answer":"minor_risk","answerText":"...","mood":"risk","riskFlag":true},{"label":"...","description":"...","answer":"need_support","answerText":"...","mood":"support","riskFlag":true}]}]}
 Questions must be short, clear, non-punitive, and suitable for daily check-in.
+Questions must focus on workplace readiness or hazard reporting, not employee discipline.
+Each question must have exactly 3 options.
+Keep the answer codes exactly as ready, minor_risk, and need_support so the app can score risk consistently.
+Make option labels and descriptions specific to the question and category.
+For every option, answerText must explain the meaning/outcome in Thai for the admin, not repeat the answer code.
+Do not reuse generic labels such as "พร้อมและปลอดภัย", "พบจุดเสี่ยงเล็กน้อย", or "ต้องการให้ติดตาม" unless they are truly the best wording for that exact question.
 `.trim()
 
   let lastError = null
@@ -154,7 +215,7 @@ Questions must be short, clear, non-punitive, and suitable for daily check-in.
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             responseMimeType: 'application/json',
-            temperature: 0.7
+            temperature: 0.9
           }
         })
       })
@@ -202,7 +263,7 @@ async function getSafetyPulse(dateText = '') {
   const checkinDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || '')) ? String(dateText) : bangkokDate()
 
   const [usersResult, checkinsInitialResult] = await Promise.all([
-    supabaseAdmin.from('users').select('id,uid,room'),
+    supabaseAdmin.from('users').select('id,uid,name,room'),
     supabaseAdmin
       .from('daily_checkins')
       .select(`
@@ -302,6 +363,15 @@ async function getSafetyPulse(dateText = '') {
       created_at: row.created_at
     }))
 
+  const pendingItems = users
+    .filter(user => user.uid && !uniqueUids.has(user.uid))
+    .map(user => ({
+      uid: user.uid,
+      name: user.name || 'ไม่ระบุชื่อ',
+      room: user.room || 'ไม่ระบุ'
+    }))
+    .sort((a, b) => String(a.room || '').localeCompare(String(b.room || '')) || String(a.name || '').localeCompare(String(b.name || '')))
+
   return {
     date: checkinDate,
     totalUsers: total,
@@ -311,7 +381,8 @@ async function getSafetyPulse(dateText = '') {
     risk,
     support,
     departments,
-    riskItems
+    riskItems,
+    pendingItems
   }
 }
 
@@ -363,25 +434,40 @@ async function getSafetyMonthlySummary(monthText = '') {
   const activeDays = dailyMap.size
   const risk = rows.filter(row => row.risk_flag || row.safety_answer === 'minor_risk' || row.safety_mood === 'risk').length
   const support = rows.filter(row => row.safety_answer === 'need_support' || row.safety_mood === 'support').length
-  const possible = Math.max(totalUsers * Math.max(activeDays, 1), 1)
+  const today = bangkokDate()
+  const periodEnd = window.end > today ? today : window.end
+  const periodDays = Math.max(1, Math.floor((new Date(`${periodEnd}T00:00:00Z`) - new Date(`${window.start}T00:00:00Z`)) / 86400000) + 1)
+  const possible = Math.max(totalUsers * periodDays, 1)
 
   return {
     month: window.month,
     start: window.start,
     end: window.end,
+    periodEnd,
+    periodDays,
     totalUsers,
     totalCheckins: rows.length,
     activeDays,
     averageParticipationRate: Math.round((rows.length / possible) * 100),
+    riskRate: rows.length > 0 ? Math.round((risk / rows.length) * 100) : 0,
+    supportRate: rows.length > 0 ? Math.round((support / rows.length) * 100) : 0,
     risk,
     support,
-    daily: Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+    daily: Array.from(dailyMap.values())
+      .map(day => ({
+        ...day,
+        participationRate: totalUsers > 0 ? Math.round((day.checkins / totalUsers) * 100) : 0,
+        riskRate: day.checkins > 0 ? Math.round((day.risk / day.checkins) * 100) : 0
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date)),
     departments: Array.from(departmentMap.values())
       .map(dep => ({
         ...dep,
-        averagePerUser: dep.totalUsers > 0 ? Number((dep.checkins / dep.totalUsers).toFixed(1)) : 0
+        averagePerUser: dep.totalUsers > 0 ? Number((dep.checkins / dep.totalUsers).toFixed(1)) : 0,
+        participationRate: dep.totalUsers > 0 ? Math.round((dep.checkins / Math.max(dep.totalUsers * periodDays, 1)) * 100) : 0,
+        riskRate: dep.checkins > 0 ? Math.round((dep.risk / dep.checkins) * 100) : 0
       }))
-      .sort((a, b) => b.checkins - a.checkins || b.risk - a.risk || a.room.localeCompare(b.room))
+      .sort((a, b) => b.participationRate - a.participationRate || b.riskRate - a.riskRate || a.room.localeCompare(b.room))
   }
 }
 
@@ -391,9 +477,7 @@ module.exports = async (req, res) => {
     if (req.query.action === 'audit_logs') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
-        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-          return res.status(403).json({ status: 'error', message: 'Forbidden' })
-        }
+        if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
 
         const parsedLimit = parseInt(req.query.limit || '100', 10)
         const limit = Math.max(1, Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 100, 200))
@@ -423,9 +507,7 @@ module.exports = async (req, res) => {
     if (req.query.action === 'safety_pulse') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
-        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-          return res.status(403).json({ status: 'error', message: 'Forbidden' })
-        }
+        if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetyPulse(req.query.date)
         return res.status(200).json({ status: 'success', data })
@@ -440,9 +522,7 @@ module.exports = async (req, res) => {
     if (req.query.action === 'safety_monthly_summary') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
-        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-          return res.status(403).json({ status: 'error', message: 'Forbidden' })
-        }
+        if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetyMonthlySummary(req.query.month)
         return res.status(200).json({ status: 'success', data })
@@ -457,9 +537,7 @@ module.exports = async (req, res) => {
     if (req.query.action === 'safety_questions') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
-        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-          return res.status(403).json({ status: 'error', message: 'Forbidden' })
-        }
+        if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const includeInactive = String(req.query.includeInactive || '') === '1'
         let query = supabaseAdmin
@@ -482,9 +560,7 @@ module.exports = async (req, res) => {
     if (req.query.action === 'safety_settings') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
-        if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-          return res.status(403).json({ status: 'error', message: 'Forbidden' })
-        }
+        if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetySettings()
         return res.status(200).json({ status: 'success', data })
@@ -494,8 +570,8 @@ module.exports = async (req, res) => {
     }
 
     const { uid } = req.query
-    if (!uid || !process.env.ADMIN_UID) return res.json({ isAdmin: false })
-    return res.json({ isAdmin: uid === process.env.ADMIN_UID })
+    const role = getAdminRole(uid)
+    return res.json({ isAdmin: Boolean(role), role, safetyAdmin: role === 'safety_admin', safetyViewer: role === 'safety_viewer' })
   }
 
   // 1. ตรวจสอบ Method
@@ -524,9 +600,9 @@ module.exports = async (req, res) => {
     checkinEndTime
   } = req.body || {}
 
-  if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-    return res.status(403).json({ status: 'error', message: 'Forbidden' })
-  }
+  const requestedAction = String(action || '').trim()
+  const requiredScope = SAFETY_ACTIONS.has(requestedAction) ? 'safety_write' : 'full'
+  if (!hasAdminAccess(adminUid, requiredScope)) return forbidden(res)
 
   try {
     let rpcName = ''
@@ -551,6 +627,14 @@ module.exports = async (req, res) => {
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_question_create',
+        actorUid: adminUid,
+        entityType: 'safety_question',
+        entityId: data.id,
+        status: 'success',
+        detail: { category: data.category, source: data.source }
+      })
       return res.status(200).json({ status: 'success', data: safeSafetyQuestion(data) })
     }
 
@@ -571,6 +655,14 @@ module.exports = async (req, res) => {
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_question_update',
+        actorUid: adminUid,
+        entityType: 'safety_question',
+        entityId: data.id,
+        status: 'success',
+        detail: { category: data.category, active: data.active }
+      })
       return res.status(200).json({ status: 'success', data: safeSafetyQuestion(data) })
     }
 
@@ -584,12 +676,27 @@ module.exports = async (req, res) => {
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_question_archive',
+        actorUid: adminUid,
+        entityType: 'safety_question',
+        entityId: id,
+        status: 'success',
+        detail: { active: false }
+      })
       return res.status(200).json({ status: 'success', data })
     }
 
     else if (action === 'safety_generate_questions') {
       try {
         const generated = await generateSafetyQuestionsWithGemini({ category, tone, count })
+        await auditEvent(supabaseAdmin, {
+          type: 'safety_ai_generate_questions',
+          actorUid: adminUid,
+          entityType: 'safety_question_pack',
+          status: 'success',
+          detail: { category: category || 'general', count: generated.questions?.length || 0, model: generated.model }
+        })
         return res.status(200).json({ status: 'success', data: generated })
       } catch (error) {
         return res.status(error.statusCode || 500).json({ status: 'error', message: String(error.message || error) })
@@ -631,7 +738,74 @@ module.exports = async (req, res) => {
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_risk_update',
+        actorUid: adminUid,
+        entityType: 'daily_checkin',
+        entityId: id,
+        status: 'success',
+        detail: { riskStatus: cleanStatus, hasNote: Boolean(String(note || '').trim()) }
+      })
       return res.status(200).json({ status: 'success', data })
+    }
+
+    else if (action === 'safety_streak_reset') {
+      const resetDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.resetDate || '')) ? String(req.body.resetDate) : bangkokDate()
+      const cleanNote = String(note || '').trim().slice(0, 300) || 'admin-streak-reset'
+
+      const { data: settingsData, error: settingsError } = await supabaseAdmin
+        .from('safety_settings')
+        .upsert({
+          id: 'global',
+          streak_reset_date: resetDate,
+          updated_by: adminUid,
+          updated_at: new Date().toISOString()
+        })
+        .select('checkin_time_enabled,checkin_start_time,checkin_end_time,streak_reset_date,updated_by,updated_at')
+        .single()
+
+      if (settingsError) throw settingsError
+
+      const { data: resetRows, error: resetError } = await supabaseAdmin
+        .from('daily_checkins')
+        .select('id,uid,checkin_date,streak')
+        .gte('checkin_date', resetDate)
+        .order('uid', { ascending: true })
+        .order('checkin_date', { ascending: true })
+
+      if (resetError) throw resetError
+
+      let affectedRows = 0
+      const nextByUid = new Map()
+      for (const row of resetRows || []) {
+        const next = nextByUid.get(row.uid) || 1
+        nextByUid.set(row.uid, next + 1)
+        if (Number(row.streak || 0) === next) continue
+        const { error: updateError } = await supabaseAdmin
+          .from('daily_checkins')
+          .update({ streak: next })
+          .eq('id', row.id)
+        if (updateError) throw updateError
+        affectedRows += 1
+      }
+
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_streak_reset',
+        actorUid: adminUid,
+        entityType: 'safety_settings',
+        entityId: 'global',
+        status: 'success',
+        detail: { resetDate, affectedRows, scannedRows: resetRows?.length || 0, note: cleanNote }
+      })
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...safeSafetySettings(settingsData),
+          affectedRows,
+          scannedRows: resetRows?.length || 0
+        }
+      })
     }
 
     else if (action === 'safety_settings_update') {
@@ -648,10 +822,18 @@ module.exports = async (req, res) => {
           updated_by: adminUid,
           updated_at: new Date().toISOString()
         })
-        .select('checkin_time_enabled,checkin_start_time,checkin_end_time,updated_by,updated_at')
+        .select('checkin_time_enabled,checkin_start_time,checkin_end_time,streak_reset_date,updated_by,updated_at')
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_settings_update',
+        actorUid: adminUid,
+        entityType: 'safety_settings',
+        entityId: 'global',
+        status: 'success',
+        detail: { checkinTimeEnabled: Boolean(checkinTimeEnabled), start, end }
+      })
       return res.status(200).json({ status: 'success', data: safeSafetySettings(data) })
     }
 

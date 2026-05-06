@@ -62,9 +62,13 @@ create table if not exists public.safety_settings (
   checkin_time_enabled boolean not null default false,
   checkin_start_time text not null default '06:00',
   checkin_end_time text not null default '18:00',
+  streak_reset_date date,
   updated_by text,
   updated_at timestamptz not null default now()
 );
+
+alter table public.safety_settings
+  add column if not exists streak_reset_date date;
 
 insert into public.safety_settings (id)
 values ('global')

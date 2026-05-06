@@ -752,17 +752,17 @@ function setDailyCheckinUi(state = {}) {
   btn.disabled = Boolean(state.disabled || closed);
 
   if (state.loading) {
-    label.textContent = 'กำลังโหลดเช็คอิน...';
+    label.textContent = 'กำลังตรวจสถานะ';
   } else if (checkedIn) {
-    label.textContent = 'เช็คอินแล้ววันนี้';
+    label.textContent = 'เช็คอินแล้ว';
   } else {
-    label.textContent = `เช็คอินวันนี้ +${points} pt`;
+    label.textContent = 'Safety Check-in';
   }
 
   if (meta) {
     let text = state.meta || '';
-    if (!text && checkedIn) text = `ต่อเนื่อง ${streak} วัน`;
-    if (!text && !checkedIn && !unavailable) text = streak > 1 ? `วันนี้จะต่อเนื่อง ${streak} วัน` : 'กดรับแต้มประจำวัน';
+    if (!text && checkedIn) text = `Streak ${streak} วัน`;
+    if (!text && !checkedIn && !unavailable) text = streak > 1 ? `+${points} pt | ต่อเนื่อง ${streak} วัน` : `+${points} pt | วันนี้`;
     meta.textContent = text;
     meta.classList.toggle('d-none', !text);
   }
@@ -937,24 +937,34 @@ async function askDailySafetyCheckin(questionData) {
 
   if (question.options && question.options.length) {
     const optionHtml = question.options.slice(0, 4).map((option, index) => `
-        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
-          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="${h(option.answer || 'ready')}" data-mood="${h(option.mood || 'ready')}" ${index === 0 ? 'checked' : ''}>
-          <span><b>${h(option.label || 'Option')}</b><br><small class="text-muted">${h(option.description || '')}</small></span>
+        <label class="rp-safety-option">
+          <input class="form-check-input" type="radio" name="safetyAnswer" value="${h(option.answer || 'ready')}" data-mood="${h(option.mood || 'ready')}" ${index === 0 ? 'checked' : ''}>
+          <span class="rp-safety-option__body">
+            <b>${h(option.label || 'Option')}</b>
+            ${option.description ? `<small>${h(option.description || '')}</small>` : ''}
+          </span>
         </label>
     `).join('');
 
     const dynamicResult = await Swal.fire({
-      title: 'Safety Check-in',
+      title: 'Daily Safety Check-in',
       html: `
-        <div class="text-start">
-          <div class="fw-bold mb-3">${h(question.text)}</div>
+        <div class="rp-safety-modal text-start">
+          <div class="rp-safety-modal__eyebrow">Workplace readiness</div>
+          <div class="rp-safety-modal__question">${h(question.text)}</div>
           ${optionHtml}
-          <textarea id="safetyNote" class="form-control" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+          <textarea id="safetyNote" class="form-control rp-safety-note" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+          <div class="rp-safety-privacy"><i class="fa-solid fa-lock me-1"></i>ข้อมูลนี้ใช้เพื่อความปลอดภัยและการติดตามภายในองค์กร</div>
         </div>
       `,
-      confirmButtonText: 'ยืนยันเช็คอิน +5 pt',
-      cancelButtonText: 'ยังก่อน',
+      confirmButtonText: 'บันทึกสถานะ',
+      cancelButtonText: 'ภายหลัง',
       showCancelButton: true,
+      customClass: {
+        popup: 'rp-safety-swal',
+        confirmButton: 'rp-safety-confirm',
+        cancelButton: 'rp-safety-cancel'
+      },
       focusConfirm: false,
       preConfirm: () => {
         const selected = document.querySelector('input[name="safetyAnswer"]:checked');
@@ -973,28 +983,35 @@ async function askDailySafetyCheckin(questionData) {
   }
 
   const result = await Swal.fire({
-    title: 'Safety Check-in',
+    title: 'Daily Safety Check-in',
     html: `
-      <div class="text-start">
-        <div class="fw-bold mb-3">${h(question.text)}</div>
-        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
-          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="ready" checked>
-          <span><b>พร้อมและปลอดภัย</b><br><small class="text-muted">พร้อมเริ่มงานตามมาตรฐานความปลอดภัย</small></span>
+      <div class="rp-safety-modal text-start">
+        <div class="rp-safety-modal__eyebrow">Workplace readiness</div>
+        <div class="rp-safety-modal__question">${h(question.text)}</div>
+        <label class="rp-safety-option">
+          <input class="form-check-input" type="radio" name="safetyAnswer" value="ready" checked>
+          <span class="rp-safety-option__body"><b>พร้อมและปลอดภัย</b><small>พร้อมเริ่มงานตามมาตรฐานความปลอดภัย</small></span>
         </label>
-        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
-          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="minor_risk">
-          <span><b>พบจุดเสี่ยงเล็กน้อย</b><br><small class="text-muted">รับทราบและจะระวัง หรือแจ้งหัวหน้างาน</small></span>
+        <label class="rp-safety-option">
+          <input class="form-check-input" type="radio" name="safetyAnswer" value="minor_risk">
+          <span class="rp-safety-option__body"><b>พบจุดเสี่ยงเล็กน้อย</b><small>รับทราบและจะระวัง หรือแจ้งหัวหน้างาน</small></span>
         </label>
-        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-3">
-          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="need_support">
-          <span><b>ต้องการให้ จป./หัวหน้างานช่วยดู</b><br><small class="text-muted">มีประเด็นที่ควรได้รับการติดตาม</small></span>
+        <label class="rp-safety-option">
+          <input class="form-check-input" type="radio" name="safetyAnswer" value="need_support">
+          <span class="rp-safety-option__body"><b>ต้องการให้ จป./หัวหน้างานช่วยดู</b><small>มีประเด็นที่ควรได้รับการติดตาม</small></span>
         </label>
-        <textarea id="safetyNote" class="form-control" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+        <textarea id="safetyNote" class="form-control rp-safety-note" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+        <div class="rp-safety-privacy"><i class="fa-solid fa-lock me-1"></i>ข้อมูลนี้ใช้เพื่อความปลอดภัยและการติดตามภายในองค์กร</div>
       </div>
     `,
-    confirmButtonText: 'ยืนยันเช็คอิน +5 pt',
-    cancelButtonText: 'ยังก่อน',
+    confirmButtonText: 'บันทึกสถานะ',
+    cancelButtonText: 'ภายหลัง',
     showCancelButton: true,
+    customClass: {
+      popup: 'rp-safety-swal',
+      confirmButton: 'rp-safety-confirm',
+      cancelButton: 'rp-safety-cancel'
+    },
     focusConfirm: false,
     preConfirm: () => {
       const answer = document.querySelector('input[name="safetyAnswer"]:checked')?.value || 'ready';
@@ -1058,8 +1075,8 @@ async function performDailyCheckin() {
     }
 
     return toastOk(data.weeklyBonusAwarded
-      ? `เช็คอินสำเร็จ รับ +${data.points || 5} คะแนน และโบนัส Weekly Mission +${data.weeklyMission?.bonus || 10}`
-      : `เช็คอินสำเร็จ รับ +${points} คะแนน`);
+      ? `บันทึกสถานะความปลอดภัยแล้ว ได้รับ +${data.points || 5} คะแนน และโบนัส Weekly Mission +${data.weeklyMission?.bonus || 10}`
+      : `บันทึกสถานะความปลอดภัยแล้ว ได้รับ +${points} คะแนน`);
   } catch (e) {
     const msg = String(e?.message || e);
     const map = {

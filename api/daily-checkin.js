@@ -11,9 +11,9 @@ const CHECKIN_BASE_SELECT = 'id,points,streak,checkin_date,created_at'
 const SAFETY_ANSWERS = new Set(['ready', 'minor_risk', 'need_support'])
 const SAFETY_MOODS = new Set(['ready', 'tired', 'risk', 'support'])
 const DEFAULT_SAFETY_OPTIONS = [
-  { label: 'พร้อมและปลอดภัย', description: 'พร้อมเริ่มงานตามมาตรฐานความปลอดภัย', answer: 'ready', mood: 'ready', riskFlag: false },
-  { label: 'พบจุดเสี่ยงเล็กน้อย', description: 'รับทราบและจะระวัง หรือแจ้งหัวหน้างาน', answer: 'minor_risk', mood: 'risk', riskFlag: true },
-  { label: 'ต้องการให้ติดตาม', description: 'มีประเด็นที่ควรให้ จป./หัวหน้างานช่วยดู', answer: 'need_support', mood: 'support', riskFlag: true }
+  { label: 'พร้อมและปลอดภัย', description: 'พร้อมเริ่มงานตามมาตรฐานความปลอดภัย', answer: 'ready', answerText: 'พร้อมทำงาน ไม่มีประเด็นความเสี่ยง', mood: 'ready', riskFlag: false },
+  { label: 'พบจุดเสี่ยงเล็กน้อย', description: 'รับทราบและจะระวัง หรือแจ้งหัวหน้างาน', answer: 'minor_risk', answerText: 'พบความเสี่ยง ควรเฝ้าระวังหรือติดตาม', mood: 'risk', riskFlag: true },
+  { label: 'ต้องการให้ติดตาม', description: 'มีประเด็นที่ควรให้ จป./หัวหน้างานช่วยดู', answer: 'need_support', answerText: 'ต้องการให้แอดมินหรือหัวหน้างานติดตาม', mood: 'support', riskFlag: true }
 ]
 const DEFAULT_SAFETY_QUESTION = {
   id: 'safe_start',
@@ -98,13 +98,15 @@ async function loadCheckin(uid, checkinDate) {
 
 function normalizeQuestionOptions(options) {
   const source = Array.isArray(options) && options.length ? options : DEFAULT_SAFETY_OPTIONS
-  return source.slice(0, 4).map((option, index) => {
+  return [0, 1, 2].map((index) => {
+    const option = source[index] || DEFAULT_SAFETY_OPTIONS[index] || {}
     const answer = SAFETY_ANSWERS.has(option?.answer) ? option.answer : DEFAULT_SAFETY_OPTIONS[index]?.answer || 'ready'
     const mood = SAFETY_MOODS.has(option?.mood) ? option.mood : (answer === 'minor_risk' ? 'risk' : answer === 'need_support' ? 'support' : 'ready')
     return {
       label: String(option?.label || DEFAULT_SAFETY_OPTIONS[index]?.label || 'ตัวเลือก').trim().slice(0, 80),
       description: String(option?.description || DEFAULT_SAFETY_OPTIONS[index]?.description || '').trim().slice(0, 180),
       answer,
+      answerText: String(option?.answerText || option?.answer_text || DEFAULT_SAFETY_OPTIONS[index]?.answerText || '').trim().slice(0, 120),
       mood,
       riskFlag: Boolean(option?.riskFlag ?? answer !== 'ready')
     }
@@ -148,7 +150,7 @@ async function getSafetySettings() {
   try {
     const { data, error } = await supabaseAdmin
       .from('safety_settings')
-      .select('checkin_time_enabled,checkin_start_time,checkin_end_time')
+      .select('checkin_time_enabled,checkin_start_time,checkin_end_time,streak_reset_date')
       .eq('id', 'global')
       .maybeSingle()
 
@@ -156,11 +158,26 @@ async function getSafetySettings() {
     return {
       enabled: Boolean(data?.checkin_time_enabled),
       startTime: data?.checkin_start_time || '06:00',
-      endTime: data?.checkin_end_time || '18:00'
+      endTime: data?.checkin_end_time || '18:00',
+      streakResetDate: data?.streak_reset_date || null
     }
   } catch (error) {
+    if (/streak_reset_date|schema cache|column .* does not exist/i.test(String(error?.message || error))) {
+      const { data, error: fallbackError } = await supabaseAdmin
+        .from('safety_settings')
+        .select('checkin_time_enabled,checkin_start_time,checkin_end_time')
+        .eq('id', 'global')
+        .maybeSingle()
+      if (fallbackError) throw fallbackError
+      return {
+        enabled: Boolean(data?.checkin_time_enabled),
+        startTime: data?.checkin_start_time || '06:00',
+        endTime: data?.checkin_end_time || '18:00',
+        streakResetDate: null
+      }
+    }
     if (/safety_settings|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
-      return { enabled: false, startTime: '06:00', endTime: '18:00' }
+      return { enabled: false, startTime: '06:00', endTime: '18:00', streakResetDate: null }
     }
     throw error
   }
@@ -193,8 +210,9 @@ function getCheckinRule(settings) {
   }
 }
 
-async function nextStreak(uid) {
+async function nextStreak(uid, resetDate = null) {
   const yesterday = bangkokDate(-1)
+  if (resetDate && yesterday < resetDate) return 1
   const { data, error } = await supabaseAdmin
     .from('daily_checkins')
     .select('streak,checkin_date')
@@ -360,7 +378,7 @@ module.exports = async (req, res) => {
     const checkinRule = getCheckinRule(safetySettings)
 
     if (req.method === 'GET') {
-      const streak = existing ? Number(existing.streak || 1) : await nextStreak(cleanUid)
+      const streak = existing ? Number(existing.streak || 1) : await nextStreak(cleanUid, safetySettings?.streakResetDate)
       const weeklyMission = await getWeeklyMission(user.id, cleanUid)
       return sendStatus(res, 200, {
         data: {
@@ -425,7 +443,7 @@ module.exports = async (req, res) => {
       })
     }
 
-    const streak = await nextStreak(cleanUid)
+    const streak = await nextStreak(cleanUid, safetySettings?.streakResetDate)
     const safety = normalizeSafetyPayload(source)
     const insertPayload = {
       user_id: user.id,

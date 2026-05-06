@@ -248,7 +248,27 @@
         </div>
 
         <div class="m-card mb-3">
+          <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-rotate-left me-1 text-warning"></i> Streak Reset</div>
+          <div class="small text-muted mb-2">
+            ใช้ก่อน Go-live เพื่อเริ่มนับวันสะสมใหม่โดยไม่ลบประวัติ check-in เดิม
+            <span id="safetyStreakResetCurrent" class="d-block text-primary mt-1"></span>
+          </div>
+          <div class="row g-2">
+            <div class="col-7"><input type="date" id="safetyStreakResetDate" class="form-control"></div>
+            <div class="col-5">
+              <button class="btn btn-outline-warning w-100" onclick="resetSafetyStreak()">
+                <i class="fa-solid fa-rotate-left me-1"></i> รีเซต
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="m-card mb-3">
           <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-clipboard-question me-1 text-success"></i> Safety Questions</div>
+          <div class="alert alert-light border py-2 small text-muted mb-2">
+            <i class="fa-solid fa-shield-halved me-1 text-success"></i>
+            Governance: ใช้คำถามเพื่อความปลอดภัยและการติดตามงานเท่านั้น หลีกเลี่ยงคำถามกล่าวโทษหรือข้อมูลสุขภาพส่วนบุคคลที่ละเอียดเกินจำเป็น
+          </div>
           <div class="row g-2">
             <div class="col-6">
               <select id="safetyQuestionCategory" class="form-select">
@@ -277,7 +297,7 @@
           <div class="input-group mb-2">
             <input type="month" id="safetyMonth" class="form-control">
             <button class="btn btn-outline-primary" onclick="loadMonthlySafetySummary()">สรุปเดือน</button>
-            <button class="btn btn-outline-secondary" onclick="exportSafetyPulseCsv()">CSV</button>
+            <button class="btn btn-outline-secondary" onclick="exportMonthlySafetyCsv()">CSV</button>
           </div>
           <div id="monthlySafetyArea"></div>
         </div>

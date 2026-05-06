@@ -20,6 +20,8 @@ let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
 let AUDIT_ROWS = [];
 let SAFETY_PULSE = null;
+let SAFETY_PULSE_TAB = 'action';
+let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
 
@@ -624,8 +626,16 @@ async function loadSafetySettings() {
     enabled.checked = Boolean(json.data?.checkinTimeEnabled);
     const start = document.getElementById('safetyStartTime');
     const end = document.getElementById('safetyEndTime');
+    const resetDate = document.getElementById('safetyStreakResetDate');
+    const resetCurrent = document.getElementById('safetyStreakResetCurrent');
     if (start) start.value = json.data?.checkinStartTime || '06:00';
     if (end) end.value = json.data?.checkinEndTime || '18:00';
+    if (resetDate && !resetDate.value) resetDate.value = json.data?.streakResetDate || todayBangkokInputValue();
+    if (resetCurrent) {
+      resetCurrent.textContent = json.data?.streakResetDate
+        ? `เริ่มนับวันสะสมใหม่ตั้งแต่ ${json.data.streakResetDate}`
+        : 'ยังไม่ตั้งค่าวันเริ่มนับใหม่';
+    }
   } catch (err) {
     console.warn('[safety-settings] load failed', err);
   }
@@ -642,6 +652,38 @@ async function saveSafetySettings() {
     toastOk('บันทึกเวลาเช็คอินแล้ว');
   } catch (err) {
     toastErr(err.message || 'save_failed');
+  }
+}
+
+async function resetSafetyStreak() {
+  const resetDate = document.getElementById('safetyStreakResetDate')?.value || todayBangkokInputValue();
+  const result = await Swal.fire({
+    title: 'รีเซตวันสะสม Safety Streak?',
+    html: `
+      <div class="text-start small">
+        ระบบจะเริ่มนับวันสะสมใหม่ตั้งแต่ <b>${escapeAuditHtml(resetDate)}</b><br>
+        ประวัติ check-in และคะแนนเดิมจะไม่ถูกลบ
+      </div>
+    `,
+    input: 'textarea',
+    inputPlaceholder: 'เหตุผล เช่น reset ก่อน Go-live',
+    showCancelButton: true,
+    confirmButtonText: 'ยืนยันรีเซต',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#d97706'
+  });
+  if (!result.isConfirmed) return;
+  try {
+    const data = await adminAction({
+      action: 'safety_streak_reset',
+      resetDate,
+      note: result.value || 'reset-before-go-live'
+    });
+    await loadSafetySettings();
+    await loadSafetyPulse();
+    toastOk(`รีเซตวันสะสมแล้ว (${Number(data?.affectedRows || 0)} รายการที่ปรับ)`);
+  } catch (err) {
+    toastErr(err.message || 'reset_failed');
   }
 }
 
@@ -684,15 +726,25 @@ function renderSafetyQuestions() {
 
 function renderSafetyOptionPreview(options = []) {
   if (!Array.isArray(options) || !options.length) return '';
+  const answerMeta = {
+    ready: { label: 'คำตอบ: พร้อม/ปลอดภัย', tone: 'success' },
+    minor_risk: { label: 'คำตอบ: พบความเสี่ยง', tone: 'warning' },
+    need_support: { label: 'คำตอบ: ต้องติดตาม', tone: 'danger' }
+  };
   return `
     <div class="mt-2 d-grid gap-1">
-      ${options.map(option => `
+      ${options.map(option => {
+        const meta = answerMeta[option.answer] || { label: `คำตอบ: ${option.answer || '-'}`, tone: 'secondary' };
+        return `
         <div class="small border rounded-2 px-2 py-1 bg-light">
-          <span class="fw-bold">${escapeAuditHtml(option.label || '')}</span>
-          <span class="text-muted"> / answer: ${escapeAuditHtml(option.answer || '')}</span>
+          <div class="d-flex justify-content-between gap-2 align-items-start">
+            <span class="fw-bold">${escapeAuditHtml(option.label || '')}</span>
+            <span class="badge bg-${meta.tone}-subtle text-${meta.tone} flex-shrink-0">${escapeAuditHtml(meta.label)}</span>
+          </div>
           ${option.description ? `<div class="text-muted">${escapeAuditHtml(option.description)}</div>` : ''}
+          ${option.answerText ? `<div class="text-dark mt-1"><i class="fa-solid fa-check me-1 text-success"></i>${escapeAuditHtml(option.answerText)}</div>` : ''}
         </div>
-      `).join('')}
+      `}).join('')}
     </div>
   `;
 }
@@ -744,22 +796,50 @@ async function generateSafetyQuestions() {
       action: 'safety_generate_questions',
       category: document.getElementById('safetyQuestionCategory')?.value || 'general',
       tone: 'enterprise practical',
-      count: 3
+      count: 10
     });
     const questions = Array.isArray(data?.questions) ? data.questions : [];
-    area.innerHTML = questions.map((item, index) => `
-      <div class="border rounded-3 p-2 mb-2">
-        <div class="small text-muted">AI suggestion ${index + 1} • ${escapeAuditHtml(data.model || '')}</div>
-        <div class="fw-bold mb-2">${escapeAuditHtml(item.question || '')}</div>
-        ${renderSafetyOptionPreview(item.options)}
-        <button class="btn btn-sm btn-success ms-1" onclick="saveAiSafetyQuestion(${index})">Save with choices</button>
-        <button class="btn btn-sm btn-outline-success" onclick="useAiSafetyQuestion(${index})">ใช้คำถามนี้</button>
-      </div>
-    `).join('') || '<div class="small text-muted">No suggestion</div>';
     window.__AI_SAFETY_QUESTIONS = questions;
+    window.__AI_SAFETY_MODEL = data.model || '';
+    renderAiSafetyQuestionSuggestions();
   } catch (err) {
     area.innerHTML = `<div class="alert alert-warning py-2">${err.message === 'gemini_key_missing' ? 'ต้องเพิ่ม GEMINI_API_KEY ใน .env.local และ Vercel Environment Variables ก่อนใช้ AI' : escapeAuditHtml(err.message)}</div>`;
   }
+}
+
+function renderAiSafetyQuestionSuggestions() {
+  const area = document.getElementById('aiQuestionSuggestions');
+  if (!area) return;
+  const questions = Array.isArray(window.__AI_SAFETY_QUESTIONS) ? window.__AI_SAFETY_QUESTIONS : [];
+  const model = window.__AI_SAFETY_MODEL || '';
+  if (!questions.length) {
+    area.innerHTML = '<div class="small text-muted">No suggestion</div>';
+    return;
+  }
+  area.innerHTML = `
+    <div class="border rounded-3 p-2 mb-2 bg-light">
+      <div class="d-flex justify-content-between align-items-center gap-2">
+        <div style="min-width:0;">
+          <div class="fw-bold text-dark">AI Question Pack</div>
+          <div class="small text-muted">${questions.length} ข้อพร้อมช้อยส์และคำตอบ • ${escapeAuditHtml(model)}</div>
+        </div>
+        <button class="btn btn-sm btn-success flex-shrink-0" onclick="saveAllAiSafetyQuestions()">
+          <i class="fa-solid fa-floppy-disk me-1"></i> บันทึกทั้งหมด
+        </button>
+      </div>
+    </div>
+    ${questions.map((item, index) => `
+      <div class="border rounded-3 p-2 mb-2">
+        <div class="small text-muted">AI suggestion ${index + 1}</div>
+        <div class="fw-bold mb-2">${escapeAuditHtml(item.question || '')}</div>
+        ${renderSafetyOptionPreview(item.options)}
+        <div class="d-flex flex-wrap gap-1 mt-2">
+          <button class="btn btn-sm btn-success" onclick="saveAiSafetyQuestion(${index})">บันทึกข้อนี้</button>
+          <button class="btn btn-sm btn-outline-success" onclick="useAiSafetyQuestion(${index})">ใช้ไปแก้ก่อน</button>
+        </div>
+      </div>
+    `).join('')}
+  `;
 }
 
 function useAiSafetyQuestion(index) {
@@ -770,6 +850,8 @@ function useAiSafetyQuestion(index) {
   if (text) text.value = item.question || '';
   if (category && item.category) category.value = item.category;
   window.__SELECTED_AI_OPTIONS = item.options || null;
+  window.__AI_SAFETY_QUESTIONS.splice(index, 1);
+  renderAiSafetyQuestionSuggestions();
   toastOk('เลือกคำถาม AI แล้ว กดเพิ่มคำถามเพื่อบันทึกพร้อมช้อยส์');
 }
 
@@ -784,7 +866,30 @@ async function saveAiSafetyQuestion(index) {
       options: item.options || undefined
     });
     await loadSafetyQuestions();
+    window.__AI_SAFETY_QUESTIONS.splice(index, 1);
+    renderAiSafetyQuestionSuggestions();
     toastOk('บันทึกคำถาม AI พร้อมช้อยส์แล้ว');
+  } catch (err) {
+    toastErr(err.message || 'save_failed');
+  }
+}
+
+async function saveAllAiSafetyQuestions() {
+  const questions = Array.isArray(window.__AI_SAFETY_QUESTIONS) ? window.__AI_SAFETY_QUESTIONS.filter(item => item?.question) : [];
+  if (!questions.length) return toastErr('ไม่พบชุดคำถาม AI');
+  try {
+    for (const item of questions) {
+      await adminAction({
+        action: 'safety_question_create',
+        category: item.category || document.getElementById('safetyQuestionCategory')?.value || 'general',
+        question: item.question,
+        options: item.options || undefined
+      });
+    }
+    window.__AI_SAFETY_QUESTIONS = [];
+    renderAiSafetyQuestionSuggestions();
+    await loadSafetyQuestions();
+    toastOk(`บันทึกชุดคำถาม AI แล้ว ${questions.length} ข้อ`);
   } catch (err) {
     toastErr(err.message || 'save_failed');
   }
@@ -833,28 +938,61 @@ function renderSafetyPulse(data) {
   const support = Number(data.support || 0);
   const departments = Array.isArray(data.departments) ? data.departments : [];
   const riskItems = Array.isArray(data.riskItems) ? data.riskItems : [];
+  const pendingItems = Array.isArray(data.pendingItems) ? data.pendingItems : [];
+  const pending = Math.max(total - checkedIn, 0);
+  const activeTab = SAFETY_PULSE_TAB || 'action';
+  const filters = SAFETY_PULSE_FILTER || { room: 'all', status: 'open', type: 'all' };
+  const rooms = Array.from(new Set([
+    ...departments.map(dep => dep.room || 'ไม่ระบุ'),
+    ...riskItems.map(item => item.room || 'ไม่ระบุ'),
+    ...pendingItems.map(item => item.room || 'ไม่ระบุ')
+  ])).sort((a, b) => String(a).localeCompare(String(b)));
+  const filterByRoom = item => filters.room === 'all' || (item.room || 'ไม่ระบุ') === filters.room;
+  const filterByStatus = item => {
+    const status = item.riskStatus || 'new';
+    if (filters.status === 'all') return true;
+    if (filters.status === 'open') return status !== 'resolved';
+    return status === filters.status;
+  };
+  const filterByType = item => {
+    if (filters.type === 'all') return true;
+    const isSupport = item.answer === 'need_support' || item.mood === 'support';
+    const isRisk = item.riskFlag || item.answer === 'minor_risk' || item.mood === 'risk';
+    return filters.type === 'support' ? isSupport : isRisk;
+  };
+  const visibleRiskItems = riskItems.filter(item => filterByRoom(item) && filterByStatus(item) && filterByType(item));
+  const visiblePendingItems = pendingItems.filter(filterByRoom);
+  const actionItems = visibleRiskItems.filter(item => (item.riskStatus || 'new') !== 'resolved');
+  const rawActionCount = riskItems.filter(item => (item.riskStatus || 'new') !== 'resolved').length;
 
-  const metric = (label, value, tone = 'primary') => `
-    <div class="col-6">
-      <div class="m-card h-100">
-        <div class="small text-muted">${escapeAuditHtml(label)}</div>
-        <div class="fs-3 fw-bold text-${tone}">${escapeAuditHtml(value)}</div>
+  const statusMeta = (status = 'new') => ({
+    new: { label: 'New', tone: 'danger' },
+    acknowledged: { label: 'Acknowledged', tone: 'primary' },
+    resolved: { label: 'Resolved', tone: 'success' },
+    none: { label: 'Review', tone: 'secondary' }
+  }[status] || { label: status, tone: 'secondary' });
+
+  const metric = (label, value, tone = 'primary', icon = 'fa-circle') => `
+    <div class="col-6 col-lg-3">
+      <div class="border rounded-3 p-2 h-100 bg-white">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div class="small text-muted text-truncate">${escapeAuditHtml(label)}</div>
+          <i class="fa-solid ${icon} text-${tone}"></i>
+        </div>
+        <div class="fs-4 fw-bold text-${tone}">${escapeAuditHtml(value)}</div>
       </div>
     </div>`;
 
-  const departmentHtml = departments.length ? departments.map((dep, index) => {
+  const departmentHtml = departments.length ? departments.map((dep) => {
     const depRate = Number(dep.participationRate || 0);
     const depTotal = Number(dep.totalUsers || 0);
     const depCheckins = Number(dep.checkins || 0);
-    const rankClass = index === 0 ? 'text-warning' : index === 1 ? 'text-secondary' : index === 2 ? 'text-primary' : 'text-muted';
-    const rankIcon = index < 3 ? 'fa-trophy' : 'fa-ranking-star';
     return `
-      <div class="m-card mb-2">
+      <div class="border rounded-3 p-2 mb-2 bg-white">
         <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
           <div style="min-width:0;">
-            <div class="small ${rankClass} fw-bold"><i class="fa-solid ${rankIcon} me-1"></i> อันดับ ${index + 1}</div>
             <div class="fw-bold text-dark">${escapeAuditHtml(dep.room || 'ไม่ระบุ')}</div>
-            <div class="small text-muted">เช็คอิน ${depCheckins}/${depTotal} คน • พร้อม ${Number(dep.ready || 0)} • เสี่ยง ${Number(dep.risk || 0)}</div>
+            <div class="small text-muted">เช็คอิน ${depCheckins}/${depTotal} คน | ค้าง ${Number(dep.pending || 0)} | เสี่ยง ${Number(dep.risk || 0)}</div>
           </div>
           <span class="badge bg-primary-subtle text-primary rounded-pill">${depRate}%</span>
         </div>
@@ -864,52 +1002,122 @@ function renderSafetyPulse(data) {
       </div>`;
   }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีข้อมูลแผนกวันนี้</div>';
 
-  const riskHtml = riskItems.length ? riskItems.map(item => {
-    const status = item.answer === 'need_support' || item.mood === 'support' ? 'ต้องติดตาม' : 'จุดเสี่ยง';
+  const riskCard = (item) => {
+    const isSupport = item.answer === 'need_support' || item.mood === 'support';
+    const statusText = isSupport ? 'ต้องติดตาม' : 'พบจุดเสี่ยง';
+    const workflowStatus = item.riskStatus || 'new';
+    const meta = statusMeta(workflowStatus);
     return `
-      <div class="m-card mb-2 border-start border-4 border-warning">
-        <div class="d-flex justify-content-between gap-2">
+      <div class="border rounded-3 p-2 mb-2 bg-white ${isSupport ? 'border-danger' : 'border-warning'}">
+        <div class="d-flex justify-content-between gap-2 align-items-start">
           <div style="min-width:0;">
             <div class="fw-bold text-dark text-truncate">${escapeAuditHtml(item.name)}</div>
-            <div class="small text-muted">${escapeAuditHtml(item.room)} • ${escapeAuditHtml(status)}</div>
-            ${item.note ? `<div class="small text-muted mt-1 text-truncate">${escapeAuditHtml(item.note)}</div>` : ''}
+            <div class="small text-muted">${escapeAuditHtml(item.room)} | ${escapeAuditHtml(statusText)} | ${formatAuditDate(item.created_at)}</div>
+            ${item.note ? `<div class="small text-muted mt-1">${escapeAuditHtml(item.note)}</div>` : ''}
+            ${item.riskAdminNote ? `<div class="small text-primary mt-1">Admin: ${escapeAuditHtml(item.riskAdminNote)}</div>` : ''}
           </div>
-          <span class="badge bg-warning-subtle text-warning rounded-pill flex-shrink-0">${escapeAuditHtml(status)}</span>
+          <div class="d-flex flex-column gap-1 flex-shrink-0 align-items-end">
+            <span class="badge bg-${meta.tone}-subtle text-${meta.tone}">${escapeAuditHtml(meta.label)}</span>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-secondary" onclick="showSafetyRiskCase('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-eye"></i></button>
+              ${workflowStatus !== 'resolved' ? `<button class="btn btn-sm btn-outline-primary" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','acknowledged')">รับทราบ</button><button class="btn btn-sm btn-outline-success" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','resolved')">ปิดเคส</button>` : ''}
+            </div>
+          </div>
         </div>
       </div>`;
-  }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีรายการความเสี่ยงวันนี้</div>';
+  };
+
+  const actionHtml = actionItems.length ? actionItems.map(riskCard).join('') : '<div class="text-center text-muted py-4">ไม่มีเคสที่รอติดตามตอนนี้</div>';
+  const riskHtml = visibleRiskItems.length ? visibleRiskItems.map(riskCard).join('') : '<div class="text-center text-muted py-4">ไม่พบเคสตามตัวกรองนี้</div>';
+  const pendingHtml = visiblePendingItems.length ? visiblePendingItems.map(item => `
+    <div class="border rounded-3 p-2 mb-2 bg-white">
+      <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
+      <div class="small text-muted">${escapeAuditHtml(item.room || 'ไม่ระบุ')}</div>
+    </div>
+  `).join('') : '<div class="text-center text-muted py-4">ทุกคนเช็คอินครบแล้ว</div>';
+
+  const overviewHtml = `
+    <div class="row g-2 mb-3">
+      ${metric('เช็คอินแล้ว', `${checkedIn}/${total}`, 'primary', 'fa-user-check')}
+      ${metric('ยังไม่เช็คอิน', pending, pending > 0 ? 'warning' : 'secondary', 'fa-user-clock')}
+      ${metric('พบจุดเสี่ยง', risk, risk > 0 ? 'warning' : 'secondary', 'fa-triangle-exclamation')}
+      ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary', 'fa-headset')}
+    </div>
+    <div class="border rounded-3 p-3 bg-white">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-bold text-dark">Participation</div>
+        <div class="fw-bold text-primary">${rate}%</div>
+      </div>
+      <div class="progress" style="height:8px;">
+        <div class="progress-bar bg-primary" style="width:${Math.max(0, Math.min(rate, 100))}%"></div>
+      </div>
+      <div class="small text-muted mt-2">พร้อมทำงาน ${ready} คน จากผู้เช็คอิน ${checkedIn} คน</div>
+    </div>`;
+
+  const tabButton = (key, label, count, icon, tone = 'primary') => `
+    <button type="button" class="btn btn-sm ${activeTab === key ? `btn-${tone}` : 'btn-outline-secondary'}" onclick="setSafetyPulseTab('${key}')">
+      <i class="fa-solid ${icon} me-1"></i>${escapeAuditHtml(label)}
+      <span class="badge ${activeTab === key ? 'bg-white text-dark' : 'bg-light text-dark'} ms-1">${escapeAuditHtml(count)}</span>
+    </button>`;
+
+  const filterPanel = ['action', 'risk', 'pending'].includes(activeTab) ? `
+    <div class="border rounded-3 p-2 mb-3 bg-light">
+      <div class="row g-2">
+        <div class="col-12 col-sm-4">
+          <select class="form-select form-select-sm" onchange="setSafetyPulseFilter('room', this.value)">
+            <option value="all"${filters.room === 'all' ? ' selected' : ''}>ทุกแผนก</option>
+            ${rooms.map(room => `<option value="${escapeAuditHtml(room)}"${filters.room === room ? ' selected' : ''}>${escapeAuditHtml(room)}</option>`).join('')}
+          </select>
+        </div>
+        ${activeTab !== 'pending' ? `
+          <div class="col-6 col-sm-4">
+            <select class="form-select form-select-sm" onchange="setSafetyPulseFilter('status', this.value)">
+              <option value="open"${filters.status === 'open' ? ' selected' : ''}>ยังไม่ปิดเคส</option>
+              <option value="new"${filters.status === 'new' ? ' selected' : ''}>New</option>
+              <option value="acknowledged"${filters.status === 'acknowledged' ? ' selected' : ''}>Acknowledged</option>
+              <option value="resolved"${filters.status === 'resolved' ? ' selected' : ''}>Resolved</option>
+              <option value="all"${filters.status === 'all' ? ' selected' : ''}>ทุกสถานะ</option>
+            </select>
+          </div>
+          <div class="col-6 col-sm-4">
+            <select class="form-select form-select-sm" onchange="setSafetyPulseFilter('type', this.value)">
+              <option value="all"${filters.type === 'all' ? ' selected' : ''}>ทุกประเภท</option>
+              <option value="risk"${filters.type === 'risk' ? ' selected' : ''}>พบความเสี่ยง</option>
+              <option value="support"${filters.type === 'support' ? ' selected' : ''}>ต้องติดตาม</option>
+            </select>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  ` : '';
+
+  const tabContent = activeTab === 'overview' ? overviewHtml
+    : activeTab === 'pending' ? pendingHtml
+    : activeTab === 'risk' ? riskHtml
+    : activeTab === 'departments' ? departmentHtml
+    : actionHtml;
 
   area.innerHTML = `
-    <div class="m-card border-0 text-white mb-3" style="background:linear-gradient(135deg,#0f766e,#0ea5e9);">
-      <div class="d-flex justify-content-between align-items-start">
-        <div>
-          <div class="small opacity-75">Safety Pulse</div>
-          <div class="fs-4 fw-bold">${escapeAuditHtml(data.date)}</div>
+    <div class="m-card mb-3">
+      <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+        <div style="min-width:0;">
+          <div class="small text-muted">Safety Pulse</div>
+          <div class="fs-5 fw-bold text-dark">${escapeAuditHtml(data.date)}</div>
         </div>
-        <div class="text-end">
-          <div class="fs-2 fw-bold">${rate}%</div>
-          <div class="small opacity-75">participation</div>
-        </div>
+        <span class="badge ${actionItems.length ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'} rounded-pill">
+          ${actionItems.length ? `${actionItems.length} ต้องดูแล` : 'ปกติ'}
+        </span>
       </div>
-      <div class="progress mt-3" style="height:8px;">
-        <div class="progress-bar bg-light" style="width:${Math.max(0, Math.min(rate, 100))}%"></div>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        ${tabButton('action', 'รอติดตาม', rawActionCount, 'fa-list-check', rawActionCount ? 'danger' : 'success')}
+        ${tabButton('pending', 'ยังไม่เช็คอิน', pendingItems.length || pending, 'fa-user-clock', pending > 0 ? 'warning' : 'secondary')}
+        ${tabButton('risk', 'ความเสี่ยง', riskItems.length, 'fa-triangle-exclamation', riskItems.length ? 'warning' : 'secondary')}
+        ${tabButton('departments', 'แผนก', departments.length, 'fa-ranking-star', 'primary')}
+        ${tabButton('overview', 'ภาพรวม', `${rate}%`, 'fa-chart-simple', 'primary')}
       </div>
-      <div class="small mt-2 opacity-75">${checkedIn}/${total} คนเช็คอินวันนี้</div>
+      ${filterPanel}
+      <div>${tabContent}</div>
     </div>
-
-    <div class="row g-2 mb-3">
-      ${metric('เช็คอินแล้ว', `${checkedIn}/${total}`, 'primary')}
-      ${metric('พร้อมทำงาน', ready, 'success')}
-      ${metric('พบจุดเสี่ยง', risk, risk > 0 ? 'warning' : 'secondary')}
-      ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary')}
-    </div>
-
-    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-ranking-star me-1"></i> Department Safety Leaderboard</div>
-    <div class="mb-3">${departmentHtml}</div>
-
-    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-triangle-exclamation me-1"></i> รายการที่ควรติดตาม</div>
-    ${riskHtml}
-    ${renderRiskWorkflow(riskItems)}
   `;
 }
 
@@ -936,6 +1144,69 @@ function renderRiskWorkflow(riskItems = []) {
       `;
     }).join('')}
   `;
+}
+
+function setSafetyPulseTab(tab) {
+  SAFETY_PULSE_TAB = tab || 'action';
+  renderSafetyPulse(SAFETY_PULSE);
+}
+
+function setSafetyPulseFilter(key, value) {
+  SAFETY_PULSE_FILTER = {
+    ...(SAFETY_PULSE_FILTER || { room: 'all', status: 'open', type: 'all' }),
+    [key]: value || 'all'
+  };
+  renderSafetyPulse(SAFETY_PULSE);
+}
+
+function showSafetyRiskCase(id) {
+  const item = (SAFETY_PULSE?.riskItems || []).find(row => String(row.id) === String(id));
+  if (!item) return toastErr('ไม่พบเคสนี้');
+  const status = item.riskStatus || 'new';
+  const isSupport = item.answer === 'need_support' || item.mood === 'support';
+  const typeText = isSupport ? 'ต้องติดตาม' : 'พบความเสี่ยง';
+  const timeline = [
+    { label: 'พนักงานบันทึกสถานะ', time: item.created_at, detail: item.note || typeText, tone: isSupport ? 'danger' : 'warning' },
+    item.riskAckAt ? { label: 'แอดมินรับทราบ', time: item.riskAckAt, detail: item.riskAckBy || '', tone: 'primary' } : null,
+    item.riskResolvedAt ? { label: 'ปิดเคสแล้ว', time: item.riskResolvedAt, detail: item.riskResolvedBy || '', tone: 'success' } : null
+  ].filter(Boolean);
+
+  const timelineHtml = timeline.map(step => `
+    <div class="d-flex gap-2 mb-2">
+      <div class="flex-shrink-0 mt-1">
+        <span class="d-inline-block rounded-circle bg-${step.tone}" style="width:10px;height:10px;"></span>
+      </div>
+      <div style="min-width:0;">
+        <div class="fw-bold small text-dark">${escapeAuditHtml(step.label)}</div>
+        <div class="small text-muted">${escapeAuditHtml(formatAuditDate(step.time) || '-')}</div>
+        ${step.detail ? `<div class="small text-muted">${escapeAuditHtml(step.detail)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  Swal.fire({
+    title: 'Safety Case Detail',
+    html: `
+      <div class="text-start">
+        <div class="border rounded-3 p-2 mb-2 bg-light">
+          <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
+          <div class="small text-muted">${escapeAuditHtml(item.room || '')} | ${escapeAuditHtml(typeText)} | ${escapeAuditHtml(status)}</div>
+        </div>
+        ${item.note ? `<div class="mb-2"><div class="small fw-bold text-dark">User note</div><div class="small text-muted">${escapeAuditHtml(item.note)}</div></div>` : ''}
+        ${item.riskAdminNote ? `<div class="mb-2"><div class="small fw-bold text-dark">Admin note</div><div class="small text-primary">${escapeAuditHtml(item.riskAdminNote)}</div></div>` : ''}
+        <div class="small fw-bold text-dark mb-2">Timeline</div>
+        ${timelineHtml || '<div class="small text-muted">ยังไม่มี timeline</div>'}
+      </div>
+    `,
+    confirmButtonText: 'ปิด',
+    showCancelButton: status !== 'resolved',
+    cancelButtonText: status === 'new' ? 'รับทราบ' : 'ปิดเคส',
+    reverseButtons: true
+  }).then(result => {
+    if (result.dismiss === Swal.DismissReason.cancel) {
+      updateRiskCase(item.id, status === 'new' ? 'acknowledged' : 'resolved');
+    }
+  });
 }
 
 async function updateRiskCase(id, status) {
@@ -972,17 +1243,79 @@ async function loadMonthlySafetySummary() {
     if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
     MONTHLY_SAFETY = json.data || null;
     const data = MONTHLY_SAFETY || {};
-    area.innerHTML = `
-      <div class="row g-2">
-        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Check-ins</div><div class="fw-bold">${Number(data.totalCheckins || 0)}</div></div></div>
-        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Avg rate</div><div class="fw-bold">${Number(data.averageParticipationRate || 0)}%</div></div></div>
-        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Risk</div><div class="fw-bold text-warning">${Number(data.risk || 0)}</div></div></div>
-        <div class="col-6"><div class="border rounded-3 p-2"><div class="small text-muted">Support</div><div class="fw-bold text-danger">${Number(data.support || 0)}</div></div></div>
-      </div>
-    `;
+    renderMonthlySafetySummary(data);
   } catch (err) {
     area.innerHTML = `<div class="alert alert-danger py-2">Monthly summary failed: ${escapeAuditHtml(err.message)}</div>`;
   }
+}
+
+function renderMonthlySafetySummary(data = {}) {
+  const area = document.getElementById('monthlySafetyArea');
+  if (!area) return;
+  const daily = Array.isArray(data.daily) ? data.daily : [];
+  const departments = Array.isArray(data.departments) ? data.departments : [];
+  const maxDailyCheckins = Math.max(1, ...daily.map(day => Number(day.checkins || 0)));
+
+  const metric = (label, value, tone = 'primary') => `
+    <div class="col-6">
+      <div class="border rounded-3 p-2 bg-white h-100">
+        <div class="small text-muted">${escapeAuditHtml(label)}</div>
+        <div class="fs-5 fw-bold text-${tone}">${escapeAuditHtml(value)}</div>
+      </div>
+    </div>`;
+
+  const trendHtml = daily.length ? daily.map(day => {
+    const width = Math.max(4, Math.round((Number(day.checkins || 0) / maxDailyCheckins) * 100));
+    return `
+      <div class="mb-2">
+        <div class="d-flex justify-content-between small mb-1">
+          <span class="text-muted">${escapeAuditHtml(day.date || '')}</span>
+          <span class="fw-bold">${Number(day.checkins || 0)} | Risk ${Number(day.risk || 0)}</span>
+        </div>
+        <div class="progress" style="height:7px;">
+          <div class="progress-bar ${Number(day.risk || 0) ? 'bg-warning' : 'bg-primary'}" style="width:${width}%"></div>
+        </div>
+      </div>`;
+  }).join('') : '<div class="text-center text-muted py-3">ยังไม่มีข้อมูลรายวันในเดือนนี้</div>';
+
+  const departmentHtml = departments.length ? departments.map(dep => `
+    <div class="border rounded-3 p-2 mb-2 bg-white">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div style="min-width:0;">
+          <div class="fw-bold text-dark">${escapeAuditHtml(dep.room || 'ไม่ระบุ')}</div>
+          <div class="small text-muted">Check-ins ${Number(dep.checkins || 0)} | Risk ${Number(dep.risk || 0)} | Support ${Number(dep.support || 0)}</div>
+        </div>
+        <div class="text-end flex-shrink-0">
+          <span class="badge bg-primary-subtle text-primary">${Number(dep.participationRate || 0)}%</span>
+          ${Number(dep.riskRate || 0) ? `<div class="small text-warning mt-1">Risk ${Number(dep.riskRate || 0)}%</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('') : '<div class="text-center text-muted py-3">ยังไม่มีข้อมูลแผนก</div>';
+
+  area.innerHTML = `
+    <div class="border rounded-3 p-2 mb-2 bg-light">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div>
+          <div class="fw-bold text-dark">Monthly Safety Report</div>
+          <div class="small text-muted">${escapeAuditHtml(data.start || '')} - ${escapeAuditHtml(data.periodEnd || data.end || '')}</div>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="exportMonthlySafetyCsv()">
+          <i class="fa-solid fa-file-csv me-1"></i> Export
+        </button>
+      </div>
+    </div>
+    <div class="row g-2 mb-3">
+      ${metric('Check-ins', Number(data.totalCheckins || 0), 'primary')}
+      ${metric('Avg participation', `${Number(data.averageParticipationRate || 0)}%`, 'success')}
+      ${metric('Risk cases', `${Number(data.risk || 0)} (${Number(data.riskRate || 0)}%)`, Number(data.risk || 0) ? 'warning' : 'secondary')}
+      ${metric('Support cases', `${Number(data.support || 0)} (${Number(data.supportRate || 0)}%)`, Number(data.support || 0) ? 'danger' : 'secondary')}
+    </div>
+    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-chart-line me-1"></i> Daily Trend</div>
+    <div class="mb-3">${trendHtml}</div>
+    <div class="fw-bold text-dark mb-2"><i class="fa-solid fa-building me-1"></i> Department Comparison</div>
+    ${departmentHtml}
+  `;
 }
 
 function exportSafetyPulseCsv() {
@@ -991,7 +1324,8 @@ function exportSafetyPulseCsv() {
     ['type', 'date', 'name', 'room', 'checked_in', 'total_users', 'risk', 'support', 'status', 'note'],
     ['summary', SAFETY_PULSE.date, '', '', SAFETY_PULSE.checkedIn, SAFETY_PULSE.totalUsers, SAFETY_PULSE.risk, SAFETY_PULSE.support, '', ''],
     ...(SAFETY_PULSE.departments || []).map(dep => ['department', SAFETY_PULSE.date, '', dep.room, dep.checkins, dep.totalUsers, dep.risk, dep.support, '', '']),
-    ...(SAFETY_PULSE.riskItems || []).map(item => ['risk', SAFETY_PULSE.date, item.name, item.room, '', '', item.riskFlag ? 1 : 0, item.answer === 'need_support' ? 1 : 0, item.riskStatus || 'new', item.note || ''])
+    ...(SAFETY_PULSE.riskItems || []).map(item => ['risk', SAFETY_PULSE.date, item.name, item.room, '', '', item.riskFlag ? 1 : 0, item.answer === 'need_support' ? 1 : 0, item.riskStatus || 'new', item.note || '']),
+    ...(SAFETY_PULSE.pendingItems || []).map(item => ['pending', SAFETY_PULSE.date, item.name, item.room, 0, '', '', '', 'not_checked_in', ''])
   ];
   const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -1005,17 +1339,43 @@ function exportSafetyPulseCsv() {
   URL.revokeObjectURL(url);
 }
 
+function exportMonthlySafetyCsv() {
+  if (!MONTHLY_SAFETY) return toastErr('ยังไม่มีข้อมูล Monthly Safety ให้ export');
+  const rows = [
+    ['type', 'month', 'date', 'room', 'checkins', 'total_users', 'participation_rate', 'risk', 'risk_rate', 'support', 'support_rate'],
+    ['summary', MONTHLY_SAFETY.month, '', '', MONTHLY_SAFETY.totalCheckins, MONTHLY_SAFETY.totalUsers, MONTHLY_SAFETY.averageParticipationRate, MONTHLY_SAFETY.risk, MONTHLY_SAFETY.riskRate, MONTHLY_SAFETY.support, MONTHLY_SAFETY.supportRate],
+    ...(MONTHLY_SAFETY.daily || []).map(day => ['daily', MONTHLY_SAFETY.month, day.date, '', day.checkins, MONTHLY_SAFETY.totalUsers, day.participationRate, day.risk, day.riskRate, day.support, '']),
+    ...(MONTHLY_SAFETY.departments || []).map(dep => ['department', MONTHLY_SAFETY.month, '', dep.room, dep.checkins, dep.totalUsers, dep.participationRate, dep.risk, dep.riskRate, dep.support, ''])
+  ];
+  const csv = rows.map(row => row.map(value => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `monthly-safety-${MONTHLY_SAFETY.month || currentMonthBangkokValue()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 window.loadSafetyPulse = loadSafetyPulse;
 window.saveSafetySettings = saveSafetySettings;
+window.resetSafetyStreak = resetSafetyStreak;
 window.loadSafetyQuestions = loadSafetyQuestions;
 window.saveSafetyQuestion = saveSafetyQuestion;
 window.deleteSafetyQuestion = deleteSafetyQuestion;
 window.generateSafetyQuestions = generateSafetyQuestions;
 window.useAiSafetyQuestion = useAiSafetyQuestion;
 window.saveAiSafetyQuestion = saveAiSafetyQuestion;
+window.saveAllAiSafetyQuestions = saveAllAiSafetyQuestions;
+window.setSafetyPulseTab = setSafetyPulseTab;
+window.setSafetyPulseFilter = setSafetyPulseFilter;
+window.showSafetyRiskCase = showSafetyRiskCase;
 window.updateRiskCase = updateRiskCase;
 window.loadMonthlySafetySummary = loadMonthlySafetySummary;
 window.exportSafetyPulseCsv = exportSafetyPulseCsv;
+window.exportMonthlySafetyCsv = exportMonthlySafetyCsv;
 
 window.deleteCoupon = async (code) => {
   const cleanCode = String(code || '').trim();
