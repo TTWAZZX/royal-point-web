@@ -3249,8 +3249,8 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 .rp-safety-streak[data-level="champion"] .rp-safety-streak__title{ color:#78350f; }
 @media (max-width:420px){
   .rp-safety-streak{
-    grid-template-columns:auto 1fr;
-    align-items:start;
+    grid-template-columns:auto minmax(0,1fr) auto;
+    align-items:center;
     gap:.5rem .55rem;
     padding:.68rem .72rem;
   }
@@ -3267,10 +3267,13 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
     overflow-wrap:anywhere;
   }
   .rp-safety-streak__days{
-    grid-column:1 / -1;
-    justify-self:start;
-    width:max-content;
-    margin-left:calc(26px + .55rem);
+    grid-column:auto;
+    justify-self:end;
+    align-self:center;
+    width:auto;
+    margin-left:0;
+    padding:.24rem .48rem;
+    font-size:.72rem;
   }
 }
 .rp-weekly-mission{
