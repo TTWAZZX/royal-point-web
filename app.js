@@ -114,6 +114,28 @@ let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
 let DAILY_CHECKIN_IN_FLIGHT = false;
+const DAILY_SAFETY_QUESTIONS = [
+  {
+    id: 'ppe_ready',
+    text: 'ก่อนเริ่มงานวันนี้ PPE และอุปกรณ์จำเป็นของคุณพร้อมใช้งานหรือไม่'
+  },
+  {
+    id: 'area_risk',
+    text: 'วันนี้พื้นที่ทำงานของคุณมีจุดเสี่ยงที่ควรแจ้งหรือควรระวังเป็นพิเศษไหม'
+  },
+  {
+    id: 'fit_for_work',
+    text: 'วันนี้คุณพร้อมทำงานอย่างปลอดภัย ทั้งสภาพร่างกายและสมาธิหรือไม่'
+  },
+  {
+    id: 'near_miss_awareness',
+    text: 'วันนี้คุณสังเกตเห็นเหตุการณ์เกือบเกิดอุบัติเหตุหรือสภาพไม่ปลอดภัยไหม'
+  },
+  {
+    id: 'safe_start',
+    text: 'ก่อนเริ่มงานวันนี้ คุณได้หยุดคิดเรื่องความปลอดภัยของงานที่จะทำแล้วหรือยัง'
+  }
+];
 
 // === Rank state (new)
 window.USER_RANK   = window.USER_RANK   ?? null; // อันดับ (อาจไม่มีจาก API)
@@ -774,12 +796,75 @@ async function refreshDailyCheckinStatus() {
   }
 }
 
+function getDailySafetyQuestion(dateText = '') {
+  const key = String(dateText || new Date().toISOString().slice(0, 10));
+  let sum = 0;
+  for (const ch of key) sum += ch.charCodeAt(0);
+  return DAILY_SAFETY_QUESTIONS[sum % DAILY_SAFETY_QUESTIONS.length];
+}
+
+async function askDailySafetyCheckin() {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  const question = getDailySafetyQuestion(today);
+
+  if (!window.Swal) {
+    const ok = confirm(`${question.text}\n\nกด OK หากพร้อมทำงานปลอดภัยวันนี้`);
+    if (!ok) return null;
+    return {
+      safetyQuestionId: question.id,
+      safetyAnswer: 'ready',
+      safetyMood: 'ready',
+      safetyNote: ''
+    };
+  }
+
+  const result = await Swal.fire({
+    title: 'Safety Check-in',
+    html: `
+      <div class="text-start">
+        <div class="fw-bold mb-3">${h(question.text)}</div>
+        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
+          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="ready" checked>
+          <span><b>พร้อมและปลอดภัย</b><br><small class="text-muted">พร้อมเริ่มงานตามมาตรฐานความปลอดภัย</small></span>
+        </label>
+        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-2">
+          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="minor_risk">
+          <span><b>พบจุดเสี่ยงเล็กน้อย</b><br><small class="text-muted">รับทราบและจะระวัง หรือแจ้งหัวหน้างาน</small></span>
+        </label>
+        <label class="d-flex gap-2 align-items-start border rounded-3 p-2 mb-3">
+          <input class="form-check-input mt-1" type="radio" name="safetyAnswer" value="need_support">
+          <span><b>ต้องการให้ จป./หัวหน้างานช่วยดู</b><br><small class="text-muted">มีประเด็นที่ควรได้รับการติดตาม</small></span>
+        </label>
+        <textarea id="safetyNote" class="form-control" rows="2" maxlength="300" placeholder="บันทึกเพิ่มเติม (ถ้ามี)"></textarea>
+      </div>
+    `,
+    confirmButtonText: 'ยืนยันเช็คอิน +5 pt',
+    cancelButtonText: 'ยังก่อน',
+    showCancelButton: true,
+    focusConfirm: false,
+    preConfirm: () => {
+      const answer = document.querySelector('input[name="safetyAnswer"]:checked')?.value || 'ready';
+      const note = document.getElementById('safetyNote')?.value || '';
+      return {
+        safetyQuestionId: question.id,
+        safetyAnswer: answer,
+        safetyMood: answer === 'minor_risk' ? 'risk' : answer === 'need_support' ? 'support' : 'ready',
+        safetyNote: note.trim().slice(0, 300)
+      };
+    }
+  });
+
+  return result.isConfirmed ? result.value : null;
+}
+
 async function performDailyCheckin() {
   if (DAILY_CHECKIN_IN_FLIGHT) return;
   if (!navigator.onLine) return toastErr('ยังเช็คอินไม่ได้ขณะออฟไลน์');
 
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
+  const safetyPayload = await askDailySafetyCheckin();
+  if (!safetyPayload) return;
 
   DAILY_CHECKIN_IN_FLIGHT = true;
   setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
@@ -788,7 +873,7 @@ async function performDailyCheckin() {
     const res = await fetch(API_DAILY_CHECKIN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid })
+      body: JSON.stringify({ uid, ...safetyPayload })
     });
     const json = await res.json().catch(() => null);
     const data = json?.data || {};
