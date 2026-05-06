@@ -3126,6 +3126,62 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   .rp-safety-streak{ grid-template-columns:auto 1fr; }
   .rp-safety-streak__days{ grid-column:2; width:max-content; }
 }
+.rp-weekly-mission{
+  margin-top:.7rem;
+  padding:.78rem .86rem;
+  border:1px solid rgba(14,165,233,.22);
+  border-radius:14px;
+  background:linear-gradient(180deg,rgba(248,250,252,.96),rgba(240,249,255,.86));
+}
+.rp-weekly-mission__head,
+.rp-weekly-mission__foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+}
+.rp-weekly-mission__head{
+  font-weight:900;
+  color:#0f172a;
+}
+.rp-weekly-mission__head b{
+  color:#0369a1;
+  white-space:nowrap;
+}
+.rp-weekly-mission__text{
+  margin-top:.22rem;
+  color:#64748b;
+  font-size:.8rem;
+  line-height:1.25;
+}
+.rp-weekly-mission__bar{
+  margin-top:.55rem;
+  height:9px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e2e8f0;
+}
+.rp-weekly-mission__fill{
+  width:0%;
+  height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,#0ea5e9,#22c55e);
+  transition:width .35s ease;
+}
+.rp-weekly-mission__foot{
+  margin-top:.42rem;
+  color:#64748b;
+  font-size:.76rem;
+  font-weight:800;
+}
+.rp-weekly-mission.is-complete{
+  border-color:rgba(34,197,94,.28);
+  background:linear-gradient(180deg,rgba(240,253,244,.96),rgba(220,252,231,.86));
+}
+.rp-weekly-mission.is-awarded .rp-weekly-mission__head b,
+.rp-weekly-mission.is-complete .rp-weekly-mission__foot span:last-child{
+  color:#047857;
+}
 
 .rp-primary{
   color:#fff; border:none;

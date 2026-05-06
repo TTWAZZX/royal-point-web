@@ -3,6 +3,8 @@ const { auditEvent } = require('../lib/audit')
 
 const redis = getRedis()
 const CHECKIN_POINTS = 5
+const WEEKLY_MISSION_TARGET = 5
+const WEEKLY_MISSION_BONUS = 10
 const TIME_ZONE = 'Asia/Bangkok'
 const CHECKIN_SELECT = 'id,points,streak,checkin_date,created_at,safety_question_id,safety_answer,safety_mood,safety_note,risk_flag'
 const CHECKIN_BASE_SELECT = 'id,points,streak,checkin_date,created_at'
@@ -17,6 +19,36 @@ function bangkokDate(offsetDays = 0) {
   const month = String(bangkokNow.getMonth() + 1).padStart(2, '0')
   const day = String(bangkokNow.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+function bangkokDateParts(date = new Date()) {
+  const bangkok = new Date(date.toLocaleString('en-US', { timeZone: TIME_ZONE }))
+  return {
+    year: bangkok.getFullYear(),
+    month: bangkok.getMonth(),
+    day: bangkok.getDate(),
+    weekday: bangkok.getDay()
+  }
+}
+
+function formatDate(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function getBangkokWeekWindow() {
+  const parts = bangkokDateParts()
+  const mondayOffset = parts.weekday === 0 ? -6 : 1 - parts.weekday
+  const start = new Date(parts.year, parts.month, parts.day)
+  start.setDate(start.getDate() + mondayOffset)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const startDate = formatDate(start.getFullYear(), start.getMonth(), start.getDate())
+  const endDate = formatDate(end.getFullYear(), end.getMonth(), end.getDate())
+  return {
+    startDate,
+    endDate,
+    code: `weekly-safety:${startDate}`
+  }
 }
 
 async function loadUser(uid) {
@@ -64,6 +96,81 @@ async function nextStreak(uid) {
 
   if (error) throw error
   return data ? Number(data.streak || 0) + 1 : 1
+}
+
+async function getWeeklyMission(userId, uid) {
+  const week = getBangkokWeekWindow()
+  const { data: rows, error: countError } = await supabaseAdmin
+    .from('daily_checkins')
+    .select('checkin_date')
+    .eq('uid', uid)
+    .gte('checkin_date', week.startDate)
+    .lte('checkin_date', week.endDate)
+
+  if (countError) throw countError
+
+  const days = new Set((rows || []).map(row => row.checkin_date)).size
+  const { data: bonusRows, error: bonusError } = await supabaseAdmin
+    .from('point_transactions')
+    .select('id,amount,created_at')
+    .eq('user_id', userId)
+    .eq('code', week.code)
+    .limit(1)
+
+  if (bonusError) throw bonusError
+
+  const awarded = Boolean(bonusRows && bonusRows.length)
+  return {
+    weekStart: week.startDate,
+    weekEnd: week.endDate,
+    code: week.code,
+    count: days,
+    target: WEEKLY_MISSION_TARGET,
+    remaining: Math.max(WEEKLY_MISSION_TARGET - days, 0),
+    bonus: WEEKLY_MISSION_BONUS,
+    awarded,
+    completed: days >= WEEKLY_MISSION_TARGET,
+    awardedAt: bonusRows?.[0]?.created_at || null
+  }
+}
+
+async function applyWeeklyMissionBonus(user, uid) {
+  const mission = await getWeeklyMission(user.id, uid)
+  if (!mission.completed || mission.awarded) return { mission, awardedNow: false }
+
+  const { error } = await supabaseAdmin.rpc('apply_points', {
+    p_user: user.id,
+    p_amount: WEEKLY_MISSION_BONUS,
+    p_code: mission.code,
+    p_type: 'WEEKLY_SAFETY_MISSION',
+    p_actor: uid
+  })
+
+  if (error) {
+    await auditEvent(supabaseAdmin, {
+      type: 'weekly_mission_failed',
+      actorUid: uid,
+      targetUid: uid,
+      entityType: 'weekly_mission',
+      entityId: mission.code,
+      status: 'error',
+      detail: { reason: 'apply_points_failed', message: error.message, mission }
+    })
+    return { mission: { ...mission, error: 'apply_points_failed' }, awardedNow: false }
+  }
+
+  const updatedMission = { ...mission, awarded: true, awardedNow: true, remaining: 0 }
+  await auditEvent(supabaseAdmin, {
+    type: 'weekly_mission_success',
+    actorUid: uid,
+    targetUid: uid,
+    entityType: 'weekly_mission',
+    entityId: mission.code,
+    status: 'success',
+    detail: { bonus: WEEKLY_MISSION_BONUS, count: mission.count, target: mission.target }
+  })
+
+  return { mission: updatedMission, awardedNow: true }
 }
 
 function sendStatus(res, statusCode, payload) {
@@ -140,6 +247,7 @@ module.exports = async (req, res) => {
 
     if (req.method === 'GET') {
       const streak = existing ? Number(existing.streak || 1) : await nextStreak(cleanUid)
+      const weeklyMission = await getWeeklyMission(user.id, cleanUid)
       return sendStatus(res, 200, {
         data: {
           checkedIn: Boolean(existing),
@@ -147,12 +255,14 @@ module.exports = async (req, res) => {
           points: existing ? Number(existing.points || CHECKIN_POINTS) : CHECKIN_POINTS,
           streak,
           checkedInAt: existing?.created_at || null,
-          safety: toSafetyResponse(existing)
+          safety: toSafetyResponse(existing),
+          weeklyMission
         }
       })
     }
 
     if (existing) {
+      const weeklyMission = await getWeeklyMission(user.id, cleanUid)
       await auditEvent(supabaseAdmin, {
         type: 'daily_checkin_duplicate',
         actorUid: cleanUid,
@@ -170,7 +280,8 @@ module.exports = async (req, res) => {
           points: Number(existing.points || CHECKIN_POINTS),
           streak: Number(existing.streak || 1),
           checkedInAt: existing.created_at || null,
-          safety: toSafetyResponse(existing)
+          safety: toSafetyResponse(existing),
+          weeklyMission
         }
       })
     }
@@ -239,6 +350,8 @@ module.exports = async (req, res) => {
       return sendStatus(res, 500, { error: true, message: 'apply_points_failed' })
     }
 
+    const { mission: weeklyMission, awardedNow: weeklyBonusAwarded } = await applyWeeklyMissionBonus(user, cleanUid)
+
     await clearScoreCache(redis, cleanUid)
     await auditEvent(supabaseAdmin, {
       type: 'daily_checkin_success',
@@ -247,7 +360,7 @@ module.exports = async (req, res) => {
       entityType: 'daily_checkin',
       entityId: inserted.id,
       status: 'success',
-      detail: { today, points: CHECKIN_POINTS, streak, safety }
+      detail: { today, points: CHECKIN_POINTS, streak, safety, weeklyMission, weeklyBonusAwarded }
     })
 
     return sendStatus(res, 200, {
@@ -263,7 +376,10 @@ module.exports = async (req, res) => {
           mood: safety.safety_mood,
           note: safety.safety_note,
           riskFlag: safety.risk_flag
-        }
+        },
+        weeklyMission,
+        weeklyBonusAwarded,
+        totalAdded: CHECKIN_POINTS + (weeklyBonusAwarded ? WEEKLY_MISSION_BONUS : 0)
       }
     })
   } catch (error) {

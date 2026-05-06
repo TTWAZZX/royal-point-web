@@ -769,6 +769,7 @@ function setDailyCheckinUi(state = {}) {
   }
 
   updateSafetyStreakBadge({ checkedIn, streak, unavailable, loading: Boolean(state.loading) });
+  updateWeeklyMissionCard(state.weeklyMission, { loading: Boolean(state.loading), unavailable });
 }
 
 function getSafetyStreakLevel(streak = 0) {
@@ -820,6 +821,57 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
     textEl.textContent = `เช็คอินวันนี้เพื่อรักษา streak ต่อเนื่อง ${days} วัน`;
   } else {
     textEl.textContent = 'เช็คอินวันนี้เพื่อเริ่มสะสม Safety Streak';
+  }
+}
+
+function updateWeeklyMissionCard(mission, { loading = false, unavailable = false } = {}) {
+  const card = document.getElementById('weeklyMissionCard');
+  const rewardEl = document.getElementById('weeklyMissionReward');
+  const textEl = document.getElementById('weeklyMissionText');
+  const fillEl = document.getElementById('weeklyMissionFill');
+  const progressEl = document.getElementById('weeklyMissionProgress');
+  const statusEl = document.getElementById('weeklyMissionStatus');
+  if (!card || !rewardEl || !textEl || !fillEl || !progressEl || !statusEl) return;
+
+  card.classList.remove('d-none');
+  card.classList.toggle('is-complete', Boolean(mission?.completed));
+  card.classList.toggle('is-awarded', Boolean(mission?.awarded));
+
+  if (loading) {
+    rewardEl.textContent = '+10 pt';
+    textEl.textContent = 'กำลังโหลดภารกิจประจำสัปดาห์';
+    fillEl.style.width = '0%';
+    progressEl.textContent = '...';
+    statusEl.textContent = 'กำลังโหลด';
+    return;
+  }
+
+  if (unavailable || !mission) {
+    rewardEl.textContent = '+10 pt';
+    textEl.textContent = navigator.onLine ? 'โหลด Weekly Mission ไม่ได้' : 'ออฟไลน์อยู่ ระบบจะแสดงอีกครั้งเมื่อออนไลน์';
+    fillEl.style.width = '0%';
+    progressEl.textContent = '-';
+    statusEl.textContent = 'ยังไม่พร้อม';
+    return;
+  }
+
+  const count = Math.max(0, Number(mission.count || 0));
+  const target = Math.max(1, Number(mission.target || 5));
+  const bonus = Math.max(0, Number(mission.bonus || 10));
+  const pct = Math.max(0, Math.min(100, Math.round((count / target) * 100)));
+  rewardEl.textContent = `+${bonus} pt`;
+  fillEl.style.width = `${pct}%`;
+  progressEl.textContent = `${Math.min(count, target)}/${target} วัน`;
+
+  if (mission.awarded) {
+    textEl.textContent = 'ภารกิจสัปดาห์นี้สำเร็จแล้ว โบนัสถูกเพิ่มเข้าคะแนนแล้ว';
+    statusEl.textContent = 'รับแล้ว';
+  } else if (mission.completed) {
+    textEl.textContent = 'ครบเงื่อนไขแล้ว ระบบกำลังเตรียมโบนัสให้';
+    statusEl.textContent = 'ครบแล้ว';
+  } else {
+    textEl.textContent = `เช็คอินให้ครบ ${target} วันในสัปดาห์นี้เพื่อรับโบนัสเล็ก ๆ`;
+    statusEl.textContent = `เหลือ ${Math.max(target - count, 0)} วัน`;
   }
 }
 
@@ -941,7 +993,7 @@ async function performDailyCheckin() {
       throw new Error(json?.message || `HTTP ${res.status}`);
     }
 
-    const points = Number(data.points || 5);
+    const points = Number(data.totalAdded || data.points || 5);
     optimisticAdd(points);
     showScoreDelta(points);
     setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
@@ -954,7 +1006,9 @@ async function performDailyCheckin() {
       confetti({ particleCount: 45, spread: 58, origin: { y: 0.72 } });
     }
 
-    return toastOk(`เช็คอินสำเร็จ รับ +${points} คะแนน`);
+    return toastOk(data.weeklyBonusAwarded
+      ? `เช็คอินสำเร็จ รับ +${data.points || 5} คะแนน และโบนัส Weekly Mission +${data.weeklyMission?.bonus || 10}`
+      : `เช็คอินสำเร็จ รับ +${points} คะแนน`);
   } catch (e) {
     const msg = String(e?.message || e);
     const map = {
@@ -1905,6 +1959,7 @@ function historyTypeMeta(type, amount) {
   const raw = String(type || '').toUpperCase();
   if (raw.includes('COUPON')) return { icon: 'fa-ticket', label: 'รับคูปอง', tone: 'plus' };
   if (raw.includes('SPEND') || Number(amount) < 0) return { icon: 'fa-gift', label: 'แลกรางวัล', tone: 'minus' };
+  if (raw.includes('WEEKLY_SAFETY')) return { icon: 'fa-flag-checkered', label: 'Weekly Safety Mission', tone: 'plus' };
   if (raw.includes('DAILY_CHECKIN')) return { icon: 'fa-calendar-check', label: 'เช็คอินประจำวัน', tone: 'plus' };
   if (raw.includes('BIRTHDAY')) return { icon: 'fa-cake-candles', label: 'วันเกิด', tone: 'plus' };
   if (raw.includes('ADMIN')) return { icon: 'fa-user-shield', label: 'แอดมินปรับแต้ม', tone: Number(amount) >= 0 ? 'plus' : 'minus' };
