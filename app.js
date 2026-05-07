@@ -138,6 +138,74 @@ const DAILY_SAFETY_QUESTIONS = [
   }
 ];
 
+const SAFETY_TIPS = [
+  'ตรวจสอบ PPE ก่อนเริ่มงานทุกวัน — เพียง 30 วินาทีอาจป้องกันอุบัติเหตุได้',
+  'ก่อนยกของหนัก ตั้งท่าให้ถูกต้อง — หลังตรง เข่างอ ไม่บิดลำตัว',
+  'พบสิ่งผิดปกติให้แจ้งทันที อย่ารอให้เกิดเหตุก่อน',
+  'อย่าวางของในทางเดินแม้ชั่วคราว — ทางเดินต้องโล่งตลอดเวลา',
+  'ล้างมือก่อนและหลังสัมผัสสารเคมีทุกครั้ง',
+  'รายงาน Near Miss ทุกครั้ง เพราะมันคือสัญญาณเตือนก่อนเกิดอุบัติเหตุจริง',
+  'ตรวจสอบสายไฟและอุปกรณ์ไฟฟ้าก่อนใช้งานทุกครั้ง',
+  'อย่าใช้โทรศัพท์มือถือขณะปฏิบัติงานกับเครื่องจักร',
+  'สวมรองเท้านิรภัยตลอดเวลาในพื้นที่ปฏิบัติงาน',
+  'ทำความสะอาดคราบน้ำมัน น้ำ หรือวัสดุหกทันทีที่พบ เพื่อป้องกันการลื่นล้ม',
+  'ตรวจสอบป้ายเตือนและสัญลักษณ์ความปลอดภัยในพื้นที่ทำงานสม่ำเสมอ',
+  'อย่าทำงานคนเดียวในพื้นที่อันตราย ควรมีคนคอย standby เสมอ',
+  'พักผ่อนให้เพียงพอ — ความล้าเป็นสาเหตุสำคัญของอุบัติเหตุในงาน',
+  'ทบทวน SOP ก่อนเริ่มงานที่ไม่คุ้นเคยหรือทำไม่บ่อย',
+  'รู้ตำแหน่งถังดับเพลิงและทางหนีไฟในพื้นที่ทำงานของคุณ',
+  'ใส่ที่อุดหูทุกครั้งเมื่ออยู่ในพื้นที่เสียงดังเกิน 85 dB',
+  'อย่าข้ามขั้นตอน Lockout/Tagout แม้งานจะดูเล็กน้อย',
+  'ดูแลสุขภาพจิตด้วย — ความเครียดสูงเพิ่มความเสี่ยงอุบัติเหตุ',
+  'ตรวจสอบวันหมดอายุของ PPE — ของเก่าอาจไม่ป้องกันได้จริง',
+  'รับฟังความกังวลด้านความปลอดภัยจากเพื่อนร่วมงานเสมอ อย่าเพิกเฉย',
+  'ทำ 5ส ทุกวัน — พื้นที่สะอาดเป็นระเบียบลดความเสี่ยงได้มาก',
+  'อย่าใช้อุปกรณ์ที่ชำรุด รายงานเพื่อซ่อมแซมทันที',
+  'ก่อนเข้า Confined Space ตรวจก๊าซและออกซิเจนก่อนเสมอ',
+  'หากไม่แน่ใจในขั้นตอนความปลอดภัย ถามก่อนเสมอ — อย่าเดา',
+  'ความปลอดภัยเป็นความรับผิดชอบของทุกคน ไม่ใช่แค่ จป. คนเดียว',
+];
+
+function minutesUntilCheckinClose(now, endTime) {
+  const [nh, nm] = (now || '00:00').split(':').map(Number);
+  const [eh, em] = (endTime || '18:00').split(':').map(Number);
+  return Math.max(0, (eh * 60 + em) - (nh * 60 + nm));
+}
+
+function getTodayDotIndex() {
+  const bkk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Bangkok' }));
+  const dow = bkk.getDay(); // 0=Sun
+  return dow === 0 ? 6 : dow - 1; // 0=Mon … 6=Sun
+}
+
+async function showLevelUpCelebration(meta) {
+  if (typeof confetti === 'function') {
+    confetti({ particleCount: 120, spread: 90, origin: { y: 0.6 } });
+    setTimeout(() => confetti({ particleCount: 70, spread: 55, angle: 60, origin: { x: 0, y: 0.65 } }), 350);
+    setTimeout(() => confetti({ particleCount: 70, spread: 55, angle: 120, origin: { x: 1, y: 0.65 } }), 650);
+  }
+  if (!window.Swal) return;
+  const icon = meta.title.includes('Gold') ? '🥇'
+    : meta.title.includes('Silver') ? '🥈'
+    : meta.title.includes('Bronze') ? '🥉'
+    : meta.level === 'champion' ? '🏆' : '🛡️';
+  await Swal.fire({
+    html: `
+      <div class="rp-levelup-swal">
+        <span class="rp-levelup-icon">${icon}</span>
+        <div class="rp-levelup-title">ยินดีด้วย!</div>
+        <div class="rp-levelup-badge">${h(meta.title)}</div>
+        <div class="rp-levelup-sub">คุณ Safety Streak ขึ้นระดับใหม่แล้ว 🎉</div>
+      </div>
+    `,
+    showConfirmButton: true,
+    confirmButtonText: 'สุดยอด!',
+    timer: 5500,
+    timerProgressBar: true,
+    customClass: { popup: 'rp-safety-swal rp-levelup-swal', confirmButton: 'rp-safety-confirm' }
+  });
+}
+
 // === Rank state (new)
 window.USER_RANK   = window.USER_RANK   ?? null; // อันดับ (อาจไม่มีจาก API)
 window.USER_STREAK = window.USER_STREAK ?? 0;    // จำนวนวันติด (อาจไม่มีจาก API)
@@ -767,6 +835,25 @@ function setDailyCheckinUi(state = {}) {
     meta.classList.toggle('d-none', !text);
   }
 
+  // Streak-at-risk: warn when close to losing today's check-in window
+  // streak >= 2 means user checked in yesterday — there's an active streak to protect
+  // - time window mode: use configured endTime as cutoff
+  // - 24h mode (enabled=false): use midnight 23:59 as cutoff
+  let isRisk = false;
+  if (!checkedIn && streak >= 2 && rule?.now) {
+    const closeTime = (rule.enabled && rule.allowed) ? rule.endTime : '23:59';
+    const minsLeft = minutesUntilCheckinClose(rule.now, closeTime);
+    if (minsLeft > 0 && minsLeft <= 120) {
+      isRisk = true;
+      if (meta) {
+        const hh = Math.floor(minsLeft / 60), mm = minsLeft % 60;
+        meta.textContent = `⚠️ เหลืออีก ${hh > 0 ? hh + ':' + String(mm).padStart(2, '0') + ' ชม.' : mm + ' นาที'}`;
+        meta.classList.remove('d-none');
+      }
+    }
+  }
+  btn.classList.toggle('is-streak-risk', isRisk);
+
   if (checkedIn || streak > 1) {
     try { updateLeftMiniChips({ streakDays: streak, rank: window.USER_RANK }); } catch {}
   }
@@ -827,6 +914,29 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
   }
 }
 
+function renderWeeklyCalendar(weekDays, loading) {
+  const calEl = document.getElementById('weeklyMissionCalendar');
+  if (!calEl) return;
+  const labels = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'];
+  const todayIdx = getTodayDotIndex();
+  if (loading) {
+    calEl.innerHTML = labels.map(() =>
+      `<div class="rp-weekly-dot"><div class="rp-weekly-dot__circle"></div><div class="rp-weekly-dot__label">·</div></div>`
+    ).join('');
+    return;
+  }
+  const days = Array.isArray(weekDays) ? weekDays : Array(7).fill(false);
+  calEl.innerHTML = labels.map((lbl, i) => {
+    const done = Boolean(days[i]);
+    const isToday = i === todayIdx;
+    const cls = [done ? 'is-done' : '', isToday ? 'is-today' : ''].filter(Boolean).join(' ');
+    return `<div class="rp-weekly-dot ${cls}">
+      <div class="rp-weekly-dot__circle">${done ? '<i class="fa-solid fa-check"></i>' : ''}</div>
+      <div class="rp-weekly-dot__label">${lbl}</div>
+    </div>`;
+  }).join('');
+}
+
 function updateWeeklyMissionCard(mission, { loading = false, unavailable = false } = {}) {
   const card = document.getElementById('weeklyMissionCard');
   const rewardEl = document.getElementById('weeklyMissionReward');
@@ -846,6 +956,7 @@ function updateWeeklyMissionCard(mission, { loading = false, unavailable = false
     fillEl.style.width = '0%';
     progressEl.textContent = '...';
     statusEl.textContent = 'กำลังโหลด';
+    renderWeeklyCalendar(null, true);
     return;
   }
 
@@ -855,6 +966,7 @@ function updateWeeklyMissionCard(mission, { loading = false, unavailable = false
     fillEl.style.width = '0%';
     progressEl.textContent = '-';
     statusEl.textContent = 'ยังไม่พร้อม';
+    renderWeeklyCalendar(null, false);
     return;
   }
 
@@ -865,6 +977,7 @@ function updateWeeklyMissionCard(mission, { loading = false, unavailable = false
   rewardEl.textContent = `+${bonus} pt`;
   fillEl.style.width = `${pct}%`;
   progressEl.textContent = `${Math.min(count, target)}/${target} วัน`;
+  renderWeeklyCalendar(mission.weekDays, false);
 
   if (mission.awarded) {
     textEl.textContent = 'ภารกิจสัปดาห์นี้สำเร็จแล้ว โบนัสถูกเพิ่มเข้าคะแนนแล้ว';
@@ -1075,6 +1188,8 @@ async function performDailyCheckin() {
   const safetyPayload = await askDailySafetyCheckin(latestStatus?.safetyQuestion || DAILY_CHECKIN_STATUS?.safetyQuestion);
   if (!safetyPayload) return;
 
+  const prevStreak = Number(latestStatus?.streak || DAILY_CHECKIN_STATUS?.streak || 0);
+
   DAILY_CHECKIN_IN_FLIGHT = true;
   setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
 
@@ -1114,11 +1229,43 @@ async function performDailyCheckin() {
       confetti({ particleCount: 45, spread: 58, origin: { y: 0.72 } });
     }
 
+    // Level-up detection — celebrate when crossing streak threshold
+    // prevStreak is the projected streak from GET (= yesterday's streak + 1),
+    // so yesterday's actual streak is prevStreak - 1.
+    // await so photo reminder (if needed) still runs after the modal closes
+    const newStreak = Number(data.streak || prevStreak);
+    const prevLevel = getSafetyStreakLevel(prevStreak - 1);
+    const newLevel = getSafetyStreakLevel(newStreak);
+    if (prevLevel.title !== newLevel.title) {
+      await showLevelUpCelebration(newLevel);
+    }
+
     if (needsSafetyPhotoReminder(safetyPayload)) {
       return showSafetyPhotoReminder({
         points: data.points || points,
         weeklyBonusAwarded: Boolean(data.weeklyBonusAwarded),
         bonus: data.weeklyMission?.bonus || 10
+      });
+    }
+
+    // Success dialog with safety tip
+    if (window.Swal) {
+      const tip = SAFETY_TIPS[Math.floor(Math.random() * SAFETY_TIPS.length)];
+      const ptLabel = data.weeklyBonusAwarded
+        ? `+${data.points || 5} pt + โบนัส +${data.weeklyMission?.bonus || 10} pt!`
+        : `+${points} pt`;
+      return Swal.fire({
+        icon: 'success',
+        title: ptLabel,
+        html: `
+          <div class="rp-safety-tip">
+            <div class="rp-safety-tip__label">💡 Safety Tip วันนี้</div>
+            <div class="rp-safety-tip__text">${h(tip)}</div>
+          </div>`,
+        confirmButtonText: 'รับทราบ',
+        timer: 5000,
+        timerProgressBar: true,
+        customClass: { popup: 'rp-safety-swal', confirmButton: 'rp-safety-confirm' }
       });
     }
 

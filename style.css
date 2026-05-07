@@ -3333,6 +3333,122 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   color:#047857;
 }
 
+/* ─── Weekly mini calendar dots ─────────────────────────────── */
+.rp-weekly-dots{
+  display:flex;
+  justify-content:space-between;
+  gap:3px;
+  margin-bottom:.45rem;
+}
+.rp-weekly-dot{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+}
+.rp-weekly-dot__circle{
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  background:#e2e8f0;
+  display:grid;
+  place-items:center;
+  font-size:.6rem;
+  color:transparent;
+  transition:background .22s, color .22s, transform .18s;
+}
+.rp-weekly-dot.is-today .rp-weekly-dot__circle{
+  outline:2px solid #0ea5e9;
+  outline-offset:2px;
+}
+.rp-weekly-dot.is-done .rp-weekly-dot__circle{
+  background:#22c55e;
+  color:#fff;
+  transform:scale(1.1);
+}
+.rp-weekly-dot.is-done.is-today .rp-weekly-dot__circle{
+  background:#16a34a;
+  outline-color:#16a34a;
+}
+.rp-weekly-dot__label{
+  font-size:.65rem;
+  font-weight:800;
+  color:#94a3b8;
+  line-height:1;
+}
+.rp-weekly-dot.is-done .rp-weekly-dot__label{ color:#059669; }
+.rp-weekly-dot.is-today .rp-weekly-dot__label{ color:#0369a1; }
+.rp-weekly-dot.is-done.is-today .rp-weekly-dot__label{ color:#15803d; }
+
+/* ─── Streak-at-risk pulse on check-in button ────────────────── */
+@keyframes rp-risk-pulse{
+  0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,.35); }
+  50%{ box-shadow:0 0 0 7px rgba(239,68,68,0); }
+}
+.rp-checkin-btn.is-streak-risk{
+  border-color:#ef4444 !important;
+  color:#dc2626 !important;
+  animation:rp-risk-pulse 1.6s ease-in-out infinite;
+}
+
+/* ─── Level-up celebration modal ─────────────────────────────── */
+@keyframes rp-levelup-pop{
+  0%{ transform:scale(0) rotate(-10deg); opacity:0; }
+  65%{ transform:scale(1.18) rotate(3deg); }
+  100%{ transform:scale(1) rotate(0); opacity:1; }
+}
+.rp-levelup-icon{
+  font-size:3.2rem;
+  line-height:1;
+  margin-bottom:.5rem;
+  display:block;
+  animation:rp-levelup-pop .55s cubic-bezier(.36,.07,.19,.97) both;
+}
+.rp-levelup-title{
+  font-size:1.25rem;
+  font-weight:900;
+  color:#0f172a;
+}
+.rp-levelup-badge{
+  display:inline-block;
+  margin:.45rem 0;
+  padding:.3rem .9rem;
+  background:#d1fae5;
+  color:#065f46;
+  font-weight:900;
+  font-size:.92rem;
+  border-radius:999px;
+}
+.rp-levelup-sub{
+  font-size:.83rem;
+  color:#64748b;
+}
+.rp-levelup-swal{ text-align:center !important; }
+
+/* ─── Post check-in safety tip card ─────────────────────────── */
+.rp-safety-tip{
+  margin-top:.75rem;
+  padding:.65rem .85rem;
+  background:#f0fdf4;
+  border-left:3px solid #22c55e;
+  border-radius:10px;
+  text-align:left;
+}
+.rp-safety-tip__label{
+  font-size:.72rem;
+  font-weight:900;
+  color:#059669;
+  margin-bottom:.22rem;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.rp-safety-tip__text{
+  font-size:.86rem;
+  color:#1e293b;
+  line-height:1.45;
+}
+
 .rp-primary{
   color:#fff; border:none;
   background: linear-gradient(180deg,#22c55e,#16a34a);

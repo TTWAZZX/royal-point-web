@@ -235,7 +235,15 @@ async function getWeeklyMission(userId, uid) {
 
   if (countError) throw countError
 
-  const days = new Set((rows || []).map(row => row.checkin_date)).size
+  const uniqueDates = [...new Set((rows || []).map(row => row.checkin_date))]
+  const days = uniqueDates.length
+  const weekDays = Array(7).fill(false)
+  for (const dateStr of uniqueDates) {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const dow = new Date(y, m - 1, d).getDay() // 0=Sun
+    weekDays[dow === 0 ? 6 : dow - 1] = true   // 0=Mon … 6=Sun
+  }
+
   const { data: bonusRows, error: bonusError } = await supabaseAdmin
     .from('point_transactions')
     .select('id,amount,created_at')
@@ -256,7 +264,8 @@ async function getWeeklyMission(userId, uid) {
     bonus: WEEKLY_MISSION_BONUS,
     awarded,
     completed: days >= WEEKLY_MISSION_TARGET,
-    awardedAt: bonusRows?.[0]?.created_at || null
+    awardedAt: bonusRows?.[0]?.created_at || null,
+    weekDays
   }
 }
 
