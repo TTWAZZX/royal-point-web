@@ -350,6 +350,15 @@ function monthWindow(monthText = '') {
   return { month, start, end }
 }
 
+function streakLevel(streak) {
+  const d = Number(streak || 0)
+  if (d >= 30) return 'champion'
+  if (d >= 15) return 'gold'
+  if (d >= 7)  return 'silver'
+  if (d >= 3)  return 'bronze'
+  return 'starter'
+}
+
 async function getSafetyPulse(dateText = '') {
   const checkinDate = /^\d{4}-\d{2}-\d{2}$/.test(String(dateText || '')) ? String(dateText) : bangkokDate()
 
@@ -361,6 +370,7 @@ async function getSafetyPulse(dateText = '') {
         id,
         uid,
         checkin_date,
+        streak,
         safety_answer,
         safety_mood,
         safety_note,
@@ -387,6 +397,7 @@ async function getSafetyPulse(dateText = '') {
         id,
         uid,
         checkin_date,
+        streak,
         safety_answer,
         safety_mood,
         safety_note,
@@ -454,14 +465,37 @@ async function getSafetyPulse(dateText = '') {
       created_at: row.created_at
     }))
 
+  // Streak levels for checked-in users today
+  const streakLevels = { starter: 0, bronze: 0, silver: 0, gold: 0, champion: 0 }
+  for (const row of rows) {
+    const lv = streakLevel(row.streak)
+    streakLevels[lv] = (streakLevels[lv] || 0) + 1
+  }
+
+  // Fetch yesterday's streaks for pending users so admin can see who is about to lose their streak
+  const pendingUids = users.filter(u => u.uid && !uniqueUids.has(u.uid)).map(u => u.uid)
+  let yesterdayStreakMap = {}
+  if (pendingUids.length) {
+    const yesterday = bangkokDate(-1)
+    const { data: ydRows } = await supabaseAdmin
+      .from('daily_checkins')
+      .select('uid, streak')
+      .in('uid', pendingUids)
+      .eq('checkin_date', yesterday)
+    for (const row of ydRows || []) {
+      yesterdayStreakMap[row.uid] = Number(row.streak || 0)
+    }
+  }
+
   const pendingItems = users
     .filter(user => user.uid && !uniqueUids.has(user.uid))
     .map(user => ({
       uid: user.uid,
       name: user.name || 'ไม่ระบุชื่อ',
-      room: user.room || 'ไม่ระบุ'
+      room: user.room || 'ไม่ระบุ',
+      streak: yesterdayStreakMap[user.uid] || 0
     }))
-    .sort((a, b) => String(a.room || '').localeCompare(String(b.room || '')) || String(a.name || '').localeCompare(String(b.name || '')))
+    .sort((a, b) => (b.streak - a.streak) || String(a.room || '').localeCompare(String(b.room || '')) || String(a.name || '').localeCompare(String(b.name || '')))
 
   return {
     date: checkinDate,
@@ -473,7 +507,8 @@ async function getSafetyPulse(dateText = '') {
     support,
     departments,
     riskItems,
-    pendingItems
+    pendingItems,
+    streakLevels
   }
 }
 

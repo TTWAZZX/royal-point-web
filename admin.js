@@ -1109,12 +1109,33 @@ function renderSafetyPulse(data) {
 
   const actionHtml = actionItems.length ? actionItems.map(riskCard).join('') : '<div class="text-center text-muted py-4">ไม่มีเคสที่รอติดตามตอนนี้</div>';
   const riskHtml = visibleRiskItems.length ? visibleRiskItems.map(riskCard).join('') : '<div class="text-center text-muted py-4">ไม่พบเคสตามตัวกรองนี้</div>';
+  const streakBadge = (streak) => {
+    const d = Number(streak || 0);
+    if (d >= 30) return '<span class="badge ms-1" style="background:#b45309;color:#fff">🏆 Champion</span>';
+    if (d >= 15) return '<span class="badge ms-1" style="background:#d97706;color:#fff">🥇 Gold</span>';
+    if (d >= 7)  return '<span class="badge bg-secondary ms-1">🥈 Silver</span>';
+    if (d >= 3)  return '<span class="badge ms-1" style="background:#cd7f32;color:#fff">🥉 Bronze</span>';
+    return '';
+  };
   const pendingHtml = visiblePendingItems.length ? visiblePendingItems.map(item => `
     <div class="border rounded-3 p-2 mb-2 bg-white">
-      <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
+      <div class="d-flex align-items-center gap-1 flex-wrap">
+        <span class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</span>
+        ${streakBadge(item.streak)}
+        ${Number(item.streak || 0) >= 3 ? `<span class="small text-muted ms-1">(${Number(item.streak)} วัน)</span>` : ''}
+      </div>
       <div class="small text-muted">${escapeAuditHtml(item.room || 'ไม่ระบุ')}</div>
     </div>
   `).join('') : '<div class="text-center text-muted py-4">ทุกคนเช็คอินครบแล้ว</div>';
+
+  const levels = data.streakLevels || {};
+  const levelPills = [
+    levels.champion && `<span class="badge" style="background:#b45309;color:#fff">🏆 Champion ×${levels.champion}</span>`,
+    levels.gold      && `<span class="badge" style="background:#d97706;color:#fff">🥇 Gold ×${levels.gold}</span>`,
+    levels.silver    && `<span class="badge bg-secondary">🥈 Silver ×${levels.silver}</span>`,
+    levels.bronze    && `<span class="badge" style="background:#cd7f32;color:#fff">🥉 Bronze ×${levels.bronze}</span>`,
+    levels.starter   && `<span class="badge bg-light text-dark border">🛡️ Starter ×${levels.starter}</span>`,
+  ].filter(Boolean).join('');
 
   const overviewHtml = `
     <div class="row g-2 mb-3">
@@ -1123,7 +1144,7 @@ function renderSafetyPulse(data) {
       ${metric('พบจุดเสี่ยง', risk, risk > 0 ? 'warning' : 'secondary', 'fa-triangle-exclamation')}
       ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary', 'fa-headset')}
     </div>
-    <div class="border rounded-3 p-3 bg-white">
+    <div class="border rounded-3 p-3 bg-white mb-3">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <div class="fw-bold text-dark">Participation</div>
         <div class="fw-bold text-primary">${rate}%</div>
@@ -1132,7 +1153,12 @@ function renderSafetyPulse(data) {
         <div class="progress-bar bg-primary" style="width:${Math.max(0, Math.min(rate, 100))}%"></div>
       </div>
       <div class="small text-muted mt-2">พร้อมทำงาน ${ready} คน จากผู้เช็คอิน ${checkedIn} คน</div>
-    </div>`;
+    </div>
+    ${levelPills ? `
+    <div class="border rounded-3 p-3 bg-white">
+      <div class="fw-bold text-dark mb-2">Safety Streak Level (วันนี้)</div>
+      <div class="d-flex flex-wrap gap-2">${levelPills}</div>
+    </div>` : ''}`;
 
   const tabButton = (key, label, count, icon, tone = 'primary') => `
     <button type="button" class="btn btn-sm ${activeTab === key ? `btn-${tone}` : 'btn-outline-secondary'}" onclick="setSafetyPulseTab('${key}')">
