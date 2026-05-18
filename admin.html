@@ -656,6 +656,7 @@
                         <div id="stock-bar-${r.id}" style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:width 0.3s;"></div>
                     </div>
                 </div>` : '';
+            const sortLabel = r.sort_index != null ? `#${r.sort_index}` : '';
             return `
             <div class="m-card ${!isActive ? 'opacity-50' : ''}" id="card-${r.id}">
                 <div class="d-flex justify-content-between align-items-start mb-2">
@@ -663,7 +664,10 @@
                       <img src="${img}" class="stock-img" onclick="openEditModal('${r.id}')" onerror="this.src='https://placehold.co/100?text=No+Image'">
                       <div>
                          <div class="fw-bold text-dark text-truncate" style="max-width: 140px;">${name}</div>
-                         <div class="text-primary small fw-bold">${r.cost} pt</div>
+                         <div class="d-flex align-items-center gap-2">
+                           <div class="text-primary small fw-bold">${r.cost} pt</div>
+                           ${sortLabel ? `<div style="font-size:10px;color:#9ca3af;font-weight:500;">${sortLabel}</div>` : ''}
+                         </div>
                       </div>
                    </div>
                    <div class="form-check form-switch">
