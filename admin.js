@@ -679,7 +679,7 @@ function renderAuditLogs(list, warning = '') {
               <span>${escapeAuditHtml(meta.label)}</span>
             </div>
             <div class="small text-muted mt-1 text-truncate">
-              <i class="fa-regular fa-user me-1"></i>${escapeAuditHtml(shortActor)}
+              <i class="fa-regular fa-user me-1"></i>${escapeAuditHtml(actor)}
             </div>
             ${detailText ? `<div class="small text-muted mt-1">${escapeAuditHtml(detailText)}</div>` : ''}
           </div>
