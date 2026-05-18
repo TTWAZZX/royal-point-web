@@ -620,7 +620,28 @@ module.exports = async (req, res) => {
         const { data, error } = await query
         if (error) throw error
 
-        return res.status(200).json({ status: 'success', data: data || [] })
+        const rows = data || []
+
+        // Enrich rows with user names
+        const uids = [...new Set(rows.flatMap(r => [r.actor_uid, r.target_uid].filter(Boolean)))]
+        let nameMap = {}
+        if (uids.length) {
+          const { data: users } = await supabaseAdmin
+            .from('users')
+            .select('uid, name')
+            .in('uid', uids)
+          for (const u of users || []) {
+            if (u.uid) nameMap[u.uid] = u.name || null
+          }
+        }
+
+        const enriched = rows.map(r => ({
+          ...r,
+          actor_name: (r.actor_uid && nameMap[r.actor_uid]) || null,
+          target_name: (r.target_uid && nameMap[r.target_uid]) || null,
+        }))
+
+        return res.status(200).json({ status: 'success', data: enriched })
       } catch (e) {
         const message = String(e?.message || e)
         if (/audit_logs|relation .* does not exist/i.test(message)) {

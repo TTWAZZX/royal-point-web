@@ -664,8 +664,10 @@ function renderAuditLogs(list, warning = '') {
     const isError = row.status === 'error';
     const meta = AUDIT_EVENT_META[row.event_type] || { label: row.event_type, icon: 'fa-circle-info', tone: isError ? 'danger' : 'secondary' };
     const tone = isError ? 'danger' : meta.tone;
-    const actor = row.actor_uid || row.target_uid || '-';
-    const shortActor = actor.length > 20 ? actor.slice(0, 8) + '…' + actor.slice(-4) : actor;
+    const actorName = row.actor_name || row.target_name || null;
+    const actorUid  = row.actor_uid  || row.target_uid  || '-';
+    const shortUid  = actorUid.length > 20 ? actorUid.slice(0, 8) + '…' + actorUid.slice(-4) : actorUid;
+    const actor = actorName ? `${actorName}` : shortUid;
     const detailText = row.detail ? formatAuditDetail(row.event_type, row.detail) : '';
     const statusLabel = isError ? 'ไม่สำเร็จ' : 'สำเร็จ';
     return `
