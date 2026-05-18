@@ -201,6 +201,71 @@ Admin สามารถใช้ Gemini สร้างชุดคำถาม
 - API จะส่งคำถามเดิมใน `safety_questions` ให้ AI หลีกเลี่ยง และกรองคำถามซ้ำในชุดคำตอบก่อนส่งกลับ
 - การบันทึกคำถามใหม่จะป้องกันคำถามซ้ำแบบข้อความเดียวกันหลัง normalize ช่องว่างและเครื่องหมายวรรคตอน
 
+## Safety Check-in Gamification
+
+ฟีเจอร์ใหม่เพื่อเพิ่มแรงจูงใจในการเช็คอิน:
+
+### Weekly Calendar Dots
+
+แสดง 7 วันของสัปดาห์ (จ-อา) ใต้ progress bar ภารกิจประจำสัปดาห์ วันที่เช็คอินแล้วจะเป็นสีเขียว วันปัจจุบันมีขอบสีน้ำเงิน ให้ผู้ใช้เห็นว่าเช็คอินวันไหนไปบ้างในสัปดาห์นี้
+
+### Streak-at-Risk Warning
+
+ถ้าผู้ใช้มี streak ≥ 2 วัน และยังไม่ได้เช็คอินวันนี้ และเหลือเวลาน้อยกว่า 2 ชั่วโมงก่อนสิ้นสุดรอบ ปุ่มเช็คอินจะกระพริบสีแดงเพื่อเตือน ระบบรองรับทั้งโหมดเปิด 24 ชั่วโมงและโหมดกำหนดช่วงเวลา
+
+### Level-Up Celebration
+
+เมื่อ Safety Streak ผ่านเกณฑ์ใหม่ จะขึ้น dialog พร้อม confetti:
+
+| ระดับ | เกณฑ์ | Badge |
+|-------|-------|-------|
+| Safety Starter | 0–2 วัน | — |
+| Bronze | 3–6 วัน | 🥉 |
+| Silver | 7–14 วัน | 🥈 |
+| Gold | 15–29 วัน | 🥇 |
+| Champion | 30+ วัน | 🏆 |
+
+### Daily Safety Tips
+
+หลังเช็คอินแบบ `ready` ระบบจะสุ่มแสดง Tips ความปลอดภัยในที่ทำงาน 1 ข้อ จากคลัง 25 ข้อ
+
+### Admin Safety Pulse — Streak Levels
+
+หน้า Safety Pulse ของแอดมินแสดง badge ระดับ streak ของผู้ใช้แต่ละคน และมีสรุปจำนวนคนต่อระดับ (Overview card "Safety Streak Level")
+
+## Reward Management Improvements
+
+ฟีเจอร์เพิ่มเติมในหน้าจัดการของรางวัล (admin.html — tab ของรางวัล):
+
+### B: Stock Validation (สต็อกไม่เกินขีดสูงสุด)
+
+- กดปุ่ม `+` จะหยุดที่ `stock_max` พร้อมแจ้งเตือน toast ว่า "ถึงขีดสูงสุดแล้ว"
+- backend `getSafeRewardData` ตัด stock เกิน stock_max ทิ้งอัตโนมัติเมื่อบันทึก
+
+### C: Confirmation Dialogs (ยืนยันก่อนเปลี่ยนสถานะ)
+
+- กด toggle เปิด/ปิดของรางวัล จะขึ้น Swal ขอยืนยันก่อน ถ้ากดยกเลิก toggle จะกลับสถานะเดิมทันที
+
+### D: Stock Progress Bar (แถบแสดงสต็อก)
+
+- การ์ดของรางวัลที่มี `stock_max > 0` จะแสดงแถบสีแสดงระดับสต็อก: เขียว (>50%), เหลือง (>20%), แดง (≤20%)
+- อัปเดต real-time เมื่อกดปุ่ม +/-
+
+### F: Redemption History per Reward (ประวัติการแลกรายของรางวัล)
+
+- ปุ่ม "ประวัติ" ในการ์ดแต่ละชิ้น เปิด modal แสดงรายชื่อผู้แลก วันที่ แต้ม และสถานะ (รอ/อนุมัติ/ปฏิเสธ)
+- ดึงข้อมูลจาก `get_history` action ใน admin-actions.js กรองตาม reward_id
+
+### G: Duplicate Reward (ทำสำเนาของรางวัล)
+
+- ปุ่ม copy icon ในหน้า edit modal ของรางวัล กดแล้ว clone ของรางวัลใหม่ชื่อ `(ชื่อเดิม) (สำเนา)` stock=0 active=false
+- ไม่เพิ่มไฟล์ API ใหม่ ใช้ `reward_create` action เดิม
+
+### H: Bulk Stock Refill (เติมสต็อกทั้งหมด)
+
+- ปุ่ม "เติมสต็อกทั้งหมด" ด้านบนรายการ กดแล้วรีเซ็ตทุกรายการที่มี stock_max > 0 ให้เต็มสูงสุดพร้อมกัน
+- มี Swal ยืนยันก่อน บอกจำนวนรายการที่จะถูกเติม
+
 ## Mobile UI Notes
 
 - Safety Streak badge ในหน้าแรกจัด layout สำหรับจอเล็กให้ `จำนวนวัน` ลงแถวของตัวเอง เพื่อไม่ให้ข้อความ `Safety Starter` และคำอธิบาย streak ถูกบีบหรือตัดบรรทัดผิดรูปบนโทรศัพท์
@@ -268,6 +333,10 @@ Safety actions ที่ audit แล้ว:
 - `safety_streak_reset`
 
 หมายเหตุ: `audit_logs` เป็น optional table ถ้า insert audit fail จะไม่ทำให้ user/admin flow พัง
+
+### Audit Log UI (Thai labels + User names)
+
+Admin Console แสดง audit log ด้วยภาษาไทย พร้อม icon และรายละเอียดที่อ่านง่าย แทน event code เดิม เช่น `daily_checkin_success` → "✅ เช็คอินความปลอดภัยสำเร็จ" และแสดงชื่อผู้ใช้แทน UID ทั้ง actor และ target (ดึง join จากตาราง `users` ใน `getAuditLogs` ใน admin-actions.js)
 
 ## Local Development
 

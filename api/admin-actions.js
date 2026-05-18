@@ -1082,6 +1082,11 @@ module.exports = async (req, res) => {
         return res.status(400).json({ status: 'error', message: 'Missing reward name or cost' })
       }
 
+      // cap stock to stock_max when both are set
+      if (Number.isFinite(safeData.stock) && safeData.stock_max > 0) {
+        safeData.stock = Math.min(safeData.stock, safeData.stock_max)
+      }
+
       const { data, error } = await supabaseAdmin
         .from('rewards')
         .insert(safeData)
@@ -1098,6 +1103,11 @@ module.exports = async (req, res) => {
       const safeData = getSafeRewardData(rewardData)
       if (Object.keys(safeData).length === 0) {
         return res.status(400).json({ status: 'error', message: 'No valid fields to update' })
+      }
+
+      // cap stock to stock_max when both fields arrive in the same update
+      if (Number.isFinite(safeData.stock) && Number.isFinite(safeData.stock_max) && safeData.stock_max > 0) {
+        safeData.stock = Math.min(safeData.stock, safeData.stock_max)
       }
 
       // อัปเดตข้อมูลลง Table 'rewards' โดยตรง (เช่น active, stock, name, cost)
@@ -1135,21 +1145,24 @@ module.exports = async (req, res) => {
     // ==================================================
     else if (action === 'get_history') {
       
-      const { data, error } = await supabaseAdmin
-        .from('redemptions') 
+      let query = supabaseAdmin
+        .from('redemptions')
         .select(`
            id,
            created_at,
            cost,
            status,
+           reward_id,
            users:user_id ( name, uid ),
-           rewards:reward_id ( name, img_url ) 
+           rewards:reward_id ( name, img_url )
         `)
-        // หมายเหตุ: 
-        // 1. users: ไม่ดึงรูปภาพเพราะใน DB ไม่มีคอลัมน์รูป
-        // 2. rewards: ดึง img_url (ตามรูป table rewards ของคุณ)
         .order('created_at', { ascending: false })
-        .limit(50)
+        .limit(100)
+
+      // optional filter by reward
+      if (rewardId) query = query.eq('reward_id', rewardId)
+
+      const { data, error } = await query
 
       if (error) {
          console.error('Fetch history error:', error);

@@ -170,6 +170,11 @@
     <div class="tab-content" id="pills-tabContent">
       
       <div class="tab-pane fade show active" id="tab-stock" role="tabpanel">
+        <div class="d-flex justify-content-end mb-2">
+          <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="bulkRefillStock()">
+            <i class="fa-solid fa-rotate me-1"></i> เติมสต็อกทั้งหมด
+          </button>
+        </div>
         <div id="rewardListArea">
           <div class="text-center py-5 text-muted">
             <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
@@ -478,6 +483,9 @@
                 <button type="button" class="btn btn-outline-danger rounded-pill fw-bold d-none" id="btnDeleteReward">
                   <i class="fa-solid fa-trash-can"></i>
                 </button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill fw-bold d-none" id="btnDuplicateReward" title="ทำสำเนา">
+                  <i class="fa-solid fa-copy"></i>
+                </button>
                 <button type="submit" class="btn btn-primary flex-grow-1 rounded-pill fw-bold">บันทึก</button>
               </div>
             </form>
@@ -527,6 +535,20 @@
               </thead>
               <tbody id="historyTableBody"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="rewardHistoryModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content rounded-4 border-0" style="max-height:80vh;">
+          <div class="modal-header border-0 pb-0">
+            <h6 class="modal-title fw-bold" id="rewardHistoryTitle">ประวัติการแลก</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body p-0 mt-2" id="rewardHistoryBody">
+            <div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>
           </div>
         </div>
       </div>
@@ -585,9 +607,21 @@
         listArea.innerHTML = list.map(r => {
             const isActive = r.active;
             const stock = parseInt(r.stock || 0);
+            const stockMax = parseInt(r.stock_max || 0);
             const isZero = stock <= 0;
             const img = rewardText(r.img || 'https://placehold.co/100');
             const name = rewardText(r.name || 'ไม่ระบุชื่อ');
+            const pct = (stockMax > 0) ? Math.min(100, Math.round((stock / stockMax) * 100)) : 0;
+            const barColor = pct > 50 ? '#16a34a' : pct > 20 ? '#f59e0b' : '#dc2626';
+            const stockBar = stockMax > 0 ? `
+                <div style="margin-top:6px;">
+                    <div class="d-flex justify-content-between" style="font-size:11px;color:#6b7280;line-height:1.2;">
+                        <span>สต็อก</span><span id="stock-pct-${r.id}">${stock}/${stockMax}</span>
+                    </div>
+                    <div style="height:4px;background:#e5e7eb;border-radius:2px;overflow:hidden;margin-top:2px;">
+                        <div id="stock-bar-${r.id}" style="height:100%;width:${pct}%;background:${barColor};border-radius:2px;transition:width 0.3s;"></div>
+                    </div>
+                </div>` : '';
             return `
             <div class="m-card ${!isActive ? 'opacity-50' : ''}" id="card-${r.id}">
                 <div class="d-flex justify-content-between align-items-start mb-2">
@@ -602,15 +636,19 @@
                       <input class="form-check-input" type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleActive('${r.id}', this.checked)">
                    </div>
                 </div>
-                
+
                 <div class="d-flex align-items-center justify-content-between pt-2 border-top mt-2">
-                   <div class="text-muted small" onclick="openEditModal('${r.id}')"><i class="fa-solid fa-pen me-1"></i> แก้ไข</div>
+                   <div class="d-flex gap-3">
+                     <div class="text-muted small" style="cursor:pointer;" onclick="openEditModal('${r.id}')"><i class="fa-solid fa-pen me-1"></i> แก้ไข</div>
+                     <div class="text-muted small" style="cursor:pointer;" onclick="showRewardHistory('${r.id}')"><i class="fa-solid fa-clock-rotate-left me-1"></i> ประวัติ</div>
+                   </div>
                    <div class="stock-ctrl">
                       <button class="btn-qty btn-dec" onclick="updateStock('${r.id}', -1)"><i class="fa-solid fa-minus"></i></button>
                       <div class="fw-bold px-2 ${isZero ? 'text-danger' : 'text-dark'}" style="min-width:30px; text-align:center;" id="stock-val-${r.id}">${stock}</div>
                       <button class="btn-qty btn-inc" onclick="updateStock('${r.id}', 1)"><i class="fa-solid fa-plus"></i></button>
                    </div>
                 </div>
+                ${stockBar}
             </div>`;
         }).join('');
     }
@@ -621,8 +659,15 @@
         if (!item) return;
 
         const oldStock = parseInt(item.stock || 0);
-        const newStock = Math.max(0, oldStock + delta);
-        if (newStock === oldStock) return;
+        const stockMax = parseInt(item.stock_max || 0);
+        const rawNew = oldStock + delta;
+        const newStock = stockMax > 0 ? Math.min(stockMax, Math.max(0, rawNew)) : Math.max(0, rawNew);
+        if (newStock === oldStock) {
+            if (delta > 0 && stockMax > 0 && oldStock >= stockMax) {
+                Swal.fire({ toast: true, position: 'top', icon: 'warning', title: `ถึงขีดสูงสุดแล้ว (${stockMax})`, timer: 1500, showConfirmButton: false });
+            }
+            return;
+        }
 
         // --- 1. Visual Feedback (Animation) ---
         const stockEl = document.getElementById(`stock-val-${id}`);
@@ -643,6 +688,16 @@
         // อัปเดตข้อมูลในตัวแปร
         item.stock = newStock;
         if(newStock <= 0) stockEl.classList.add('zero'); else stockEl.classList.remove('zero');
+
+        // อัปเดต progress bar
+        if (stockMax > 0) {
+            const pct = Math.min(100, Math.round((newStock / stockMax) * 100));
+            const barColor = pct > 50 ? '#16a34a' : pct > 20 ? '#f59e0b' : '#dc2626';
+            const bar = document.getElementById(`stock-bar-${id}`);
+            const pctEl = document.getElementById(`stock-pct-${id}`);
+            if (bar) { bar.style.width = `${pct}%`; bar.style.background = barColor; }
+            if (pctEl) pctEl.textContent = `${newStock}/${stockMax}`;
+        }
 
         try {
             await Loading.apiFetch('/api/admin-actions', {
@@ -670,17 +725,41 @@
                 title: delta > 0 ? `+${delta} ชิ้น` : `${delta} ชิ้น`
             });
 
-        } catch (err) { 
+        } catch (err) {
             console.error(err);
-            // ถ้า Error ให้คืนค่าเดิม
+            // คืนค่าเดิมทั้งตัวเลขและ progress bar
             stockEl.textContent = oldStock;
             item.stock = oldStock;
+            if (stockMax > 0) {
+                const oldPct = Math.min(100, Math.round((oldStock / stockMax) * 100));
+                const oldBarColor = oldPct > 50 ? '#16a34a' : oldPct > 20 ? '#f59e0b' : '#dc2626';
+                const bar = document.getElementById(`stock-bar-${id}`);
+                const pctEl = document.getElementById(`stock-pct-${id}`);
+                if (bar) { bar.style.width = `${oldPct}%`; bar.style.background = oldBarColor; }
+                if (pctEl) pctEl.textContent = `${oldStock}/${stockMax}`;
+            }
             Swal.fire('ข้อผิดพลาด', 'อัปเดตสต็อกไม่สำเร็จ', 'error');
         }
     }
 
     async function toggleActive(id, status) {
         const item = ALL_REWARDS_DATA.find(x => String(x.id) === String(id));
+        const toggle = document.querySelector(`#card-${CSS.escape(String(id))} .form-check-input`);
+
+        const confirm = await Swal.fire({
+            title: status ? 'เปิดใช้งานของรางวัลนี้?' : 'ปิดการใช้งานของรางวัลนี้?',
+            text: item?.name || '',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: status ? 'เปิดใช้งาน' : 'ปิดใช้งาน',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: status ? '#16a34a' : '#dc2626'
+        });
+        if (!confirm.isConfirmed) {
+            if (toggle) toggle.checked = !status;
+            return;
+        }
+
         try {
             await Loading.apiFetch('/api/admin-actions', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -694,7 +773,6 @@
         } catch (err) {
             console.error(err);
             if (item) item.active = !status;
-            const toggle = document.querySelector(`#card-${CSS.escape(String(id))} .form-check-input`);
             if (toggle) toggle.checked = !status;
             Swal.fire('ข้อผิดพลาด', 'เปลี่ยนสถานะของรางวัลไม่สำเร็จ', 'error');
         }
@@ -704,6 +782,7 @@
     const editModalEl = editModalNode ? bootstrap.Modal.getOrCreateInstance(editModalNode) : null;
     const editForm = document.getElementById('editForm');
     const btnDeleteReward = document.getElementById('btnDeleteReward');
+    const btnDuplicateReward = document.getElementById('btnDuplicateReward');
 
     function setEditValue(id, value) {
         const el = document.getElementById(id);
@@ -722,6 +801,7 @@
         document.getElementById('editActive').checked = true;
         document.getElementById('editModalTitle').textContent = 'เพิ่มของรางวัล';
         btnDeleteReward?.classList.add('d-none');
+        btnDuplicateReward?.classList.add('d-none');
 
         if (id) {
             const item = ALL_REWARDS_DATA.find(x => String(x.id) === String(id));
@@ -740,6 +820,7 @@
             document.getElementById('editActive').checked = !!item.active;
             document.getElementById('editModalTitle').textContent = 'แก้ไขของรางวัล';
             btnDeleteReward?.classList.remove('d-none');
+            btnDuplicateReward?.classList.remove('d-none');
         }
 
         editModalEl.show();
@@ -811,6 +892,115 @@
             Swal.fire('ลบไม่สำเร็จ', err.message || 'อาจมีประวัติการแลกที่อ้างถึงของรางวัลนี้อยู่', 'error');
         }
     });
+
+    async function bulkRefillStock() {
+        const eligible = ALL_REWARDS_DATA.filter(r => parseInt(r.stock_max || 0) > 0 && parseInt(r.stock || 0) < parseInt(r.stock_max));
+        if (!eligible.length) {
+            Swal.fire({ toast: true, position: 'top', icon: 'info', title: 'ทุกรายการมีสต็อกเต็มแล้ว', timer: 2000, showConfirmButton: false });
+            return;
+        }
+        const conf = await Swal.fire({
+            title: 'เติมสต็อกทั้งหมด?',
+            text: `จะรีเซ็ตสต็อก ${eligible.length} รายการให้เต็มตามขีดสูงสุด`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'เติมเลย',
+            cancelButtonText: 'ยกเลิก',
+            confirmButtonColor: '#0ea5e9'
+        });
+        if (!conf.isConfirmed) return;
+
+        let succeeded = 0;
+        for (const r of eligible) {
+            try {
+                await Loading.apiFetch('/api/admin-actions', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'reward_update', adminUid: getMyUid(), rewardId: r.id, rewardData: { stock: parseInt(r.stock_max) } })
+                }, { scope: 'inline' });
+                r.stock = parseInt(r.stock_max);
+                succeeded++;
+            } catch (e) { console.error('refill failed for', r.id, e); }
+        }
+        Swal.fire('สำเร็จ', `เติมสต็อก ${succeeded} รายการเรียบร้อย`, 'success');
+        loadRewardsData();
+    }
+
+    btnDuplicateReward?.addEventListener('click', async () => {
+        const id = document.getElementById('editId').value;
+        const item = ALL_REWARDS_DATA.find(x => String(x.id) === String(id));
+        if (!id || !item) return;
+
+        const conf = await Swal.fire({
+            title: 'ทำสำเนาของรางวัลนี้?',
+            text: item.name || '',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'ทำสำเนา',
+            cancelButtonText: 'ยกเลิก'
+        });
+        if (!conf.isConfirmed) return;
+
+        editModalEl.hide();
+        try {
+            const result = await Loading.apiFetch('/api/admin-actions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'reward_create',
+                    adminUid: getMyUid(),
+                    rewardData: {
+                        name: `${item.name} (สำเนา)`,
+                        cost: item.cost,
+                        stock: 0,
+                        stock_max: item.stock_max || 0,
+                        img_url: item.img || '',
+                        sort_index: (item.sort_index || 999) + 1,
+                        active: false
+                    }
+                })
+            });
+            if (result?.status !== 'success') throw new Error(result?.message || 'duplicate_failed');
+            Swal.fire('สำเร็จ', 'ทำสำเนาของรางวัลเรียบร้อย', 'success');
+            loadRewardsData();
+        } catch (err) {
+            editModalEl.show();
+            Swal.fire('ข้อผิดพลาด', err.message || 'ทำสำเนาไม่สำเร็จ', 'error');
+        }
+    });
+
+    async function showRewardHistory(id) {
+        const item = ALL_REWARDS_DATA.find(x => String(x.id) === String(id));
+        const rewardName = item?.name || 'ของรางวัล';
+        const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('rewardHistoryModal'));
+        const title = document.getElementById('rewardHistoryTitle');
+        const body = document.getElementById('rewardHistoryBody');
+        if (title) title.textContent = `ประวัติแลก: ${rewardName}`;
+        if (body) body.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm"></div></div>`;
+        modal.show();
+        try {
+            const result = await Loading.apiFetch('/api/admin-actions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'get_history', adminUid: getMyUid(), rewardId: id })
+            }, { scope: 'inline' });
+            const rows = result?.data || [];
+            if (!rows.length) {
+                body.innerHTML = `<div class="text-center py-5 text-muted">ยังไม่มีประวัติการแลก</div>`;
+                return;
+            }
+            body.innerHTML = `<table class="table table-borderless table-striped small mb-0">
+                <thead class="sticky-top bg-white border-bottom"><tr>
+                    <th class="ps-3">วันที่</th><th>ผู้แลก</th><th class="text-end pe-3">แต้ม</th><th class="text-end pe-3">สถานะ</th>
+                </tr></thead>
+                <tbody>${rows.map(r => {
+                    const d = new Date(r.date).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                    const statusBadge = r.status === 'approved' ? `<span class="badge bg-success">อนุมัติ</span>` : r.status === 'rejected' ? `<span class="badge bg-danger">ปฏิเสธ</span>` : `<span class="badge bg-warning text-dark">รอดำเนินการ</span>`;
+                    return `<tr><td class="ps-3">${d}</td><td>${r.user_name}</td><td class="text-end pe-3">${r.cost}</td><td class="text-end pe-3">${statusBadge}</td></tr>`;
+                }).join('')}</tbody>
+            </table>`;
+        } catch (err) {
+            console.error(err);
+            body.innerHTML = `<div class="text-center py-4 text-danger">โหลดประวัติไม่สำเร็จ</div>`;
+        }
+    }
 
     document.addEventListener('DOMContentLoaded', loadRewardsData);
   </script>
