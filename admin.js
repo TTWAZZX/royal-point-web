@@ -580,6 +580,73 @@ async function loadAuditLogs() {
   }
 }
 
+const AUDIT_EVENT_META = {
+  daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
+  daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
+  daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
+  daily_checkin_failed:         { label: 'เช็คอินไม่สำเร็จ',               icon: 'fa-calendar-xmark',      tone: 'danger' },
+  weekly_mission_success:       { label: 'รับโบนัส Weekly Mission',         icon: 'fa-flag-checkered',      tone: 'success' },
+  weekly_mission_failed:        { label: 'Weekly Mission ไม่สำเร็จ',        icon: 'fa-flag',                tone: 'danger' },
+  redeem_success:               { label: 'แลกรางวัลสำเร็จ',                icon: 'fa-gift',                tone: 'success' },
+  redeem_failed:                { label: 'แลกรางวัลไม่สำเร็จ',             icon: 'fa-gift',                tone: 'danger' },
+  redemption_log_failed:        { label: 'บันทึกการแลกรางวัลไม่สำเร็จ',   icon: 'fa-triangle-exclamation', tone: 'danger' },
+  spend_success:                { label: 'ใช้แต้มสำเร็จ',                  icon: 'fa-coins',               tone: 'success' },
+  spend_failed:                 { label: 'ใช้แต้มไม่สำเร็จ',               icon: 'fa-coins',               tone: 'danger' },
+  safety_risk_update:           { label: 'อัปเดตสถานะเคสความเสี่ยง',       icon: 'fa-shield-halved',       tone: 'warning' },
+  safety_streak_reset:          { label: 'รีเซ็ต Safety Streak',           icon: 'fa-rotate-left',         tone: 'warning' },
+  safety_question_create:       { label: 'เพิ่มคำถาม Safety',              icon: 'fa-circle-plus',         tone: 'success' },
+  safety_question_update:       { label: 'แก้ไขคำถาม Safety',             icon: 'fa-pen',                 tone: 'primary' },
+  safety_question_delete:       { label: 'ลบคำถาม Safety',                icon: 'fa-trash',               tone: 'danger' },
+  safety_question_archive:      { label: 'ปิดใช้งานคำถาม Safety',         icon: 'fa-box-archive',         tone: 'secondary' },
+  safety_settings_update:       { label: 'แก้ไขตั้งค่า Safety',           icon: 'fa-gear',                tone: 'primary' },
+  safety_ai_generate_questions: { label: 'สร้างคำถามด้วย AI',             icon: 'fa-wand-magic-sparkles', tone: 'primary' },
+};
+
+function formatAuditDetail(eventType, detail) {
+  if (!detail || typeof detail !== 'object') return '';
+  const d = detail;
+  switch (eventType) {
+    case 'daily_checkin_success':
+    case 'daily_checkin_duplicate': {
+      const parts = [];
+      if (d.points)  parts.push(`+${d.points} คะแนน`);
+      if (d.streak)  parts.push(`Streak ${d.streak} วัน`);
+      if (d.safety?.safety_mood === 'risk' || d.safety?.safety_mood === 'support') parts.push('⚠️ แจ้งจุดเสี่ยง');
+      return parts.join(' · ');
+    }
+    case 'weekly_mission_success':
+      return `โบนัส +${d.bonus || 10} คะแนน · เช็คอินครบ ${d.count || 5}/${d.target || 5} วัน`;
+    case 'redeem_success':
+      return `เพิ่ม ${d.added != null ? '+' + d.added : ''} คะแนน${d.coupon ? ' · คูปอง ' + d.coupon : ''}`.trim();
+    case 'spend_success':
+      return `หัก ${d.spent != null ? d.spent : ''} คะแนน${d.rewardName ? ' · ' + d.rewardName : ''}`.trim();
+    case 'safety_risk_update': {
+      const statusMap = { acknowledged: 'รับทราบแล้ว', resolved: 'ปิดเคสแล้ว', new: 'เคสใหม่' };
+      return statusMap[d.status] || d.status || '';
+    }
+    case 'safety_streak_reset':
+      return d.reason ? `เหตุผล: ${d.reason}` : '';
+    case 'safety_question_create':
+    case 'safety_question_update':
+      return d.question ? String(d.question).slice(0, 60) + (d.question.length > 60 ? '…' : '') : '';
+    case 'daily_checkin_failed':
+    case 'redeem_failed':
+    case 'spend_failed': {
+      const reasonMap = {
+        user_not_found: 'ไม่พบผู้ใช้',
+        already_checked_in: 'เช็คอินซ้ำ',
+        checkin_time_closed: 'นอกเวลาเช็คอิน',
+        apply_points_failed: 'เพิ่มแต้มไม่สำเร็จ',
+        invalid_coupon: 'คูปองไม่ถูกต้อง',
+        coupon_used: 'คูปองถูกใช้แล้ว',
+      };
+      return reasonMap[d.reason] || d.reason || d.message || '';
+    }
+    default:
+      return '';
+  }
+}
+
 function renderAuditLogs(list, warning = '') {
   const area = document.getElementById('auditListArea');
   if (!area) return;
@@ -595,22 +662,27 @@ function renderAuditLogs(list, warning = '') {
 
   area.innerHTML = list.map(row => {
     const isError = row.status === 'error';
-    const statusClass = isError ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success';
+    const meta = AUDIT_EVENT_META[row.event_type] || { label: row.event_type, icon: 'fa-circle-info', tone: isError ? 'danger' : 'secondary' };
+    const tone = isError ? 'danger' : meta.tone;
     const actor = row.actor_uid || row.target_uid || '-';
-    const detail = row.detail ? JSON.stringify(row.detail) : '';
+    const shortActor = actor.length > 20 ? actor.slice(0, 8) + '…' + actor.slice(-4) : actor;
+    const detailText = row.detail ? formatAuditDetail(row.event_type, row.detail) : '';
+    const statusLabel = isError ? 'ไม่สำเร็จ' : 'สำเร็จ';
     return `
       <div class="m-card p-3 mb-2">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div style="min-width:0;">
-            <div class="fw-bold text-dark text-truncate">${escapeAuditHtml(row.event_type)}</div>
-            <div class="small text-muted text-truncate">
-              <i class="fa-regular fa-user me-1"></i>${escapeAuditHtml(actor)}
-              ${row.entity_type ? ` • ${escapeAuditHtml(row.entity_type)}:${escapeAuditHtml(row.entity_id || '-')}` : ''}
+            <div class="fw-bold text-dark d-flex align-items-center gap-2">
+              <i class="fa-solid ${escapeAuditHtml(meta.icon)} text-${escapeAuditHtml(tone)} fa-sm"></i>
+              <span>${escapeAuditHtml(meta.label)}</span>
             </div>
-            ${detail ? `<div class="small text-muted text-truncate mt-1">${escapeAuditHtml(detail)}</div>` : ''}
+            <div class="small text-muted mt-1 text-truncate">
+              <i class="fa-regular fa-user me-1"></i>${escapeAuditHtml(shortActor)}
+            </div>
+            ${detailText ? `<div class="small text-muted mt-1">${escapeAuditHtml(detailText)}</div>` : ''}
           </div>
           <div class="text-end flex-shrink-0">
-            <span class="badge ${statusClass} rounded-pill">${escapeAuditHtml(row.status || 'info')}</span>
+            <span class="badge bg-${escapeAuditHtml(tone)}-subtle text-${escapeAuditHtml(tone)} rounded-pill">${statusLabel}</span>
             <div class="small text-muted mt-1" style="font-size:0.7rem;">${escapeAuditHtml(formatAuditDate(row.created_at))}</div>
           </div>
         </div>
