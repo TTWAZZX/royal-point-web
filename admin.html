@@ -638,7 +638,7 @@
 
         if (filtered.length === 0) { listArea.innerHTML = `<div class="text-center text-muted mt-5">ไม่มีข้อมูล</div>`; return; }
         
-        listArea.innerHTML = list.map(r => {
+        listArea.innerHTML = filtered.map(r => {
             const isActive = r.active;
             const stock = parseInt(r.stock || 0);
             const stockMax = parseInt(r.stock_max || 0);
