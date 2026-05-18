@@ -1638,10 +1638,9 @@ async function loadRewards(opts = {}) {
     name      : x.name ?? x.title ?? `Reward`,
     cost      : Number(x.cost ?? x.point_cost ?? x.points ?? 0),
     img       : x.img ?? x.image ?? x.image_url ?? '',
-    
-    // 👇👇 เพิ่ม 2 ฟิลด์นี้เข้าไป
     stock     : Number(x.stock ?? 0),
-    stock_max : Number(x.stock_max ?? 0)
+    stock_max : Number(x.stock_max ?? 0),
+    sort_index: Number(x.sort_index ?? 9999)
   }));
 
     const ordered = orderRewardsBySequence(list, COST_ORDER);

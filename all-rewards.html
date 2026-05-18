@@ -345,7 +345,7 @@ function renderGrid(list) {
       <div class="reward-stock" id="stock-${id}"
            data-stock="${stock}"
            data-max="${stockMax}">
-        ${isSoldOut ? 'หมดแล้ว' : `เหลือ ${stock}/${stockMax}`}
+        ${isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax}` : `เหลือ ${stock} ชิ้น`)}
       </div>
 
       <div class="reward-name">${name}</div>
@@ -390,7 +390,7 @@ function openRewardPreview(reward, card) {
   document.getElementById('rewardPreviewImg').src = reward.img || 'https://placehold.co/300x300?text=No+Image';
   document.getElementById('rewardPreviewName').textContent = reward.name || 'ของรางวัล';
   document.getElementById('rewardPreviewCost').textContent = `${cost} pt`;
-  document.getElementById('rewardPreviewStock').textContent = isSoldOut ? 'หมดแล้ว' : `เหลือ ${stock}/${stockMax}`;
+  document.getElementById('rewardPreviewStock').textContent = isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax}` : `เหลือ ${stock} ชิ้น`);
 
   const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
   if (redeemBtn) {
@@ -511,7 +511,7 @@ function updateUiAfterSpend(rewardId, cost) {
             if(cardEl.classList.contains('locked')) cardEl.classList.remove('locked'); // เอา locked ออกถ้า soldout แล้ว
             if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'แลกรางวัล'; }
         } else {
-            stockEl.textContent = `เหลือ ${newStock}/${maxStock}`;
+            stockEl.textContent = (maxStock > 0) ? `เหลือ ${newStock}/${maxStock}` : `เหลือ ${newStock} ชิ้น`;
         }
     }
 

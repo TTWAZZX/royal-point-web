@@ -795,7 +795,8 @@
         editForm.reset();
         setEditValue('editId', '');
         setEditValue('editCost', 0);
-        setEditValue('editSort', (ALL_REWARDS_DATA.length + 1) * 10);
+        const maxSort = ALL_REWARDS_DATA.reduce((m, r) => Math.max(m, r.sort_index || 0), 0);
+        setEditValue('editSort', maxSort + 10);
         setEditValue('editStock', 0);
         setEditValue('editStockMax', 0);
         document.getElementById('editActive').checked = true;
