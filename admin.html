@@ -170,9 +170,14 @@
     <div class="tab-content" id="pills-tabContent">
       
       <div class="tab-pane fade show active" id="tab-stock" role="tabpanel">
-        <div class="d-flex justify-content-end mb-2">
+        <div class="d-flex align-items-center justify-content-between mb-2 gap-2">
+          <div class="d-flex gap-1" id="rewardFilterTabs">
+            <button class="btn btn-sm rounded-pill px-3 btn-primary" data-filter="all" onclick="setRewardFilter('all')">ทั้งหมด <span id="filterCount-all" class="badge bg-white text-primary ms-1">0</span></button>
+            <button class="btn btn-sm rounded-pill px-3 btn-outline-secondary" data-filter="active" onclick="setRewardFilter('active')">เปิดใช้งาน <span id="filterCount-active" class="badge bg-secondary ms-1">0</span></button>
+            <button class="btn btn-sm rounded-pill px-3 btn-outline-secondary" data-filter="inactive" onclick="setRewardFilter('inactive')">ปิดใช้งาน <span id="filterCount-inactive" class="badge bg-secondary ms-1">0</span></button>
+          </div>
           <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" onclick="bulkRefillStock()">
-            <i class="fa-solid fa-rotate me-1"></i> เติมสต็อกทั้งหมด
+            <i class="fa-solid fa-rotate me-1"></i> เติม
           </button>
         </div>
         <div id="rewardListArea">
@@ -578,6 +583,7 @@
     };
 
     let ALL_REWARDS_DATA = [];
+    let currentRewardFilter = 'all';
     const rewardText = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
     }[ch]));
@@ -590,7 +596,7 @@
         const listArea = document.getElementById('rewardListArea');
         if(!listArea) return;
         try {
-            const res = await fetch('/api/rewards?include=1');
+            const res = await fetch('/api/rewards?include=1', { cache: 'no-store' });
             const json = await res.json();
             ALL_REWARDS_DATA = (json.items || []).sort((a,b) => (a.sort_index || 999) - (b.sort_index || 999));
             renderRewardList(ALL_REWARDS_DATA);
@@ -600,9 +606,37 @@
         }
     }
 
+    function setRewardFilter(filter) {
+        currentRewardFilter = filter;
+        document.querySelectorAll('#rewardFilterTabs button').forEach(btn => {
+            const isActive = btn.dataset.filter === filter;
+            btn.classList.toggle('btn-primary', isActive);
+            btn.classList.toggle('btn-outline-secondary', !isActive);
+            btn.querySelector('.badge')?.classList.toggle('bg-white', isActive);
+            btn.querySelector('.badge')?.classList.toggle('text-primary', isActive);
+            btn.querySelector('.badge')?.classList.toggle('bg-secondary', !isActive);
+        });
+        renderRewardList(ALL_REWARDS_DATA);
+    }
+
     function renderRewardList(list) {
         const listArea = document.getElementById('rewardListArea');
-        if (list.length === 0) { listArea.innerHTML = `<div class="text-center text-muted mt-5">ไม่มีข้อมูล</div>`; return; }
+
+        // อัปเดตจำนวนในแท็บ
+        const countAll = list.length;
+        const countActive = list.filter(r => r.active).length;
+        const countInactive = list.filter(r => !r.active).length;
+        const el = id => document.getElementById(id);
+        if (el('filterCount-all')) el('filterCount-all').textContent = countAll;
+        if (el('filterCount-active')) el('filterCount-active').textContent = countActive;
+        if (el('filterCount-inactive')) el('filterCount-inactive').textContent = countInactive;
+
+        // กรองตาม filter ที่เลือก
+        const filtered = currentRewardFilter === 'active' ? list.filter(r => r.active)
+                       : currentRewardFilter === 'inactive' ? list.filter(r => !r.active)
+                       : list;
+
+        if (filtered.length === 0) { listArea.innerHTML = `<div class="text-center text-muted mt-5">ไม่มีข้อมูล</div>`; return; }
         
         listArea.innerHTML = list.map(r => {
             const isActive = r.active;
@@ -855,8 +889,29 @@
                 body: JSON.stringify(payload)
             });
             if (result?.status !== 'success') throw new Error(result?.message || 'save_failed');
+
+            // optimistic update — ไม่ re-fetch เพื่อหลีกเลี่ยง CDN cache
+            if (id) {
+                const idx = ALL_REWARDS_DATA.findIndex(x => String(x.id) === String(id));
+                if (idx !== -1) {
+                    ALL_REWARDS_DATA[idx] = { ...ALL_REWARDS_DATA[idx], name, cost, sort_index: sort, img, stock, stock_max: stockMax, active };
+                    ALL_REWARDS_DATA.sort((a, b) => (a.sort_index || 999) - (b.sort_index || 999));
+                    renderRewardList(ALL_REWARDS_DATA);
+                } else {
+                    loadRewardsData();
+                }
+            } else {
+                // ของรางวัลใหม่ — เพิ่มจากข้อมูลที่ API ส่งกลับ
+                const d = Array.isArray(result.data) ? result.data[0] : result.data;
+                if (d?.id) {
+                    ALL_REWARDS_DATA.push({ id: d.id, name: d.name, cost: Number(d.cost || 0), img: d.img_url || '', stock: Number(d.stock || 0), stock_max: Number(d.stock_max || 0), active: !!d.active, sort_index: Number(d.sort_index || 9999) });
+                    ALL_REWARDS_DATA.sort((a, b) => (a.sort_index || 999) - (b.sort_index || 999));
+                    renderRewardList(ALL_REWARDS_DATA);
+                } else {
+                    loadRewardsData();
+                }
+            }
             Swal.fire('Success', 'บันทึกเรียบร้อย', 'success');
-            loadRewardsData();
         } catch (err) {
             editModalEl.show();
             Swal.fire('Error', err.message || 'บันทึกไม่สำเร็จ', 'error');
@@ -923,7 +978,7 @@
             } catch (e) { console.error('refill failed for', r.id, e); }
         }
         Swal.fire('สำเร็จ', `เติมสต็อก ${succeeded} รายการเรียบร้อย`, 'success');
-        loadRewardsData();
+        renderRewardList(ALL_REWARDS_DATA);
     }
 
     btnDuplicateReward?.addEventListener('click', async () => {
