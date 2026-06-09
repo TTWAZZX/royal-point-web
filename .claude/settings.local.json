@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git commit -m 'Fix shortActor is not defined error in audit log renderer *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\royal-point-web\" -Recurse -File -Name)",
+      "Bash(Select-Object -First 30)",
+      "Bash(node --check c:/royal-point-web/api/admin-actions.js)",
+      "Bash(node --check c:/royal-point-web/app.js)",
+      "Bash(git commit *)"
+    ]
+  }
+}
