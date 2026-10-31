@@ -1,7 +1,7 @@
 {
   "scripts": {
     "test": "node tests/line-auth.test.js && node tests/line-messaging.test.js && node tests/loader-auth.test.js && node tests/integration-guard.test.js",
-    "check": "node --check app.js && node --check admin.js && node --check admin.page.js && node --check loader.js && node --check lib/line-auth.js && node --check lib/line-messaging.js && node --check api/liff-guard.js && node --check api/admin-actions.js && node --check api/admin-coupons.js && node --check api/rewards.js && node --check api/redeem.js && node --check api/spend.js && node --check scripts/validate-line-flex.js && node --check scripts/send-line-auth-test.js",
+    "check": "node --check app.js && node --check admin.js && node --check admin.page.js && node --check loader.js && node --check lib/line-auth.js && node --check lib/line-messaging.js && node --check api/liff-guard.js && node --check api/admin-actions.js && node --check api/admin-coupons.js && node --check api/rewards.js && node --check api/redeem.js && node --check api/spend.js && node --check api/daily-checkin.js && node --check scripts/validate-line-flex.js && node --check scripts/send-line-auth-test.js",
     "validate:line-flex": "node scripts/validate-line-flex.js",
     "test:line-delivery": "node scripts/send-line-auth-test.js"
   },

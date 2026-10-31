@@ -96,6 +96,7 @@ const GEMINI_MODELS = [
 ]
 const SAFETY_ACTIONS = new Set([
   'safety_question_create',
+  'safety_question_batch_create',
   'safety_question_update',
   'safety_question_delete',
   'safety_question_hard_delete',
@@ -287,7 +288,7 @@ async function getExistingSafetyQuestionTexts() {
     const { data, error } = await supabaseAdmin
       .from('safety_questions')
       .select('question')
-      .limit(300)
+      .limit(1000)
     if (error) throw error
     return (data || []).map(row => row.question).filter(Boolean)
   } catch (error) {
@@ -942,16 +943,66 @@ module.exports = async (req, res) => {
         const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
-        const includeInactive = String(req.query.includeInactive || '') === '1'
+        const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+        const requestedPageSize = Number.parseInt(req.query.pageSize, 10) || 20
+        const pageSize = [20, 50, 100].includes(requestedPageSize) ? requestedPageSize : 20
+        const statusFilter = ['active', 'inactive'].includes(String(req.query.status || '')) ? String(req.query.status) : 'all'
+        const categoryFilter = String(req.query.category || '').trim().slice(0, 60)
+        const sourceFilter = String(req.query.source || '').trim().slice(0, 30)
+        const search = String(req.query.search || '').trim().slice(0, 80).replace(/[%_]/g, '\\$&')
+        const sortKey = String(req.query.sort || 'created_desc')
+        const sortMap = {
+          created_desc: { column: 'created_at', ascending: false },
+          created_asc: { column: 'created_at', ascending: true },
+          updated_desc: { column: 'updated_at', ascending: false },
+          question_asc: { column: 'question', ascending: true }
+        }
+        const sort = sortMap[sortKey] || sortMap.created_desc
+        const from = (requestedPage - 1) * pageSize
+        const to = from + pageSize - 1
         let query = supabaseAdmin
           .from('safety_questions')
-          .select('id,category,question,options,active,source,created_by,created_at,updated_at')
-          .order('created_at', { ascending: false })
-          .limit(100)
-        if (!includeInactive) query = query.eq('active', true)
-        const { data, error } = await query
+          .select('id,category,question,options,active,source,created_by,created_at,updated_at', { count: 'exact' })
+        if (statusFilter === 'active') query = query.eq('active', true)
+        if (statusFilter === 'inactive') query = query.eq('active', false)
+        if (categoryFilter && categoryFilter !== 'all') query = query.eq('category', categoryFilter)
+        if (sourceFilter && sourceFilter !== 'all') query = query.eq('source', sourceFilter)
+        if (search) query = query.ilike('question', `%${search}%`)
+        query = query
+          .order(sort.column, { ascending: sort.ascending })
+          .order('id', { ascending: sort.ascending })
+          .range(from, to)
+
+        const [pageResult, allResult, activeResult, inactiveResult] = await Promise.all([
+          query,
+          supabaseAdmin.from('safety_questions').select('id', { count: 'exact', head: true }),
+          supabaseAdmin.from('safety_questions').select('id', { count: 'exact', head: true }).eq('active', true),
+          supabaseAdmin.from('safety_questions').select('id', { count: 'exact', head: true }).eq('active', false)
+        ])
+        const { data, error, count: filteredCount } = pageResult
         if (error) throw error
-        return res.status(200).json({ status: 'success', data: (data || []).map(safeSafetyQuestion) })
+        if (allResult.error) throw allResult.error
+        if (activeResult.error) throw activeResult.error
+        if (inactiveResult.error) throw inactiveResult.error
+        const total = Number(filteredCount || 0)
+        const totalPages = Math.max(1, Math.ceil(total / pageSize))
+        return res.status(200).json({
+          status: 'success',
+          data: (data || []).map(safeSafetyQuestion),
+          pagination: {
+            page: requestedPage,
+            pageSize,
+            total,
+            totalPages,
+            hasPrevious: requestedPage > 1,
+            hasNext: requestedPage < totalPages
+          },
+          summary: {
+            total: Number(allResult.count || 0),
+            active: Number(activeResult.count || 0),
+            inactive: Number(inactiveResult.count || 0)
+          }
+        })
       } catch (e) {
         if (/safety_questions|schema cache|relation .* does not exist|Could not find the table/i.test(String(e?.message || e))) {
           return res.status(200).json({ status: 'success', data: [], warning: 'safety_questions table not found' })
@@ -990,7 +1041,9 @@ module.exports = async (req, res) => {
     id,
     category,
     question,
+    questions,
     options,
+    source,
     active,
     tone,
     count,
@@ -1410,7 +1463,7 @@ module.exports = async (req, res) => {
           question: cleanQuestion.slice(0, 240),
           options: normalizeSafetyOptions(options),
           active: active !== false,
-          source: 'admin',
+          source: source === 'gemini' ? 'gemini' : 'admin',
           created_by: adminUid,
           updated_at: new Date().toISOString()
         })
@@ -1427,6 +1480,53 @@ module.exports = async (req, res) => {
         detail: { category: data.category, source: data.source }
       })
       return res.status(200).json({ status: 'success', data: safeSafetyQuestion(data) })
+    }
+
+    else if (action === 'safety_question_batch_create') {
+      const rows = Array.isArray(questions) ? questions.slice(0, 10) : []
+      if (!rows.length) return res.status(400).json({ status: 'error', message: 'questions_required' })
+      const existingQuestions = await getExistingSafetyQuestionTexts()
+      const known = new Set(existingQuestions.map(normalizeQuestionText).filter(Boolean))
+      const skipped = []
+      const records = []
+      for (const item of rows) {
+        const cleanQuestion = String(item?.question || '').trim().slice(0, 240)
+        const normalized = normalizeQuestionText(cleanQuestion)
+        if (!cleanQuestion) continue
+        if (!normalized || known.has(normalized)) {
+          skipped.push(cleanQuestion)
+          continue
+        }
+        known.add(normalized)
+        records.push({
+          category: String(item?.category || 'general').trim().slice(0, 60) || 'general',
+          question: cleanQuestion,
+          options: normalizeSafetyOptions(item?.options),
+          active: item?.active !== false,
+          source: item?.source === 'gemini' ? 'gemini' : 'admin',
+          created_by: adminUid,
+          updated_at: new Date().toISOString()
+        })
+      }
+      if (!records.length) {
+        return res.status(200).json({ status: 'success', data: { items: [], insertedCount: 0, skippedCount: skipped.length } })
+      }
+      const { data, error } = await supabaseAdmin
+        .from('safety_questions')
+        .insert(records)
+        .select('id,category,question,options,active,source,created_by,created_at,updated_at')
+      if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'safety_question_batch_create',
+        actorUid: adminUid,
+        entityType: 'safety_question_pack',
+        status: 'success',
+        detail: { insertedCount: data?.length || 0, skippedCount: skipped.length, source: records[0]?.source || 'admin' }
+      })
+      return res.status(200).json({
+        status: 'success',
+        data: { items: (data || []).map(safeSafetyQuestion), insertedCount: data?.length || 0, skippedCount: skipped.length }
+      })
     }
 
     else if (action === 'safety_question_update') {

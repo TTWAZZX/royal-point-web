@@ -180,6 +180,36 @@ test('admin-managed advertisement carousel keeps legacy fallback and full workfl
   assert.match(index, /id="adPreviewModal"/)
 })
 
+test('Safety Questions supports accurate totals, filters, pagination and fair daily rotation', () => {
+  const migration = read('supabase_safety_questions_pagination_migration.sql')
+  const adminApi = read('api/admin-actions.js')
+  const dailyApi = read('api/daily-checkin.js')
+  const adminHtml = read('admin.html')
+  const adminJs = read('admin.js')
+  const safetyQuestionsGet = adminApi.slice(
+    adminApi.indexOf("if (req.query.action === 'safety_questions')"),
+    adminApi.indexOf("if (req.query.action === 'safety_settings')")
+  )
+
+  assert.match(migration, /safety_questions_created_id_idx/)
+  assert.match(migration, /question gin_trgm_ops/)
+  assert.match(adminApi, /select\('id,category,question,options,active,source,created_by,created_at,updated_at', \{ count: 'exact' \}\)/)
+  assert.match(adminApi, /\.range\(from, to\)/)
+  assert.match(adminApi, /statusFilter === 'inactive'/)
+  assert.match(adminApi, /query\.ilike\('question'/)
+  assert.match(adminApi, /safety_question_batch_create/)
+  assert.doesNotMatch(safetyQuestionsGet, /\.limit\(100\)/)
+  assert.match(dailyApi, /select\('id', \{ count: 'exact', head: true \}\)/)
+  assert.match(dailyApi, /\.range\(offset, offset\)/)
+  assert.doesNotMatch(dailyApi, /\.limit\(30\)/)
+  for (const id of ['safetyQuestionSearch', 'safetyQuestionStatusFilter', 'safetyQuestionCategoryFilter', 'safetyQuestionSourceFilter', 'safetyQuestionSort', 'safetyQuestionPageSize']) {
+    assert.match(adminHtml, new RegExp(`id="${id}"`))
+  }
+  assert.match(adminJs, /function renderSafetyQuestionPagination/)
+  assert.match(adminJs, /showNewestSafetyQuestions/)
+  assert.match(adminJs, /action: 'safety_question_batch_create'/)
+})
+
 test('admin restores the saved tab only after administrator authentication finishes', () => {
   const source = read('admin.js')
   const auth = source.indexOf('const ready = await startAdminSystem()')

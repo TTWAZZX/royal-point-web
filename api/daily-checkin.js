@@ -126,19 +126,26 @@ function safeQuestion(row) {
 
 async function getTodaySafetyQuestion(today) {
   try {
+    const { count, error: countError } = await supabaseAdmin
+      .from('safety_questions')
+      .select('id', { count: 'exact', head: true })
+      .eq('active', true)
+    if (countError) throw countError
+    const activeCount = Number(count || 0)
+    if (!activeCount) return DEFAULT_SAFETY_QUESTION
+    let sum = 0
+    for (const ch of today) sum += ch.charCodeAt(0)
+    const offset = sum % activeCount
     const { data, error } = await supabaseAdmin
       .from('safety_questions')
       .select('id,category,question,options')
       .eq('active', true)
-      .order('created_at', { ascending: false })
-      .limit(30)
-
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(offset, offset)
+      .maybeSingle()
     if (error) throw error
-    const rows = data || []
-    if (!rows.length) return DEFAULT_SAFETY_QUESTION
-    let sum = 0
-    for (const ch of today) sum += ch.charCodeAt(0)
-    return safeQuestion(rows[sum % rows.length])
+    return safeQuestion(data)
   } catch (error) {
     if (/safety_questions|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
       return DEFAULT_SAFETY_QUESTION

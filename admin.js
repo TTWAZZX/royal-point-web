@@ -27,6 +27,10 @@ let SAFETY_PULSE = null;
 let SAFETY_PULSE_TAB = 'action';
 let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
+let SAFETY_QUESTION_QUERY = { page: 1, pageSize: 20, status: 'all', category: 'all', source: 'all', sort: 'created_desc', search: '' };
+let SAFETY_QUESTION_PAGINATION = { page: 1, pageSize: 20, total: 0, totalPages: 1, hasPrevious: false, hasNext: false };
+let SAFETY_QUESTION_SUMMARY = { total: 0, active: 0, inactive: 0 };
+let SAFETY_QUESTION_SEARCH_TIMER = null;
 let MONTHLY_SAFETY = null;
 let LINE_NOTIFICATION_ROWS = [];
 let AD_BANNERS = [];
@@ -1346,6 +1350,7 @@ const AUDIT_EVENT_META = {
   safety_risk_update:           { label: 'อัปเดตสถานะเคสความเสี่ยง',       icon: 'fa-shield-halved',       tone: 'warning' },
   safety_streak_reset:          { label: 'รีเซ็ต Safety Streak',           icon: 'fa-rotate-left',         tone: 'warning' },
   safety_question_create:       { label: 'เพิ่มคำถาม Safety',              icon: 'fa-circle-plus',         tone: 'success' },
+  safety_question_batch_create: { label: 'เพิ่มชุดคำถาม Safety',           icon: 'fa-layer-group',         tone: 'success' },
   safety_question_update:       { label: 'แก้ไขคำถาม Safety',             icon: 'fa-pen',                 tone: 'primary' },
   safety_question_delete:       { label: 'ลบคำถาม Safety',                icon: 'fa-trash',               tone: 'danger' },
   safety_question_archive:      { label: 'ปิดใช้งานคำถาม Safety',         icon: 'fa-box-archive',         tone: 'secondary' },
@@ -1411,6 +1416,8 @@ function formatAuditDetail(eventType, detail) {
     case 'safety_question_create':
     case 'safety_question_update':
       return d.question ? String(d.question).slice(0, 60) + (d.question.length > 60 ? '…' : '') : '';
+    case 'safety_question_batch_create':
+      return `บันทึก ${Number(d.insertedCount || 0).toLocaleString('th-TH')} ข้อ${d.skippedCount ? ` • ข้ามซ้ำ ${Number(d.skippedCount).toLocaleString('th-TH')} ข้อ` : ''}`;
     case 'daily_checkin_failed':
     case 'redeem_failed':
     case 'spend_failed': {
@@ -1586,49 +1593,166 @@ async function resetSafetyStreak() {
 async function loadSafetyQuestions() {
   const area = document.getElementById('safetyQuestionsArea');
   if (!area) return;
-  area.innerHTML = '<div class="small text-muted">Loading questions...</div>';
+  area.innerHTML = '<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm text-success"></div><div class="mt-2">กำลังโหลดคำถาม...</div></div>';
   try {
-    const url = `${API_ADMIN_ACTIONS}?action=safety_questions&includeInactive=1&adminUid=${encodeURIComponent(ADMIN_UID || '')}&t=${Date.now()}`;
+    const params = new URLSearchParams({
+      action: 'safety_questions',
+      adminUid: ADMIN_UID || '',
+      page: String(SAFETY_QUESTION_QUERY.page),
+      pageSize: String(SAFETY_QUESTION_QUERY.pageSize),
+      status: SAFETY_QUESTION_QUERY.status,
+      category: SAFETY_QUESTION_QUERY.category,
+      source: SAFETY_QUESTION_QUERY.source,
+      sort: SAFETY_QUESTION_QUERY.sort,
+      search: SAFETY_QUESTION_QUERY.search,
+      t: String(Date.now())
+    });
+    const url = `${API_ADMIN_ACTIONS}?${params}`;
     const res = await fetch(url, { cache: 'no-store' });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
     SAFETY_QUESTIONS = Array.isArray(json.data) ? json.data : [];
+    SAFETY_QUESTION_PAGINATION = { ...SAFETY_QUESTION_PAGINATION, ...(json.pagination || {}) };
+    SAFETY_QUESTION_SUMMARY = { ...SAFETY_QUESTION_SUMMARY, ...(json.summary || {}) };
+    if (SAFETY_QUESTION_QUERY.page > SAFETY_QUESTION_PAGINATION.totalPages && SAFETY_QUESTION_PAGINATION.total > 0) {
+      SAFETY_QUESTION_QUERY.page = SAFETY_QUESTION_PAGINATION.totalPages;
+      return loadSafetyQuestions();
+    }
     renderSafetyQuestions();
   } catch (err) {
-    area.innerHTML = `<div class="alert alert-danger py-2">Load questions failed: ${escapeAuditHtml(err.message)}</div>`;
+    area.innerHTML = `<div class="alert alert-danger py-2">โหลดคำถามไม่สำเร็จ: ${escapeAuditHtml(err.message)}</div>`;
   }
+}
+
+function readSafetyQuestionFilters() {
+  SAFETY_QUESTION_QUERY = {
+    ...SAFETY_QUESTION_QUERY,
+    pageSize: Number(document.getElementById('safetyQuestionPageSize')?.value || 20),
+    status: document.getElementById('safetyQuestionStatusFilter')?.value || 'all',
+    category: document.getElementById('safetyQuestionCategoryFilter')?.value || 'all',
+    source: document.getElementById('safetyQuestionSourceFilter')?.value || 'all',
+    sort: document.getElementById('safetyQuestionSort')?.value || 'created_desc',
+    search: String(document.getElementById('safetyQuestionSearch')?.value || '').trim()
+  };
+}
+
+function applySafetyQuestionFilters() {
+  readSafetyQuestionFilters();
+  SAFETY_QUESTION_QUERY.page = 1;
+  loadSafetyQuestions();
+}
+
+function scheduleSafetyQuestionSearch() {
+  window.clearTimeout(SAFETY_QUESTION_SEARCH_TIMER);
+  SAFETY_QUESTION_SEARCH_TIMER = window.setTimeout(applySafetyQuestionFilters, 350);
+}
+
+function resetSafetyQuestionFilters() {
+  const values = {
+    safetyQuestionSearch: '',
+    safetyQuestionStatusFilter: 'all',
+    safetyQuestionCategoryFilter: 'all',
+    safetyQuestionSourceFilter: 'all',
+    safetyQuestionSort: 'created_desc',
+    safetyQuestionPageSize: '20'
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+  });
+  applySafetyQuestionFilters();
+}
+
+function showNewestSafetyQuestions() {
+  const values = {
+    safetyQuestionSearch: '',
+    safetyQuestionStatusFilter: 'all',
+    safetyQuestionCategoryFilter: 'all',
+    safetyQuestionSourceFilter: 'all',
+    safetyQuestionSort: 'created_desc'
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const element = document.getElementById(id);
+    if (element) element.value = value;
+  });
+  readSafetyQuestionFilters();
+  SAFETY_QUESTION_QUERY.page = 1;
+}
+
+function goToSafetyQuestionPage(page) {
+  const nextPage = Math.min(Math.max(1, Number(page) || 1), Math.max(1, SAFETY_QUESTION_PAGINATION.totalPages || 1));
+  if (nextPage === SAFETY_QUESTION_QUERY.page) return;
+  SAFETY_QUESTION_QUERY.page = nextPage;
+  loadSafetyQuestions().then(() => document.getElementById('safetyQuestionsArea')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+function renderSafetyQuestionPagination() {
+  const meta = SAFETY_QUESTION_PAGINATION;
+  const total = Number(meta.total || 0);
+  const page = Number(meta.page || 1);
+  const totalPages = Math.max(1, Number(meta.totalPages || 1));
+  const pageSize = Number(meta.pageSize || 20);
+  const from = total ? ((page - 1) * pageSize) + 1 : 0;
+  const to = total ? Math.min(page * pageSize, total) : 0;
+  const start = Math.max(1, page - 2);
+  const end = Math.min(totalPages, page + 2);
+  const pages = [];
+  for (let value = start; value <= end; value += 1) pages.push(value);
+  return `
+    <div class="safety-question-pagination mt-3">
+      <div class="small text-muted">แสดง ${from.toLocaleString('th-TH')}–${to.toLocaleString('th-TH')} จาก ${total.toLocaleString('th-TH')} คำถาม • หน้า ${page.toLocaleString('th-TH')} จาก ${totalPages.toLocaleString('th-TH')}</div>
+      <nav aria-label="หน้ารายการคำถาม Safety">
+        <ul class="pagination pagination-sm">
+          <li class="page-item ${page <= 1 ? 'disabled' : ''}"><button class="page-link" type="button" onclick="goToSafetyQuestionPage(1)" aria-label="หน้าแรก"><i class="fa-solid fa-angles-left"></i></button></li>
+          <li class="page-item ${page <= 1 ? 'disabled' : ''}"><button class="page-link" type="button" onclick="goToSafetyQuestionPage(${page - 1})" aria-label="หน้าก่อนหน้า"><i class="fa-solid fa-angle-left"></i></button></li>
+          ${pages.map(value => `<li class="page-item ${value === page ? 'active' : ''}"><button class="page-link" type="button" onclick="goToSafetyQuestionPage(${value})" ${value === page ? 'aria-current="page"' : ''}>${value.toLocaleString('th-TH')}</button></li>`).join('')}
+          <li class="page-item ${page >= totalPages ? 'disabled' : ''}"><button class="page-link" type="button" onclick="goToSafetyQuestionPage(${page + 1})" aria-label="หน้าถัดไป"><i class="fa-solid fa-angle-right"></i></button></li>
+          <li class="page-item ${page >= totalPages ? 'disabled' : ''}"><button class="page-link" type="button" onclick="goToSafetyQuestionPage(${totalPages})" aria-label="หน้าสุดท้าย"><i class="fa-solid fa-angles-right"></i></button></li>
+        </ul>
+      </nav>
+    </div>`;
 }
 
 function renderSafetyQuestions() {
   const area = document.getElementById('safetyQuestionsArea');
   if (!area) return;
+  const pagination = renderSafetyQuestionPagination();
+  const summary = SAFETY_QUESTION_SUMMARY;
+  const summaryHeader = `
+    <div class="d-flex align-items-center justify-content-between gap-2 mb-2 flex-wrap">
+      <div class="small text-muted">ทั้งหมด ${Number(summary.total || 0).toLocaleString('th-TH')} คำถาม</div>
+      <div class="d-flex gap-1 flex-wrap">
+        <span class="badge bg-success-subtle text-success">ใช้งาน ${Number(summary.active || 0).toLocaleString('th-TH')}</span>
+        <span class="badge bg-secondary-subtle text-secondary">ปิด ${Number(summary.inactive || 0).toLocaleString('th-TH')}</span>
+      </div>
+    </div>`;
   if (!SAFETY_QUESTIONS.length) {
-    area.innerHTML = `
+    const hasFilters = Boolean(SAFETY_QUESTION_QUERY.search || SAFETY_QUESTION_QUERY.status !== 'all' || SAFETY_QUESTION_QUERY.category !== 'all' || SAFETY_QUESTION_QUERY.source !== 'all');
+    area.innerHTML = `${summaryHeader}
       <div class="safety-empty-state">
         <i class="fa-solid fa-clipboard-question d-block mb-2"></i>
-        ยังไม่มีคำถาม แอดมินเพิ่มเองหรือให้ AI ช่วยคิดได้
-      </div>`;
+        ${hasFilters ? 'ไม่พบคำถามตามตัวกรองที่เลือก' : 'ยังไม่มีคำถาม แอดมินเพิ่มเองหรือให้ AI ช่วยคิดได้'}
+      </div>${pagination}`;
     return;
   }
-  const activeCount = SAFETY_QUESTIONS.filter(item => item.active).length;
-  const inactiveCount = SAFETY_QUESTIONS.length - activeCount;
   area.innerHTML = `
-    <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-      <div class="small text-muted">ทั้งหมด ${SAFETY_QUESTIONS.length} คำถาม</div>
-      <div class="d-flex gap-1">
-        <span class="badge bg-success-subtle text-success">ใช้งาน ${activeCount}</span>
-        <span class="badge bg-secondary-subtle text-secondary">ปิด ${inactiveCount}</span>
-      </div>
-    </div>
-    ${SAFETY_QUESTIONS.map(item => `
+    ${summaryHeader}
+    ${pagination}
+    <div class="mt-3">
+    ${SAFETY_QUESTIONS.map((item, index) => `
     <div class="safety-question-item ${item.active ? '' : 'is-inactive'}">
       <div class="d-flex justify-content-between gap-2">
         <div style="min-width:0;">
           <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
-            <span>${escapeAuditHtml(item.category || 'general')} • ${escapeAuditHtml(item.source || 'admin')}</span>
+            <span>${escapeAuditHtml(item.category || 'general')} • ${item.source === 'gemini' ? 'AI' : 'แอดมิน'}</span>
             <span class="badge ${item.active ? 'bg-success-subtle text-success' : 'bg-secondary-subtle text-secondary'}">${item.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}</span>
+            ${index === 0 && Number(SAFETY_QUESTION_PAGINATION.page) === 1 && SAFETY_QUESTION_QUERY.sort === 'created_desc' ? '<span class="badge bg-primary-subtle text-primary">ใหม่ล่าสุด</span>' : ''}
           </div>
           <div class="fw-bold text-dark mt-1">${escapeAuditHtml(item.question || '')}</div>
+          <div class="safety-question-meta mt-1">
+            <span><i class="fa-regular fa-calendar-plus me-1"></i>สร้าง ${escapeAuditHtml(formatAuditDate(item.created_at) || '-')}</span>
+            ${item.updated_at && item.updated_at !== item.created_at ? `<span><i class="fa-regular fa-pen-to-square me-1"></i>แก้ไข ${escapeAuditHtml(formatAuditDate(item.updated_at) || '-')}</span>` : ''}
+          </div>
           ${renderSafetyOptionPreview(item.options)}
         </div>
         <div class="safety-question-actions">
@@ -1641,7 +1765,9 @@ function renderSafetyQuestions() {
         </div>
       </div>
     </div>
-  `).join('')}`;
+  `).join('')}
+    </div>
+    ${pagination}`;
 }
 
 function renderSafetyOptionPreview(options = []) {
@@ -1680,10 +1806,13 @@ async function saveSafetyQuestion() {
       action: 'safety_question_create',
       category: document.getElementById('safetyQuestionCategory')?.value || 'general',
       question: text,
-      options: window.__SELECTED_AI_OPTIONS || undefined
+      options: window.__SELECTED_AI_OPTIONS || undefined,
+      source: window.__SELECTED_AI_SOURCE === 'gemini' ? 'gemini' : 'admin'
     });
     window.__SELECTED_AI_OPTIONS = null;
+    window.__SELECTED_AI_SOURCE = null;
     document.getElementById('safetyQuestionText').value = '';
+    showNewestSafetyQuestions();
     await loadSafetyQuestions();
     toastOk('เพิ่มคำถามแล้ว');
   } catch (err) {
@@ -1786,6 +1915,7 @@ function useAiSafetyQuestion(index) {
   if (text) text.value = item.question || '';
   if (category && item.category) category.value = item.category;
   window.__SELECTED_AI_OPTIONS = item.options || null;
+  window.__SELECTED_AI_SOURCE = 'gemini';
   window.__AI_SAFETY_QUESTIONS.splice(index, 1);
   renderAiSafetyQuestionSuggestions();
   toastOk('เลือกคำถาม AI แล้ว กดเพิ่มคำถามเพื่อบันทึกพร้อมช้อยส์');
@@ -1799,11 +1929,13 @@ async function saveAiSafetyQuestion(index) {
       action: 'safety_question_create',
       category: item.category || document.getElementById('safetyQuestionCategory')?.value || 'general',
       question: item.question,
-      options: item.options || undefined
+      options: item.options || undefined,
+      source: 'gemini'
     });
-    await loadSafetyQuestions();
     window.__AI_SAFETY_QUESTIONS.splice(index, 1);
     renderAiSafetyQuestionSuggestions();
+    showNewestSafetyQuestions();
+    await loadSafetyQuestions();
     toastOk('บันทึกคำถาม AI พร้อมช้อยส์แล้ว');
   } catch (err) {
     toastErr(err.message || 'save_failed');
@@ -1814,18 +1946,22 @@ async function saveAllAiSafetyQuestions() {
   const questions = Array.isArray(window.__AI_SAFETY_QUESTIONS) ? window.__AI_SAFETY_QUESTIONS.filter(item => item?.question) : [];
   if (!questions.length) return toastErr('ไม่พบชุดคำถาม AI');
   try {
-    for (const item of questions) {
-      await adminAction({
-        action: 'safety_question_create',
+    const result = await adminAction({
+      action: 'safety_question_batch_create',
+      questions: questions.map(item => ({
         category: item.category || document.getElementById('safetyQuestionCategory')?.value || 'general',
         question: item.question,
-        options: item.options || undefined
-      });
-    }
+        options: item.options || undefined,
+        source: 'gemini'
+      }))
+    });
     window.__AI_SAFETY_QUESTIONS = [];
     renderAiSafetyQuestionSuggestions();
+    showNewestSafetyQuestions();
     await loadSafetyQuestions();
-    toastOk(`บันทึกชุดคำถาม AI แล้ว ${questions.length} ข้อ`);
+    const inserted = Number(result?.insertedCount || 0);
+    const skipped = Number(result?.skippedCount || 0);
+    toastOk(`บันทึกคำถาม AI แล้ว ${inserted} ข้อ${skipped ? ` • ข้ามคำถามซ้ำ ${skipped} ข้อ` : ''}`);
   } catch (err) {
     toastErr(err.message || 'save_failed');
   }
@@ -2325,6 +2461,10 @@ window.loadSafetyPulse = loadSafetyPulse;
 window.saveSafetySettings = saveSafetySettings;
 window.resetSafetyStreak = resetSafetyStreak;
 window.loadSafetyQuestions = loadSafetyQuestions;
+window.applySafetyQuestionFilters = applySafetyQuestionFilters;
+window.scheduleSafetyQuestionSearch = scheduleSafetyQuestionSearch;
+window.resetSafetyQuestionFilters = resetSafetyQuestionFilters;
+window.goToSafetyQuestionPage = goToSafetyQuestionPage;
 window.saveSafetyQuestion = saveSafetyQuestion;
 window.deleteSafetyQuestion = deleteSafetyQuestion;
 window.toggleSafetyQuestion = toggleSafetyQuestion;
