@@ -19,6 +19,9 @@ let ADMIN_UID = "";
 let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
 let COUPON_SEARCH = '';
+let COUPON_USERS = [];
+let COUPON_USERS_LOADED = false;
+let COUPON_ASSIGN_REQUEST_ID = '';
 let AUDIT_ROWS = [];
 let SAFETY_PULSE = null;
 let SAFETY_PULSE_TAB = 'action';
@@ -136,11 +139,14 @@ function renderCoupons() {
   // กรองข้อมูล
   const search = COUPON_SEARCH.trim().toLocaleLowerCase('th-TH');
   const filtered = COUPON_ROWS.filter(c => {
+    const cancelled = c.assignment_state === 'cancelled';
     if (COUPON_FILTER === 'used' && c.status !== 'used') return false;
-    if (COUPON_FILTER === 'unused' && c.status !== 'unused') return false;
+    if (COUPON_FILTER === 'unused' && (c.status !== 'unused' || cancelled)) return false;
+    if (COUPON_FILTER === 'personal' && c.coupon_type !== 'personal') return false;
+    if (COUPON_FILTER === 'cancelled' && !cancelled) return false;
     if (!search) return true;
 
-    return [c.code, c.claimer, c.points, c.status]
+    return [c.code, c.claimer, c.points, c.status, c.assigned_uid, c.assigned_name, c.assignment_reason]
       .some(value => String(value ?? '').toLocaleLowerCase('th-TH').includes(search));
   });
 
@@ -156,20 +162,45 @@ function renderCoupons() {
   // Render HTML
   listEl.innerHTML = filtered.map(c => {
     const isUsed = c.status === 'used';
+    const isPersonal = c.coupon_type === 'personal';
+    const isCancelled = c.assignment_state === 'cancelled';
     const safeCode = escapeAuditHtml(c.code);
     const safePoints = escapeAuditHtml(c.points);
     const safeClaimer = escapeAuditHtml(c.claimer || '?');
+    const safeAssignedName = escapeAuditHtml(c.assigned_name || 'ไม่ระบุชื่อ');
+    const safeAssignedUid = escapeAuditHtml(c.assigned_uid || '');
+    const safeReason = escapeAuditHtml(c.assignment_reason || '');
     const codeArg = escapeAuditHtml(JSON.stringify(String(c.code || '')));
     const usedDate = c.used_at ? new Date(c.used_at) : null;
     const safeUsedDate = usedDate && !Number.isNaN(usedDate.getTime())
       ? escapeAuditHtml(usedDate.toLocaleDateString('th-TH'))
       : '-';
-    const badge = isUsed 
-      ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="fa-solid fa-check"></i> ใช้แล้ว</span>` 
-      : `<span class="badge bg-success-subtle text-success border border-success-subtle">พร้อมใช้</span>`;
+    const badge = isCancelled
+      ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ยกเลิกแล้ว</span>`
+      : isUsed
+        ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="fa-solid fa-check"></i> ใช้แล้ว</span>`
+        : `<span class="badge bg-success-subtle text-success border border-success-subtle">พร้อมใช้</span>`;
     
     const usedInfo = isUsed 
       ? `<div class="small text-muted mt-1"><i class="fa-regular fa-user"></i> ${safeClaimer} &bull; ${safeUsedDate}</div>`
+      : '';
+
+    const assignmentInfo = isPersonal ? `
+      <div class="small mt-2 text-primary-emphasis">
+        <i class="fa-solid fa-user-check me-1"></i>${safeAssignedName}
+        <span class="text-muted">(${safeAssignedUid})</span>
+      </div>
+      <div class="small text-muted text-truncate" style="max-width:520px;">${safeReason}</div>
+      ${couponNotificationBadge(c.issue_notification, 'ส่งคูปอง')}
+      ${isUsed ? couponNotificationBadge(c.redeem_notification, 'ยืนยันการใช้') : ''}
+      ${isCancelled ? couponNotificationBadge(c.cancel_notification, 'แจ้งยกเลิก') : ''}
+    ` : '';
+
+    const failedNotification = [c.issue_notification, c.redeem_notification, c.cancel_notification]
+      .find(notification => notification?.status === 'failed');
+    const failedNotificationId = escapeAuditHtml(JSON.stringify(String(failedNotification?.id || '')));
+    const retryButton = isPersonal && failedNotification
+      ? `<button class="btn btn-light border text-warning" onclick="retryCouponNotification(${failedNotificationId})" title="ส่ง LINE ใหม่"><i class="fa-solid fa-paper-plane"></i></button>`
       : '';
 
     return `
@@ -181,13 +212,15 @@ function renderCoupons() {
                ${badge}
             </div>
             <div class="small text-muted">
-               มูลค่า <b class="text-dark">${safePoints}</b> แต้ม
+               มูลค่า <b class="text-dark">${safePoints}</b> แต้ม ${isPersonal ? '&bull; เฉพาะบุคคล' : '&bull; คูปองทั่วไป'}
             </div>
             ${usedInfo}
+            ${assignmentInfo}
           </div>
           
           <div class="d-flex gap-2">
-             ${!isUsed ? `
+             ${retryButton}
+             ${!isUsed && !isCancelled && !isPersonal ? `
              <button class="btn btn-light border text-secondary" onclick="copyCode(${codeArg})" title="คัดลอก">
                <i class="fa-regular fa-copy"></i>
              </button>
@@ -196,13 +229,130 @@ function renderCoupons() {
              </button>
              <button class="btn btn-light border text-danger" onclick="deleteCoupon(${codeArg})" title="ลบคูปองที่ยังไม่ใช้">
                <i class="fa-regular fa-trash-can"></i>
-             </button>` 
+             </button>` : !isUsed && !isCancelled && isPersonal ? `
+             <button class="btn btn-light border text-danger" onclick="cancelAssignedCoupon(${codeArg})" title="ยกเลิกคูปอง">
+               <i class="fa-solid fa-ban"></i>
+             </button>`
              : '<button class="btn btn-light disabled border-0"><i class="fa-solid fa-lock text-muted"></i></button>'}
           </div>
         </div>
       </div>
     `;
   }).join('');
+}
+
+function couponNotificationBadge(notification, label = 'LINE') {
+  const safeLabel = escapeAuditHtml(label);
+  if (!notification) return `<div class="small text-muted mt-1"><i class="fa-regular fa-paper-plane me-1"></i>${safeLabel}: ยังไม่มีข้อมูล</div>`;
+  if (notification.status === 'sent') return `<div class="small text-success mt-1"><i class="fa-solid fa-circle-check me-1"></i>${safeLabel}: ส่ง LINE แล้ว</div>`;
+  if (notification.status === 'failed') return `<div class="small text-danger mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>${safeLabel}: ส่ง LINE ไม่สำเร็จ${notification.lastError ? `: ${escapeAuditHtml(notification.lastError)}` : ''}</div>`;
+  return `<div class="small text-warning mt-1"><i class="fa-solid fa-clock me-1"></i>${safeLabel}: รอส่ง LINE</div>`;
+}
+
+function newCouponRequestId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  window.crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function loadCouponUsers() {
+  if (COUPON_USERS_LOADED) return COUPON_USERS;
+  const response = await fetch(`/api/all-scores?adminUid=${encodeURIComponent(ADMIN_UID || '')}&ts=${Date.now()}`, { cache: 'no-store' });
+  const payload = await response.json();
+  if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ');
+  COUPON_USERS = Array.isArray(payload.data) ? payload.data : [];
+  COUPON_USERS_LOADED = true;
+  return COUPON_USERS;
+}
+
+function renderCouponRecipientResults() {
+  const host = $id('couponRecipientResults');
+  if (!host) return;
+  const query = String($id('couponRecipientSearch')?.value || '').trim().toLocaleLowerCase('th-TH');
+  if (!query) {
+    host.innerHTML = '<div class="small text-muted px-2 py-1">พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหา</div>';
+    return;
+  }
+  const matches = COUPON_USERS.filter(user => [user.name, user.uid, user.room, user.tel]
+    .some(value => String(value || '').toLocaleLowerCase('th-TH').includes(query)))
+    .slice(0, 12);
+  host.innerHTML = matches.length ? matches.map(user => {
+    const uidArg = escapeAuditHtml(JSON.stringify(String(user.uid || '')));
+    return `<button type="button" class="list-group-item list-group-item-action" onclick="selectCouponRecipient(${uidArg})">
+      <div class="fw-semibold">${escapeAuditHtml(user.name || 'ไม่ระบุชื่อ')}</div>
+      <div class="small text-muted">${escapeAuditHtml(user.room || user.tel || user.uid)}</div>
+    </button>`;
+  }).join('') : '<div class="small text-muted px-2 py-2">ไม่พบผู้ใช้</div>';
+}
+
+window.selectCouponRecipient = (uid) => {
+  const user = COUPON_USERS.find(item => item.uid === uid);
+  if (!user) return;
+  $id('couponRecipientUid').value = user.uid;
+  $id('couponRecipientSearch').value = user.name || user.uid;
+  $id('couponRecipientResults').innerHTML = '';
+  const selected = $id('couponRecipientSelected');
+  selected.classList.remove('d-none');
+  selected.innerHTML = `<i class="fa-solid fa-user-check me-1"></i><b>${escapeAuditHtml(user.name || 'ไม่ระบุชื่อ')}</b><br><span class="small">UID: ${escapeAuditHtml(user.uid)}</span>`;
+};
+
+async function openCouponAssignModal() {
+  COUPON_ASSIGN_REQUEST_ID = newCouponRequestId();
+  const modal = bootstrap.Modal.getOrCreateInstance($id('couponAssignModal'));
+  modal.show();
+  const host = $id('couponRecipientResults');
+  if (host) host.innerHTML = '<div class="text-center py-2 text-muted"><span class="spinner-border spinner-border-sm me-1"></span>กำลังโหลดรายชื่อ...</div>';
+  try {
+    await loadCouponUsers();
+    renderCouponRecipientResults();
+  } catch (error) {
+    if (host) host.innerHTML = `<div class="text-danger small px-2 py-2">${escapeAuditHtml(error.message || 'โหลดรายชื่อไม่สำเร็จ')}</div>`;
+  }
+}
+
+async function assignCouponToUser() {
+  const targetUid = String($id('couponRecipientUid')?.value || '').trim();
+  const points = Number($id('couponAssignPoints')?.value || 0);
+  const reason = String($id('couponAssignReason')?.value || '').trim();
+  if (!targetUid) return toastErr('กรุณาค้นหาและเลือกผู้รับ');
+  if (!Number.isFinite(points) || points < 1 || points > 1000000) return toastErr('กรุณาระบุคะแนนตั้งแต่ 1 ถึง 1,000,000');
+  if (!reason) return toastErr('กรุณาระบุเหตุผลที่มอบคูปอง');
+
+  const button = $id('btnAssignCoupon');
+  if (button) button.disabled = true;
+  sysOverlay.show('กำลังสร้างและส่งคูปอง...');
+  try {
+    if (!COUPON_ASSIGN_REQUEST_ID) COUPON_ASSIGN_REQUEST_ID = newCouponRequestId();
+    const response = await fetch(`${API_COUPON_LIST}?action=assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid, points, reason, requestId: COUPON_ASSIGN_REQUEST_ID })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'มอบคูปองไม่สำเร็จ');
+    bootstrap.Modal.getInstance($id('couponAssignModal'))?.hide();
+    await loadCoupons();
+    const sent = payload.data?.lineNotification?.status === 'sent';
+    await Swal.fire({
+      icon: sent ? 'success' : 'warning',
+      title: 'สร้างคูปองแล้ว',
+      text: sent ? 'มอบคูปองและส่ง Flex Message ให้ผู้ใช้เรียบร้อย' : 'สร้างคูปองสำเร็จ แต่ส่ง LINE ไม่สำเร็จ สามารถกดส่งใหม่จากรายการได้'
+    });
+    $id('couponRecipientUid').value = '';
+    $id('couponRecipientSearch').value = '';
+    $id('couponAssignReason').value = '';
+    $id('couponRecipientSelected').classList.add('d-none');
+    COUPON_ASSIGN_REQUEST_ID = '';
+  } catch (error) {
+    toastErr(error.message || 'มอบคูปองไม่สำเร็จ');
+  } finally {
+    if (button) button.disabled = false;
+    sysOverlay.hide();
+  }
 }
 
 async function generateCoupons() {
@@ -345,6 +495,13 @@ function bindGlobalEvents() {
   // ปุ่มส่วนคูปอง
   $id('btnGen')?.addEventListener('click', generateCoupons);
   $id('btnReload')?.addEventListener('click', loadCoupons);
+  $id('btnOpenCouponAssign')?.addEventListener('click', openCouponAssignModal);
+  $id('btnAssignCoupon')?.addEventListener('click', assignCouponToUser);
+  $id('couponRecipientSearch')?.addEventListener('input', () => {
+    $id('couponRecipientUid').value = '';
+    $id('couponRecipientSelected')?.classList.add('d-none');
+    renderCouponRecipientResults();
+  });
   $id('couponSearch')?.addEventListener('input', (event) => {
     COUPON_SEARCH = event.target.value || '';
     renderCoupons();
@@ -613,6 +770,9 @@ const AUDIT_EVENT_META = {
   auth_recovery_link_consumed:  { label: 'ผู้ใช้เปิดลิงก์ช่วยเหลือ',         icon: 'fa-link',            tone: 'primary' },
   auth_help_resolved:           { label: 'แก้ไขเรื่องเข้าสู่ระบบแล้ว',       icon: 'fa-circle-check',    tone: 'success' },
   auth_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',            icon: 'fa-paper-plane',     tone: 'primary' },
+  coupon_assigned:              { label: 'มอบคูปองให้ผู้ใช้',               icon: 'fa-ticket',          tone: 'success' },
+  coupon_assignment_cancelled:  { label: 'ยกเลิกคูปองเฉพาะบุคคล',          icon: 'fa-ban',             tone: 'warning' },
+  coupon_notification_retry:    { label: 'ส่งข้อความคูปองทาง LINE ใหม่',    icon: 'fa-paper-plane',     tone: 'primary' },
   daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
   daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
   daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
@@ -646,6 +806,12 @@ function formatAuditDetail(eventType, detail) {
     case 'auth_recovery_open':
       return [d.caseNo, d.recoveryUntil ? `ถึง ${formatAuditDate(d.recoveryUntil)}` : '', d.reason].filter(Boolean).join(' · ');
     case 'auth_notification_retry':
+      return [d.messageKind, d.error].filter(Boolean).join(' · ');
+    case 'coupon_assigned':
+      return [`${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+    case 'coupon_assignment_cancelled':
+      return [`${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason].filter(Boolean).join(' · ');
+    case 'coupon_notification_retry':
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
     case 'daily_checkin_success':
     case 'daily_checkin_duplicate': {
@@ -1631,6 +1797,64 @@ window.deleteCoupon = async (code) => {
     Swal.fire('ลบแล้ว', 'ลบคูปองเรียบร้อย', 'success');
   } catch (err) {
     Swal.fire('ลบไม่สำเร็จ', err.message || 'กรุณาลองใหม่', 'error');
+  } finally {
+    sysOverlay.hide();
+  }
+};
+
+window.cancelAssignedCoupon = async (code) => {
+  const cleanCode = String(code || '').trim();
+  if (!cleanCode) return;
+  const result = await Swal.fire({
+    title: 'ยกเลิกคูปองนี้?',
+    input: 'textarea',
+    inputLabel: 'เหตุผลที่ยกเลิก',
+    inputPlaceholder: 'ระบุเหตุผลเพื่อบันทึกประวัติ',
+    inputAttributes: { maxlength: 300 },
+    showCancelButton: true,
+    confirmButtonText: 'ยืนยันการยกเลิก',
+    cancelButtonText: 'กลับ',
+    confirmButtonColor: '#dc2626',
+    inputValidator: value => String(value || '').trim() ? undefined : 'กรุณาระบุเหตุผล'
+  });
+  if (!result.isConfirmed) return;
+
+  sysOverlay.show('กำลังยกเลิกคูปอง...');
+  try {
+    const response = await fetch(`${API_COUPON_LIST}?action=cancel_assignment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminUid: ADMIN_UID, code: cleanCode, reason: String(result.value || '').trim() })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'ยกเลิกคูปองไม่สำเร็จ');
+    await loadCoupons();
+    Swal.fire('ยกเลิกแล้ว', 'คูปองนี้ไม่สามารถนำไปใช้ได้อีก', 'success');
+  } catch (error) {
+    toastErr(error.message || 'ยกเลิกคูปองไม่สำเร็จ');
+  } finally {
+    sysOverlay.hide();
+  }
+};
+
+window.retryCouponNotification = async (notificationId) => {
+  const cleanId = String(notificationId || '').trim();
+  if (!cleanId) return;
+  sysOverlay.show('กำลังส่ง LINE ใหม่...');
+  try {
+    const response = await fetch(`${API_COUPON_LIST}?action=retry_notification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminUid: ADMIN_UID, notificationId: cleanId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'ส่ง LINE ไม่สำเร็จ');
+    if (payload.data?.status !== 'sent') throw new Error(payload.data?.lastError || 'LINE ยังรับข้อความไม่ได้');
+    await loadCoupons();
+    Swal.fire('ส่งแล้ว', 'ส่ง Flex Message ให้ผู้ใช้เรียบร้อย', 'success');
+  } catch (error) {
+    toastErr(error.message || 'ส่ง LINE ไม่สำเร็จ');
+    await loadCoupons();
   } finally {
     sysOverlay.hide();
   }

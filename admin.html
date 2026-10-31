@@ -255,6 +255,18 @@
       </div>
 
       <div class="tab-pane fade" id="pills-coupons" role="tabpanel">
+        <div class="m-card border border-primary-subtle bg-primary-subtle bg-opacity-25">
+          <div class="d-flex align-items-center justify-content-between gap-3">
+            <div>
+              <div class="fw-bold text-primary"><i class="fa-solid fa-paper-plane me-1"></i> มอบคูปองให้ผู้ใช้</div>
+              <div class="small text-muted mt-1">ผูกกับบัญชี LINE และส่ง Flex Message ให้ผู้รับโดยตรง</div>
+            </div>
+            <button type="button" id="btnOpenCouponAssign" class="btn btn-primary rounded-pill px-3 flex-shrink-0">
+              มอบคูปอง
+            </button>
+          </div>
+        </div>
+
         <div class="m-card">
           <div class="fw-bold mb-2">สร้างคูปองใหม่</div>
           <div class="row g-2">
@@ -286,6 +298,8 @@
           <li class="nav-item"><a class="nav-link active py-1 px-3 border-0" href="#" data-filter="all">ทั้งหมด</a></li>
           <li class="nav-item"><a class="nav-link py-1 px-3 border-0" href="#" data-filter="unused">ยังไม่ใช้</a></li>
           <li class="nav-item"><a class="nav-link py-1 px-3 border-0" href="#" data-filter="used">ใช้แล้ว</a></li>
+          <li class="nav-item"><a class="nav-link py-1 px-3 border-0" href="#" data-filter="personal">เฉพาะบุคคล</a></li>
+          <li class="nav-item"><a class="nav-link py-1 px-3 border-0" href="#" data-filter="cancelled">ยกเลิกแล้ว</a></li>
         </ul>
 
         <div id="couponList" class="pb-5"></div>
@@ -619,6 +633,46 @@
           <h6 class="fw-bold mb-3">QR Code คูปอง</h6>
           <div id="qrCanvas" class="bg-light rounded mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:200px; height:200px;"></div>
           <button class="btn btn-light w-100 rounded-pill text-muted" data-bs-dismiss="modal">ปิดหน้าต่าง</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="couponAssignModal" tabindex="-1" aria-labelledby="couponAssignTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content rounded-4 border-0">
+          <div class="modal-header border-0 pb-0">
+            <div>
+              <h5 class="modal-title fw-bold" id="couponAssignTitle">มอบคูปองให้ผู้ใช้</h5>
+              <div class="small text-muted">คูปองจะใช้ได้เฉพาะบัญชี LINE ที่เลือก</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+          </div>
+          <div class="modal-body">
+            <label for="couponRecipientSearch" class="form-label fw-semibold">ค้นหาผู้รับ</label>
+            <input type="search" id="couponRecipientSearch" class="form-control" placeholder="พิมพ์ชื่อ ห้อง เบอร์ หรือ UID" autocomplete="off">
+            <input type="hidden" id="couponRecipientUid">
+            <div id="couponRecipientResults" class="list-group mt-2" style="max-height:180px; overflow:auto;"></div>
+            <div id="couponRecipientSelected" class="alert alert-primary py-2 px-3 mt-2 d-none"></div>
+
+            <div class="row g-3 mt-1">
+              <div class="col-12">
+                <label for="couponAssignPoints" class="form-label fw-semibold">จำนวนคะแนน</label>
+                <input type="number" id="couponAssignPoints" class="form-control" min="1" max="1000000" value="100" inputmode="numeric">
+              </div>
+              <div class="col-12">
+                <label for="couponAssignReason" class="form-label fw-semibold">เหตุผลที่มอบ <span class="text-danger">*</span></label>
+                <textarea id="couponAssignReason" class="form-control" rows="3" maxlength="300" placeholder="เช่น รางวัลจากกิจกรรมประจำเดือน"></textarea>
+              </div>
+            </div>
+
+            <div class="small text-muted mt-3">
+              <i class="fa-solid fa-shield-halved me-1"></i>ระบบไม่ใส่ UID หรือรหัสคูปองลงในลิงก์ และจะบันทึกประวัติการดำเนินการของแอดมิน
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="button" id="btnAssignCoupon" class="btn btn-primary rounded-pill px-4">ยืนยันและส่ง LINE</button>
+          </div>
         </div>
       </div>
     </div>

@@ -18,6 +18,9 @@ async function main() {
 
   const {
     buildAdminHelpMessage,
+    buildCouponCancelledMessage,
+    buildCouponIssuedMessage,
+    buildCouponRedeemedMessage,
     buildRecoveryApprovedMessage,
     buildRecoverySuccessMessage
   } = require('../lib/line-messaging')
@@ -35,22 +38,42 @@ async function main() {
     buildAdminHelpMessage({ helpCase, user, url:'https://example.com/admin.html?helpCase=7' }),
     buildRecoveryApprovedMessage({ helpCase, user, url:'https://liff.line.me/1234567890-AbcdEfgh?recovery_ticket=test' }),
     buildRecoverySuccessMessage({ helpCase, user, url:'https://liff.line.me/1234567890-AbcdEfgh' }),
-    buildRecoverySuccessMessage({ helpCase, user, admin:true, url:'https://example.com/admin.html?helpCase=7' })
+    buildRecoverySuccessMessage({ helpCase, user, admin:true, url:'https://example.com/admin.html?helpCase=7' }),
+    buildCouponIssuedMessage({
+      coupon:{ point:250, assigned_at:new Date().toISOString(), assignment_reason:'รางวัลกิจกรรมทดสอบ' },
+      user,
+      url:'https://liff.line.me/1234567890-AbcdEfgh?coupon_ticket=test'
+    }),
+    buildCouponRedeemedMessage({
+      coupon:{ point:250, used_at:new Date().toISOString() },
+      balance:1250,
+      url:'https://liff.line.me/1234567890-AbcdEfgh'
+    }),
+    buildCouponCancelledMessage({
+      coupon:{ point:250 },
+      reason:'ทดสอบการยกเลิก',
+      url:'https://liff.line.me/1234567890-AbcdEfgh'
+    })
   ]
 
-  const response = await fetch('https://api.line.me/v2/bot/message/validate/push', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ messages })
-  })
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({}))
-    throw new Error(result.message || `LINE validation failed with HTTP ${response.status}`)
+  for (let offset = 0; offset < messages.length; offset += 5) {
+    const response = await fetch('https://api.line.me/v2/bot/message/validate/push', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ messages: messages.slice(offset, offset + 5) })
+    })
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}))
+      const detail = Array.isArray(result.details)
+        ? result.details.map(item => [item.property, item.message].filter(Boolean).join(': ')).join(' | ')
+        : ''
+      throw new Error([result.message || `LINE validation failed with HTTP ${response.status}`, detail].filter(Boolean).join(' — '))
+    }
   }
-  process.stdout.write('LINE ยืนยันว่า Flex Message ทั้ง 4 รูปแบบถูกต้อง\n')
+  process.stdout.write('LINE ยืนยันว่า Flex Message ทั้ง 7 รูปแบบถูกต้อง\n')
 }
 
 main().catch(error => {

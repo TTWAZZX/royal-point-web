@@ -67,6 +67,28 @@ test('LINE authentication help center is connected end to end', () => {
   assert.match(read('index.html'), /RoyalAuth\?\.ready/)
 })
 
+test('personal coupons are connected across database, admin, user, audit, and LINE', () => {
+  const migration = read('supabase_coupon_assignment_migration.sql')
+  assert.match(migration, /assigned_uid/)
+  assert.match(migration, /assignment_token_hash/)
+  assert.match(migration, /assignment_request_id/)
+  assert.match(migration, /coupon_type/)
+  assert.match(read('api/admin-coupons.js'), /action === 'assign'/)
+  assert.match(read('api/admin-coupons.js'), /coupon_assigned/)
+  assert.match(read('api/admin-coupons.js'), /coupon-issued:/)
+  assert.match(read('api/admin-coupons.js'), /assignmentTicket/)
+  assert.match(read('admin.js'), /COUPON_ASSIGN_REQUEST_ID/)
+  assert.match(read('api/redeem.js'), /coupon_not_owner/)
+  assert.match(read('api/redeem.js'), /coupon-used:/)
+  assert.match(read('lib/line-messaging.js'), /buildCouponIssuedMessage/)
+  assert.match(read('lib/line-messaging.js'), /buildCouponRedeemedMessage/)
+  assert.match(read('lib/line-messaging.js'), /buildCouponCancelledMessage/)
+  assert.match(read('admin.html'), /couponAssignModal/)
+  assert.match(read('admin.js'), /assignCouponToUser/)
+  assert.match(read('app.js'), /handleCouponDeepLink/)
+  assert.match(read('app.js'), /couponTicket/)
+})
+
 test('user-facing source files contain no common UTF-8 mojibake sequences', () => {
   const userFacingFiles = [
     'index.html',

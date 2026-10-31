@@ -411,6 +411,8 @@ async function initApp(ctx = {}) {
       window.__MAIN_BOUND = true;
     }
 
+    await handleCouponDeepLink();
+
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
     if (!recoveryMode && typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
 
@@ -1985,10 +1987,12 @@ async function redeemReward(reward, btn){
 
 // ===== Redeem code (unified) — overlay เฉพาะ SCAN + optimistic + poll baseline ที่ถูกต้อง =====
 async function redeemCode(input, source = 'manual') {
+  const sourceType = String(source || '').toUpperCase();
+  const isAssignedLink = sourceType === 'ASSIGNED_LINK';
   const code = String(
     (input ?? document.getElementById('couponInput')?.value ?? '')
   ).trim();
-  if (!code) return toastErr('กรุณากรอกรหัสคูปอง');
+  if (!code) return toastErr(isAssignedLink ? 'ไม่พบข้อมูลคูปองจาก LINE' : 'กรุณากรอกรหัสคูปอง');
 
   const uid =
     (typeof UID !== 'undefined' && UID) ||
@@ -1997,14 +2001,16 @@ async function redeemCode(input, source = 'manual') {
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
 
   // ใช้ overlay เฉพาะโฟลว์สแกน
-  const usingScan = String(source || '').toUpperCase() === 'SCAN';
-  if (usingScan) UiOverlay.show('กำลังยืนยันรหัส…');
+  const usingScan = sourceType === 'SCAN';
+  if (usingScan || isAssignedLink) UiOverlay.show('กำลังยืนยันคูปอง…');
 
   // เก็บยอดก่อนหน้าไว้เทียบ หาก backend ไม่ส่ง amount
   try { await refreshUserScore({ bust: true }); } catch {}
   const before = Number(window.__userBalance || 0);
 
-  const payload = { uid, code, coupon: code, coupon_code: code, source };
+  const payload = isAssignedLink
+    ? { uid, couponTicket: code, source: 'LINE_PERSONAL_COUPON' }
+    : { uid, code, coupon: code, coupon_code: code, source };
 
   let res, json;
   try {
@@ -2016,7 +2022,7 @@ async function redeemCode(input, source = 'manual') {
     });
     json = await safeJson(res);
   } catch (e) {
-    if (usingScan) UiOverlay.hide();
+    if (usingScan || isAssignedLink) UiOverlay.hide();
     console.error('[redeem] network error', e);
     toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
     resumeScanIfNeeded(source);
@@ -2025,7 +2031,7 @@ async function redeemCode(input, source = 'manual') {
 
   // เคสผิดพลาดจากเซิร์ฟเวอร์
   if (!res.ok || json?.status === 'error') {
-    if (usingScan) UiOverlay.hide();
+    if (usingScan || isAssignedLink) UiOverlay.hide();
     const { userMsg } = mapRedeemError(res, json);
     toastErr(userMsg);
     resumeScanIfNeeded(source);
@@ -2057,7 +2063,7 @@ async function redeemCode(input, source = 'manual') {
   // เก็บ baseline "ก่อน" optimistic ไว้ใช้กับ poll
   const baselineBeforeOptimistic = Number(window.__userBalance || 0);
 
-  if (usingScan) UiOverlay.hide();
+  if (usingScan || isAssignedLink) UiOverlay.hide();
 
   // 1) โชว์ผล + อัปเดตจอแบบ optimistic
   if (added > 0) {
@@ -2079,6 +2085,41 @@ async function redeemCode(input, source = 'manual') {
     const inp = document.getElementById('couponInput') || els?.secretInput;
     if (inp) { inp.value = ''; inp.focus?.(); }
   }
+
+  if (isAssignedLink) {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('coupon_ticket');
+    window.history.replaceState({}, '', url.toString());
+    sessionStorage.removeItem('royal_coupon_ticket');
+  }
+}
+
+async function handleCouponDeepLink() {
+  if (window.__COUPON_DEEP_LINK_HANDLED) return;
+  const params = new URLSearchParams(window.location.search);
+  const ticket = String(params.get('coupon_ticket') || sessionStorage.getItem('royal_coupon_ticket') || '').trim();
+  if (!ticket) return;
+  window.__COUPON_DEEP_LINK_HANDLED = true;
+  sessionStorage.setItem('royal_coupon_ticket', ticket);
+
+  let confirmed = true;
+  if (window.Swal) {
+    const result = await Swal.fire({
+      icon: 'info',
+      title: 'คุณได้รับคูปอง',
+      text: 'คูปองนี้ผูกกับบัญชี LINE ของคุณ กดยืนยันเพื่อรับคะแนน',
+      confirmButtonText: 'รับคะแนนจากคูปอง',
+      showCancelButton: true,
+      cancelButtonText: 'ไว้ภายหลัง',
+      confirmButtonColor: '#7c3aed',
+      allowOutsideClick: false
+    });
+    confirmed = result.isConfirmed;
+  }
+  if (!confirmed) {
+    return;
+  }
+  await redeemCode(ticket, 'ASSIGNED_LINK');
 }
 
 // แปลง res/json → ข้อความสำหรับผู้ใช้ และประเภท error ที่สนใจ
@@ -2105,6 +2146,15 @@ function mapRedeemError(res, json) {
   }
   if (res.status === 404 || code === 'COUPON_NOT_FOUND' || /not.*found/i.test(msg)) {
     return { userMsg: 'ไม่พบรหัสคูปอง', type: 'NOT_FOUND' };
+  }
+  if (res.status === 403 || /not_owner/i.test(msg)) {
+    return { userMsg: 'คูปองนี้ถูกมอบให้บัญชี LINE อื่น กรุณาเปิดจากบัญชีผู้รับ', type: 'NOT_OWNER' };
+  }
+  if (res.status === 410 || /cancelled/i.test(msg)) {
+    return { userMsg: 'คูปองนี้ถูกยกเลิกโดยผู้ดูแลแล้ว', type: 'CANCELLED' };
+  }
+  if (res.status === 503 || /not_ready/i.test(msg)) {
+    return { userMsg: 'ระบบคูปองกำลังปรับปรุง กรุณาติดต่อผู้ดูแล', type: 'NOT_READY' };
   }
   if (res.status === 400 || code === 'BAD_REQUEST' || /uid|code|required/i.test(msg)) {
     return { userMsg: 'คำขอไม่ถูกต้อง: กรุณารีเฟรช/เข้าสู่ระบบอีกครั้ง', type: 'BAD_REQ' };
@@ -2954,6 +3004,8 @@ async function initAppFast() {
   } catch (e) {
     console.warn('fast boot fallback failed', e);
   }
+
+  try { await handleCouponDeepLink(); } catch (e) { console.warn('coupon deep link failed', e); }
 
   // 6) ปิด skeleton
   try { hideRewardSkeleton && hideRewardSkeleton(); } catch {}

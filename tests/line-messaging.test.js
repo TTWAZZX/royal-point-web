@@ -7,8 +7,12 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 const {
   adminCaseUrl,
   buildAdminHelpMessage,
+  buildCouponCancelledMessage,
+  buildCouponIssuedMessage,
+  buildCouponRedeemedMessage,
   buildRecoveryApprovedMessage,
   buildRecoverySuccessMessage,
+  userCouponUrl,
   userRecoveryUrl
 } = require('../lib/line-messaging')
 
@@ -43,4 +47,22 @@ test('creates direct user and admin links without exposing a UID', () => {
   assert.equal(new URL(recoveryUrl).searchParams.get('recovery_ticket'), 'one-time-secret')
   assert.equal(new URL(adminUrl).searchParams.get('helpCase'), '7')
   assert.equal(recoveryUrl.includes(helpCase.target_uid), false)
+})
+
+test('builds secure personal coupon messages and links', () => {
+  const coupon = {
+    code: 'PTEST123',
+    point: 250,
+    assigned_uid: helpCase.target_uid,
+    assigned_at: new Date().toISOString(),
+    used_at: new Date().toISOString(),
+    assignment_reason: 'รางวัลกิจกรรมทดสอบ'
+  }
+  const couponUrl = userCouponUrl(req, 'coupon-one-time-ticket')
+  assert.equal(new URL(couponUrl).searchParams.get('coupon_ticket'), 'coupon-one-time-ticket')
+  assert.equal(couponUrl.includes(helpCase.target_uid), false)
+  assert.equal(couponUrl.includes(coupon.code), false)
+  assertFlex(buildCouponIssuedMessage({ coupon, user:{ name:'ผู้ใช้ทดสอบ' }, url:couponUrl }))
+  assertFlex(buildCouponRedeemedMessage({ coupon, balance:1250, url:'https://liff.line.me/test' }))
+  assertFlex(buildCouponCancelledMessage({ coupon, reason:'ทดสอบการยกเลิก', url:'https://liff.line.me/test' }))
 })
