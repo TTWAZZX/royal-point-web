@@ -10,9 +10,14 @@ const {
   buildCouponCancelledMessage,
   buildCouponIssuedMessage,
   buildCouponRedeemedMessage,
+  buildPointAdjustmentMessage,
+  buildRedemptionCancelledMessage,
+  buildRedemptionCreatedMessage,
+  buildRedemptionReceivedMessage,
   buildRecoveryApprovedMessage,
   buildRecoverySuccessMessage,
   userCouponUrl,
+  userRedemptionUrl,
   userRecoveryUrl
 } = require('../lib/line-messaging')
 
@@ -65,4 +70,18 @@ test('builds secure personal coupon messages and links', () => {
   assertFlex(buildCouponIssuedMessage({ coupon, user:{ name:'ผู้ใช้ทดสอบ' }, url:couponUrl }))
   assertFlex(buildCouponRedeemedMessage({ coupon, balance:1250, url:'https://liff.line.me/test' }))
   assertFlex(buildCouponCancelledMessage({ coupon, reason:'ทดสอบการยกเลิก', url:'https://liff.line.me/test' }))
+})
+
+test('builds point and reward transaction Flex Messages', () => {
+  const redemption = { id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', cost:40, balance_after:960, refund_balance:1000, created_at:new Date().toISOString(), received_at:new Date().toISOString() }
+  const reward = { name:'ของรางวัลทดสอบ', img_url:'https://example.com/reward.png' }
+  const redemptionUrl = userRedemptionUrl(req, redemption.id)
+  assert.equal(new URL(redemptionUrl).searchParams.get('redemption_id'), redemption.id)
+  assertFlex(buildPointAdjustmentMessage({
+    adjustment:{ adjustment_id:'2154e6c2-8cc4-4354-a156-3c3c7248ad55', applied_delta:50, balance_before:950, balance_after:1000, reason:'รางวัลกิจกรรม', mode:'add' },
+    user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://liff.line.me/test?view=score-history'
+  }))
+  assertFlex(buildRedemptionCreatedMessage({ redemption, reward, balance:960, url:redemptionUrl }))
+  assertFlex(buildRedemptionReceivedMessage({ redemption, reward, url:redemptionUrl }))
+  assertFlex(buildRedemptionCancelledMessage({ redemption, reward, reason:'ของจริงไม่พร้อมจ่าย', balance:1000, url:'https://liff.line.me/test?view=score-history' }))
 })

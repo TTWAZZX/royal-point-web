@@ -21,6 +21,10 @@ async function main() {
     buildCouponCancelledMessage,
     buildCouponIssuedMessage,
     buildCouponRedeemedMessage,
+    buildPointAdjustmentMessage,
+    buildRedemptionCancelledMessage,
+    buildRedemptionCreatedMessage,
+    buildRedemptionReceivedMessage,
     buildRecoveryApprovedMessage,
     buildRecoverySuccessMessage
   } = require('../lib/line-messaging')
@@ -53,6 +57,24 @@ async function main() {
       coupon:{ point:250 },
       reason:'ทดสอบการยกเลิก',
       url:'https://liff.line.me/1234567890-AbcdEfgh'
+    }),
+    buildPointAdjustmentMessage({
+      adjustment:{ adjustment_id:'2154e6c2-8cc4-4354-a156-3c3c7248ad55', applied_delta:50, balance_before:950, balance_after:1000, reason:'รางวัลกิจกรรม', mode:'add' },
+      user, url:'https://liff.line.me/1234567890-AbcdEfgh?view=score-history'
+    }),
+    buildRedemptionCreatedMessage({
+      redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', cost:40, created_at:new Date().toISOString() },
+      reward:{ name:'ของรางวัลทดสอบ', img_url:'https://example.com/reward.png' }, balance:960,
+      url:'https://liff.line.me/1234567890-AbcdEfgh?redemption_id=adb9d292-f1da-4a73-9802-66a13b0ccfca'
+    }),
+    buildRedemptionReceivedMessage({
+      redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', received_at:new Date().toISOString() },
+      reward:{ name:'ของรางวัลทดสอบ' }, url:'https://liff.line.me/1234567890-AbcdEfgh'
+    }),
+    buildRedemptionCancelledMessage({
+      redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', cost:40, refund_balance:1000 },
+      reward:{ name:'ของรางวัลทดสอบ' }, reason:'ของจริงไม่พร้อมจ่าย', balance:1000,
+      url:'https://liff.line.me/1234567890-AbcdEfgh?view=score-history'
     })
   ]
 
@@ -73,7 +95,7 @@ async function main() {
       throw new Error([result.message || `LINE validation failed with HTTP ${response.status}`, detail].filter(Boolean).join(' — '))
     }
   }
-  process.stdout.write('LINE ยืนยันว่า Flex Message ทั้ง 7 รูปแบบถูกต้อง\n')
+  process.stdout.write(`LINE ยืนยันว่า Flex Message ทั้ง ${messages.length} รูปแบบถูกต้อง\n`)
 }
 
 main().catch(error => {

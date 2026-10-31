@@ -3,15 +3,37 @@ const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
 const {
+  buildPointAdjustmentMessage,
+  buildRedemptionCancelledMessage,
+  buildRedemptionReceivedMessage,
   buildRecoveryApprovedMessage,
   queueLineNotification,
   retryLineNotification,
+  userHistoryUrl,
+  userRedemptionUrl,
   userRecoveryUrl
 } = require('../lib/line-messaging')
 const redis = getRedis()
 
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
 const TIME_ZONE = 'Asia/Bangkok'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function adminErrorMessage(error) {
+  const raw = String(error?.message || error || '')
+  const upper = raw.toUpperCase()
+  const labels = {
+    ADJUSTMENT_REASON_REQUIRED: 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร',
+    INVALID_ADJUSTMENT_AMOUNT: 'จำนวนคะแนนไม่ถูกต้อง',
+    INSUFFICIENT_POINTS: 'คะแนนของผู้ใช้ไม่เพียงพอสำหรับการตัดคะแนน',
+    REDEMPTION_NOT_FOUND: 'ไม่พบรายการแลกของรางวัล',
+    REDEMPTION_NOT_RECEIVABLE: 'รายการนี้ไม่สามารถยืนยันการรับของได้',
+    REDEMPTION_NOT_CANCELLABLE: 'ยกเลิกได้เฉพาะรายการที่ยังรอรับของ',
+    CANCEL_REASON_REQUIRED: 'กรุณาระบุเหตุผลการยกเลิกอย่างน้อย 3 ตัวอักษร'
+  }
+  const found = Object.keys(labels).find(code => upper.includes(code))
+  return found ? labels[found] : raw
+}
 const GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
@@ -682,6 +704,39 @@ module.exports = async (req, res) => {
       }
     }
 
+    if (req.query.action === 'line_notifications') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
+        const parsedLimit = parseInt(req.query.limit || '200', 10)
+        const limit = Math.max(1, Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 200, 300))
+        const requestedStatus = String(req.query.status || '').trim()
+        const requestedKind = String(req.query.kind || '').trim()
+        let query = supabaseAdmin
+          .from('line_notification_outbox')
+          .select('id,dedupe_key,recipient_uid,message_kind,status,attempt_count,line_request_id,last_error,created_at,updated_at,sent_at')
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        if (requestedStatus && requestedStatus !== 'all') query = query.eq('status', requestedStatus)
+        if (requestedKind && requestedKind !== 'all') query = query.eq('message_kind', requestedKind)
+        const { data, error } = await query
+        if (error) throw error
+        const rows = data || []
+        const uids = [...new Set(rows.map(row => row.recipient_uid).filter(Boolean))]
+        const { data: users, error: usersError } = uids.length
+          ? await supabaseAdmin.from('users').select('uid,name,room').in('uid', uids)
+          : { data: [], error: null }
+        if (usersError) throw usersError
+        const userMap = new Map((users || []).map(user => [user.uid, user]))
+        return res.status(200).json({
+          status: 'success',
+          data: rows.map(row => ({ ...row, user: userMap.get(row.recipient_uid) || null }))
+        })
+      } catch (error) {
+        return res.status(500).json({ status: 'error', message: String(error?.message || error) })
+      }
+    }
+
     if (req.query.action === 'audit_logs') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
@@ -826,7 +881,10 @@ module.exports = async (req, res) => {
     checkinEndTime,
     durationMinutes,
     caseId,
-    notificationId
+    notificationId,
+    requestId,
+    redemptionId,
+    reason
   } = req.body || {}
 
   const requestedAction = String(action || '').trim()
@@ -1009,6 +1067,85 @@ module.exports = async (req, res) => {
         detail: { caseId: notification.case_id, messageKind: notification.message_kind, error: notification.last_error || null }
       })
       return res.status(200).json({ status: 'success', data: notification })
+    }
+
+    if (action === 'line_notification_retry') {
+      const cleanNotificationId = String(notificationId || '').trim()
+      if (!UUID_RE.test(cleanNotificationId)) return res.status(400).json({ status: 'error', message: 'notification_id_required' })
+      const notification = await retryLineNotification(cleanNotificationId)
+      await auditEvent(supabaseAdmin, {
+        type: 'line_notification_retry', actorUid: adminUid, targetUid: notification.recipient_uid,
+        entityType: 'line_notification_outbox', entityId: notification.id,
+        status: notification.status === 'sent' ? 'success' : 'error',
+        detail: { messageKind: notification.message_kind, error: notification.last_error || null }
+      })
+      return res.status(200).json({ status: 'success', data: notification })
+    }
+
+    if (action === 'redemption_receive' || action === 'redemption_cancel_refund') {
+      const cleanRedemptionId = String(redemptionId || '').trim()
+      if (!UUID_RE.test(cleanRedemptionId)) return res.status(400).json({ status: 'error', message: 'redemption_id_required' })
+      const cleanReason = String(reason || note || '').trim().slice(0, 300)
+      if (action === 'redemption_cancel_refund' && cleanReason.length < 3) {
+        return res.status(400).json({ status: 'error', message: 'cancel_reason_required' })
+      }
+
+      const rpcName = action === 'redemption_receive' ? 'mark_redemption_received' : 'cancel_redemption_with_refund'
+      const rpcParams = action === 'redemption_receive'
+        ? { p_redemption_id: cleanRedemptionId, p_admin_uid: adminUid }
+        : { p_redemption_id: cleanRedemptionId, p_admin_uid: adminUid, p_reason: cleanReason }
+      const { data: rpcRows, error: workflowError } = await supabaseAdmin.rpc(rpcName, rpcParams)
+      if (workflowError) throw workflowError
+      const workflow = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+
+      const { data: redemption, error: redemptionError } = await supabaseAdmin
+        .from('redemptions')
+        .select(`
+          id,cost,status,created_at,balance_after,received_at,cancelled_at,cancel_reason,refund_balance,
+          users:user_id(uid,name),rewards:reward_id(name,img_url)
+        `)
+        .eq('id', cleanRedemptionId)
+        .single()
+      if (redemptionError) throw redemptionError
+      const targetUid = redemption.users?.uid
+      let notification = null
+      try {
+        const isReceived = action === 'redemption_receive'
+        notification = await queueLineNotification({
+          dedupeKey: `${isReceived ? 'redemption-received' : 'redemption-cancelled'}:${redemption.id}`,
+          recipientUid: targetUid,
+          messageKind: isReceived ? 'redemption_received' : 'redemption_cancelled',
+          payload: isReceived
+            ? buildRedemptionReceivedMessage({
+                redemption, reward: redemption.rewards,
+                url: userRedemptionUrl(req, redemption.id)
+              })
+            : buildRedemptionCancelledMessage({
+                redemption, reward: redemption.rewards, reason: cleanReason,
+                balance: workflow?.balance ?? redemption.refund_balance,
+                url: userHistoryUrl(req)
+              })
+        })
+      } catch (notifyError) {
+        console.error('[admin-actions] redemption LINE notification failed:', notifyError?.message || notifyError)
+      }
+
+      await clearScoreCache(redis, targetUid)
+      await auditEvent(supabaseAdmin, {
+        type: action === 'redemption_receive' ? 'redemption_received' : 'redemption_cancelled_refunded',
+        actorUid: adminUid, targetUid, entityType: 'redemption', entityId: redemption.id,
+        status: 'success', detail: {
+          rewardName: redemption.rewards?.name,
+          points: redemption.cost,
+          reason: action === 'redemption_cancel_refund' ? cleanReason : null,
+          duplicate: Boolean(workflow?.already_done),
+          lineStatus: notification?.status || 'failed'
+        }
+      })
+      return res.status(200).json({
+        status: 'success',
+        data: { ...redemption, workflow, lineNotification: notification ? { id: notification.id, status: notification.status, lastError: notification.last_error } : { status: 'failed' } }
+      })
     }
 
     if (action === 'safety_question_create') {
@@ -1271,40 +1408,72 @@ module.exports = async (req, res) => {
     // 🟢 CASE A: ปรับแต้มรายคน (ของเดิม ห้ามลบ)
     // ==================================================
     if (action === 'adjust') {
-      if (!targetUid || typeof delta !== 'number') return res.status(400).json({ status: 'error', message: 'Missing data' })
-      const { data: user } = await supabaseAdmin.from('users').select('id').eq('uid', targetUid).single()
-      if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
-
-      rpcName = 'apply_points'
-      rpcParams = {
-        p_user: user.id,
-        p_amount: delta,
-        p_code: note || 'admin-adjust',
-        p_type: delta >= 0 ? 'ADMIN_GIVE' : 'ADMIN_DEDUCT',
-        p_actor: adminUid
+      const cleanReason = String(note || '').trim().slice(0, 300)
+      const numericDelta = Number(delta)
+      if (!targetUid || !Number.isFinite(numericDelta) || numericDelta === 0) return res.status(400).json({ status: 'error', message: 'Missing data' })
+      if (cleanReason.length < 3) return res.status(400).json({ status: 'error', message: 'adjustment_reason_required' })
+      const cleanRequestId = UUID_RE.test(String(requestId || '').trim()) ? String(requestId).trim() : crypto.randomUUID()
+      const { data: user, error: userError } = await supabaseAdmin.from('users').select('id,uid,name').eq('uid', targetUid).single()
+      if (userError || !user) return res.status(404).json({ status: 'error', message: 'User not found' })
+      const mode = numericDelta > 0 ? 'add' : 'deduct'
+      const { data: adjustmentRows, error: adjustmentError } = await supabaseAdmin.rpc('admin_adjust_points_v2', {
+        p_target_uid: targetUid, p_mode: mode, p_amount: Math.abs(Math.trunc(numericDelta)),
+        p_reason: cleanReason, p_admin_uid: adminUid, p_request_id: cleanRequestId
+      })
+      if (adjustmentError) throw adjustmentError
+      const adjustment = { ...(Array.isArray(adjustmentRows) ? adjustmentRows[0] : adjustmentRows), mode, reason: cleanReason, created_at: new Date().toISOString() }
+      let notification = null
+      try {
+        notification = await queueLineNotification({
+          dedupeKey: `score-adjusted:${adjustment.adjustment_id}`,
+          recipientUid: targetUid, messageKind: 'score_adjusted',
+          payload: buildPointAdjustmentMessage({ adjustment, user, url: userHistoryUrl(req) })
+        })
+      } catch (notifyError) {
+        console.error('[admin-actions] point adjustment LINE notification failed:', notifyError?.message || notifyError)
       }
+      await clearScoreCache(redis, targetUid)
+      await auditEvent(supabaseAdmin, {
+        type: 'admin_points_adjusted', actorUid: adminUid, targetUid,
+        entityType: 'admin_point_adjustment', entityId: adjustment.adjustment_id, status: 'success',
+        detail: { delta: adjustment.applied_delta, balanceBefore: adjustment.balance_before, balanceAfter: adjustment.balance_after, reason: cleanReason, duplicate: Boolean(adjustment.was_duplicate), lineStatus: notification?.status || 'failed' }
+      })
+      return res.status(200).json({ status: 'success', data: { ...adjustment, lineNotification: notification ? { id: notification.id, status: notification.status, lastError: notification.last_error } : { status: 'failed' } } })
     }
 
     // ==================================================
     // 🟢 CASE B: รีเซ็ตแต้มเป็น 0 (ของเดิม ห้ามลบ)
     // ==================================================
     else if (action === 'reset') {
+      const cleanReason = String(note || '').trim().slice(0, 300)
       if (!targetUid) return res.status(400).json({ status: 'error', message: 'Missing targetUid' })
-      const { data: user } = await supabaseAdmin.from('users').select('id').eq('uid', targetUid).single()
-      if (!user) return res.status(404).json({ status: 'error', message: 'User not found' })
-
-      const { data: up } = await supabaseAdmin.from('user_points').select('balance').eq('user_id', user.id).single()
-      const cur = up?.balance ?? 0
-      if (cur === 0) return res.status(200).json({ status: 'success', message: 'Already 0' })
-
-      rpcName = 'apply_points'
-      rpcParams = {
-        p_user: user.id,
-        p_amount: -cur,
-        p_code: note || 'admin-reset',
-        p_type: 'ADMIN_RESET',
-        p_actor: adminUid
+      if (cleanReason.length < 3) return res.status(400).json({ status: 'error', message: 'adjustment_reason_required' })
+      const cleanRequestId = UUID_RE.test(String(requestId || '').trim()) ? String(requestId).trim() : crypto.randomUUID()
+      const { data: user, error: userError } = await supabaseAdmin.from('users').select('id,uid,name').eq('uid', targetUid).single()
+      if (userError || !user) return res.status(404).json({ status: 'error', message: 'User not found' })
+      const { data: adjustmentRows, error: adjustmentError } = await supabaseAdmin.rpc('admin_adjust_points_v2', {
+        p_target_uid: targetUid, p_mode: 'reset', p_amount: 0,
+        p_reason: cleanReason, p_admin_uid: adminUid, p_request_id: cleanRequestId
+      })
+      if (adjustmentError) throw adjustmentError
+      const adjustment = { ...(Array.isArray(adjustmentRows) ? adjustmentRows[0] : adjustmentRows), mode: 'reset', reason: cleanReason, created_at: new Date().toISOString() }
+      let notification = null
+      try {
+        notification = await queueLineNotification({
+          dedupeKey: `score-adjusted:${adjustment.adjustment_id}`,
+          recipientUid: targetUid, messageKind: 'score_adjusted',
+          payload: buildPointAdjustmentMessage({ adjustment, user, url: userHistoryUrl(req) })
+        })
+      } catch (notifyError) {
+        console.error('[admin-actions] reset LINE notification failed:', notifyError?.message || notifyError)
       }
+      await clearScoreCache(redis, targetUid)
+      await auditEvent(supabaseAdmin, {
+        type: 'admin_points_adjusted', actorUid: adminUid, targetUid,
+        entityType: 'admin_point_adjustment', entityId: adjustment.adjustment_id, status: 'success',
+        detail: { delta: adjustment.applied_delta, balanceBefore: adjustment.balance_before, balanceAfter: adjustment.balance_after, reason: cleanReason, duplicate: Boolean(adjustment.was_duplicate), lineStatus: notification?.status || 'failed' }
+      })
+      return res.status(200).json({ status: 'success', data: { ...adjustment, lineNotification: notification ? { id: notification.id, status: notification.status, lastError: notification.last_error } : { status: 'failed' } } })
     }
 
     // ==================================================
@@ -1312,12 +1481,12 @@ module.exports = async (req, res) => {
     // ==================================================
     else if (action === 'giveaway') {
       if (!amount || amount <= 0) return res.status(400).json({ status: 'error', message: 'Invalid amount' })
-      // if (!note) return res.status(400).json({ status: 'error', message: 'Note required' }) // บางทีอาจไม่บังคับ note
+      if (String(note || '').trim().length < 3) return res.status(400).json({ status: 'error', message: 'giveaway_reason_required' })
 
       rpcName = 'admin_giveaway_to_all'
       rpcParams = {
         p_amount: amount,
-        p_note: note || 'Giveaway',
+        p_note: String(note).trim().slice(0, 300),
         p_admin_uid: adminUid
       }
     } 
@@ -1408,6 +1577,13 @@ module.exports = async (req, res) => {
            created_at,
            cost,
            status,
+           balance_after,
+           received_at,
+           received_by,
+           cancelled_at,
+           cancelled_by,
+           cancel_reason,
+           refund_balance,
            reward_id,
            users:user_id ( name, uid ),
            rewards:reward_id ( name, img_url )
@@ -1424,6 +1600,19 @@ module.exports = async (req, res) => {
          console.error('Fetch history error:', error);
          throw error;
       }
+
+      const redemptionIds = new Set((data || []).map(row => String(row.id)))
+      const { data: rawNotificationRows, error: notificationError } = redemptionIds.size
+        ? await supabaseAdmin
+            .from('line_notification_outbox')
+            .select('id,dedupe_key,message_kind,status,attempt_count,last_error,sent_at,updated_at')
+            .in('message_kind', ['redemption_created', 'redemption_received', 'redemption_cancelled'])
+            .order('created_at', { ascending: false })
+            .limit(300)
+        : { data: [], error: null }
+      if (notificationError) throw notificationError
+      const notificationRows = (rawNotificationRows || []).filter(item => redemptionIds.has(String(item.dedupe_key || '').split(':').slice(1).join(':')))
+      const notificationMap = new Map((notificationRows || []).map(item => [item.dedupe_key, item]))
       
       // จัด Format ข้อมูล
       const formatted = (data || []).map(row => ({
@@ -1438,7 +1627,17 @@ module.exports = async (req, res) => {
          reward_img:  row.rewards?.img_url || 'https://placehold.co/100?text=No+Image', // ใช้ img_url
          
          cost: row.cost,
-         status: row.status
+         status: row.status,
+         balance_after: row.balance_after,
+         received_at: row.received_at,
+         received_by: row.received_by,
+         cancelled_at: row.cancelled_at,
+         cancelled_by: row.cancelled_by,
+         cancel_reason: row.cancel_reason,
+         refund_balance: row.refund_balance,
+         created_notification: notificationMap.get(`redemption-created:${row.id}`) || null,
+         received_notification: notificationMap.get(`redemption-received:${row.id}`) || null,
+         cancelled_notification: notificationMap.get(`redemption-cancelled:${row.id}`) || null
       }))
 
       return res.status(200).json({ status: 'success', data: formatted })
@@ -1466,6 +1665,6 @@ module.exports = async (req, res) => {
 
   } catch (e) {
     console.error('Admin Action Error:', e)
-    res.status(500).json({ status: 'error', message: String(e) })
+    res.status(500).json({ status: 'error', message: adminErrorMessage(e) })
   }
 }

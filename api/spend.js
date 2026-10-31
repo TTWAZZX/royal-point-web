@@ -1,139 +1,158 @@
+const crypto = require('node:crypto')
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
+const {
+  buildRedemptionCreatedMessage,
+  queueLineNotification,
+  userRedemptionUrl
+} = require('../lib/line-messaging')
+
 const redis = getRedis()
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function rpcErrorCode(error) {
+  const text = String(error?.message || error || '').toUpperCase()
+  for (const code of [
+    'REQUEST_ID_REQUIRED', 'USER_NOT_FOUND', 'REWARD_NOT_FOUND', 'REWARD_INACTIVE',
+    'OUT_OF_STOCK', 'INSUFFICIENT_POINTS'
+  ]) {
+    if (text.includes(code)) return code.toLowerCase()
+  }
+  return 'spend_failed'
+}
+
+async function getRedemptionEvidence(req, res) {
+  const cleanUid = String(req.query.uid || '').trim()
+  const redemptionId = String(req.query.redemptionId || '').trim()
+  if (!cleanUid || !UUID_RE.test(redemptionId)) {
+    return res.status(400).json({ status: 'error', message: 'ข้อมูลรายการไม่ครบ' })
+  }
+  await authenticateRequest(req, { claimedUid: cleanUid })
+  const { data, error } = await supabaseAdmin
+    .from('redemptions')
+    .select(`
+      id,cost,status,created_at,balance_after,received_at,cancelled_at,cancel_reason,refund_balance,
+      users:user_id!inner(uid,name),
+      rewards:reward_id(name,img_url)
+    `)
+    .eq('id', redemptionId)
+    .eq('users.uid', cleanUid)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return res.status(404).json({ status: 'error', message: 'ไม่พบรายการแลกของรางวัล' })
+  return res.status(200).json({
+    status: 'success',
+    data: {
+      id: data.id,
+      cost: data.cost,
+      redemptionStatus: data.status,
+      createdAt: data.created_at,
+      balanceAfter: data.balance_after,
+      receivedAt: data.received_at,
+      cancelledAt: data.cancelled_at,
+      cancelReason: data.cancel_reason,
+      refundBalance: data.refund_balance,
+      userName: data.users?.name || '',
+      rewardName: data.rewards?.name || 'ของรางวัล',
+      rewardImage: data.rewards?.img_url || ''
+    }
+  })
+}
 
 module.exports = async (req, res) => {
   try {
+    if (req.method === 'GET') return await getRedemptionEvidence(req, res)
     if (req.method !== 'POST') {
-      return res.status(405).json({ status:'error', message:'Method not allowed' })
+      return res.status(405).json({ status: 'error', message: 'Method not allowed' })
     }
 
-    const { uid, rewardId } = req.body || {}
+    const { uid, rewardId, requestId } = req.body || {}
     const cleanUid = String(uid || '').trim()
     const cleanRewardId = String(rewardId || '').trim()
-    if (!cleanUid || !cleanRewardId) {
-      return res.status(400).json({ status:'error', message:'uid & rewardId required' })
+    const cleanRequestId = UUID_RE.test(String(requestId || '').trim())
+      ? String(requestId).trim()
+      : crypto.randomUUID()
+    if (!cleanUid || !UUID_RE.test(cleanRewardId)) {
+      return res.status(400).json({ status: 'error', message: 'uid & rewardId required' })
     }
     await authenticateRequest(req, { claimedUid: cleanUid })
 
-    /* ===============================
-       LOAD USER
-    ================================ */
-    const { data: user } = await supabaseAdmin
-      .from('users')
-      .select('id,uid')
-      .eq('uid', cleanUid)
-      .single()
-
-    if (!user) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: cleanRewardId, status: 'error', detail: { reason: 'user_not_found' } })
-      return res.status(404).json({ status:'error', message:'user_not_found' })
+    const { data: rpcRows, error: spendError } = await supabaseAdmin.rpc('spend_reward_atomic', {
+      p_uid: cleanUid,
+      p_reward_id: cleanRewardId,
+      p_request_id: cleanRequestId
+    })
+    if (spendError) {
+      const reason = rpcErrorCode(spendError)
+      await auditEvent(supabaseAdmin, {
+        type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: cleanRewardId,
+        status: 'error', detail: { reason, requestId: cleanRequestId }
+      })
+      const status = reason === 'out_of_stock' || reason === 'insufficient_points' ? 409
+        : reason.endsWith('not_found') ? 404 : 500
+      return res.status(status).json({ status: 'error', message: reason })
     }
 
-    /* ===============================
-       LOAD REWARD (LOCK TARGET)
-    ================================ */
-    const { data: reward } = await supabaseAdmin
-      .from('rewards')
-      .select('id,name,cost,stock,active')
-      .eq('id', cleanRewardId)
-      .single()
-
-    if (!reward) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: cleanRewardId, status: 'error', detail: { reason: 'reward_not_found' } })
-      return res.status(404).json({ status:'error', message:'reward_not_found' })
+    const result = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+    if (!result?.redemption_id) throw new Error('redemption_result_missing')
+    const redemption = {
+      id: result.redemption_id,
+      cost: Number(result.spent || 0),
+      status: result.redemption_status || 'approved',
+      balance_after: Number(result.balance || 0),
+      created_at: result.created_at
+    }
+    const reward = {
+      id: cleanRewardId,
+      name: result.reward_name || 'ของรางวัล',
+      img_url: result.reward_image || ''
     }
 
-    if (!reward.active) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { reason: 'reward_inactive' } })
-      return res.status(400).json({ status:'error', message:'reward_inactive' })
+    let notification = null
+    try {
+      notification = await queueLineNotification({
+        dedupeKey: `redemption-created:${redemption.id}`,
+        recipientUid: cleanUid,
+        messageKind: 'redemption_created',
+        payload: buildRedemptionCreatedMessage({
+          redemption,
+          reward,
+          balance: redemption.balance_after,
+          url: userRedemptionUrl(req, redemption.id)
+        })
+      })
+    } catch (notifyError) {
+      console.error('[spend] redemption LINE notification failed:', notifyError?.message || notifyError)
     }
 
-    if (reward.stock <= 0) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { reason: 'out_of_stock' } })
-      return res.status(400).json({ status:'error', message:'out_of_stock' })
-    }
-
-    /* ===============================
-       CHECK USER BALANCE
-    ================================ */
-    const { data: up } = await supabaseAdmin
-      .from('user_points')
-      .select('balance')
-      .eq('user_id', user.id)
-      .single()
-
-    const balance = up?.balance ?? 0
-    if (balance < reward.cost) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { reason: 'insufficient_points', balance, cost: reward.cost } })
-      return res.status(400).json({ status:'error', message:'insufficient_points' })
-    }
-
-    /* ===============================
-       ATOMIC STOCK DECREASE (LOCK)
-    ================================ */
-    const { data: stockData, error: eStock } = await supabaseAdmin
-      .from('rewards')
-      .update({ stock: reward.stock - 1 })
-      .eq('id', reward.id)
-      .eq('stock', reward.stock) // ⭐ ตัวกันแลกซ้อนของจริง
-      .select('id')
-
-    if (eStock || !stockData || stockData.length === 0) {
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { reason: 'stock_conflict' } })
-      return res.status(409).json({ status:'error', message:'stock_conflict' })
-    }
-
-    /* ===============================
-       DEDUCT POINTS (AFTER LOCK)
-    ================================ */
-    const { error: ePoint } = await supabaseAdmin.rpc('apply_points', {
-      p_user: user.id,
-      p_amount: -reward.cost,
-      p_code: reward.name,
-      p_type: 'SPEND_REWARD',
-      p_actor: cleanUid
+    await auditEvent(supabaseAdmin, {
+      type: 'spend_success', actorUid: cleanUid, targetUid: cleanUid,
+      entityType: 'redemption', entityId: redemption.id, status: 'success',
+      detail: {
+        cost: redemption.cost,
+        rewardName: reward.name,
+        redemptionId: redemption.id,
+        requestId: cleanRequestId,
+        duplicate: Boolean(result.was_duplicate),
+        balanceAfter: redemption.balance_after,
+        lineStatus: notification?.status || 'failed'
+      }
     })
 
-    if (ePoint) {
-      // 🔁 rollback stock
-      await supabaseAdmin
-        .from('rewards')
-        .update({ stock: reward.stock })
-        .eq('id', reward.id)
-
-      await auditEvent(supabaseAdmin, { type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { reason: 'apply_points_failed', message: ePoint.message } })
-      return res.status(500).json({ status:'error', message:'apply_points_failed' })
-    }
-
-    /* ===============================
-       LOG REDEMPTION
-    ================================ */
-    const { data: redemption, error: redemptionError } = await supabaseAdmin.from('redemptions').insert({
-      user_id: user.id,
-      reward_id: reward.id,
-      cost: reward.cost,
-      status: 'approved'
-    }).select('id, created_at').single()
-
-    if (redemptionError) {
-      await auditEvent(supabaseAdmin, { type: 'redemption_log_failed', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'error', detail: { message: redemptionError.message } })
-    }
-
-    await auditEvent(supabaseAdmin, { type: 'spend_success', actorUid: cleanUid, entityType: 'reward', entityId: reward.id, status: 'success', detail: { cost: reward.cost, redemptionId: redemption?.id || null } })
-
     await clearScoreCache(redis, cleanUid)
-
     return res.status(200).json({
       status: 'success',
       reward: reward.name,
-      spent: reward.cost,
-      redemption: redemption || null
+      spent: redemption.cost,
+      balance: redemption.balance_after,
+      redemption,
+      duplicate: Boolean(result.was_duplicate),
+      lineNotification: notification ? { status: notification.status } : { status: 'failed' }
     })
-
-  } catch (e) {
-    if (e instanceof AuthError) return sendAuthError(res, e)
-    return res.status(500).json({ status:'error', message:String(e) })
+  } catch (error) {
+    if (error instanceof AuthError) return sendAuthError(res, error)
+    console.error('[spend] unexpected error:', error)
+    return res.status(500).json({ status: 'error', message: String(error?.message || error) })
   }
 }

@@ -89,6 +89,28 @@ test('personal coupons are connected across database, admin, user, audit, and LI
   assert.match(read('app.js'), /couponTicket/)
 })
 
+test('transaction notifications and reward pickup are connected end to end', () => {
+  const migration = read('supabase_transaction_notifications_migration.sql')
+  assert.match(migration, /admin_adjust_points_v2/)
+  assert.match(migration, /spend_reward_atomic/)
+  assert.match(migration, /mark_redemption_received/)
+  assert.match(migration, /cancel_redemption_with_refund/)
+  assert.match(migration, /request_id uuid/)
+  assert.match(migration, /status = 'legacy'/)
+  assert.match(read('api/spend.js'), /redemption-created:/)
+  assert.match(read('api/spend.js'), /spend_reward_atomic/)
+  assert.match(read('api/admin-actions.js'), /score-adjusted:/)
+  assert.match(read('api/admin-actions.js'), /redemption-received:/)
+  assert.match(read('api/admin-actions.js'), /redemption-cancelled:/)
+  assert.match(read('lib/line-messaging.js'), /buildPointAdjustmentMessage/)
+  assert.match(read('lib/line-messaging.js'), /buildRedemptionCreatedMessage/)
+  assert.match(read('admin.html'), /pills-line-notifications/)
+  assert.match(read('admin.js'), /confirmRedemptionReceived/)
+  assert.match(read('admin.js'), /cancelRedemptionAndRefund/)
+  assert.match(read('app.js'), /handleTransactionDeepLinks/)
+  assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
+})
+
 test('user-facing source files contain no common UTF-8 mojibake sequences', () => {
   const userFacingFiles = [
     'index.html',

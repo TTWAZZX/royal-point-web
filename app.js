@@ -412,6 +412,7 @@ async function initApp(ctx = {}) {
     }
 
     await handleCouponDeepLink();
+    await handleTransactionDeepLinks();
 
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
     if (!recoveryMode && typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
@@ -1898,11 +1899,18 @@ async function redeemReward(reward, btn){
   setBtnLoading(btn, true, 'กำลังแลก…');
   UiOverlay.show('กำลังบันทึกการแลกของรางวัล…');
 
+  const redeemRequestKey = `RP_REDEEM_REQUEST:${curUid}:${id}`;
+  let redeemRequestId = sessionStorage.getItem(redeemRequestKey) || '';
+  if (!redeemRequestId) {
+    redeemRequestId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    sessionStorage.setItem(redeemRequestKey, redeemRequestId);
+  }
+
   try{
     const res = await fetch(API_SPEND, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ uid: curUid, cost, rewardId: id }),
+      body: JSON.stringify({ uid: curUid, cost, rewardId: id, requestId: redeemRequestId }),
       cache: 'no-store'
     });
 
@@ -1911,7 +1919,8 @@ async function redeemReward(reward, btn){
       throw new Error(payload?.message || "spend failed");
 
     // 2. คำนวณแต้มใหม่ และอัปเดตตัวแปรทั้งหมดให้ตรงกัน (แก้บั๊กแต้มหาย)
-    const nextScore = Math.max(0, scoreNow - cost);
+    const nextScore = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Math.max(0, scoreNow - cost);
+    sessionStorage.removeItem(redeemRequestKey);
     window.__userBalance = nextScore;
     window.prevScore = nextScore; // ⭐ สำคัญมาก: ต้องอัปเดตตัวนี้ด้วย ไม่งั้น loadRewards จะเห็นเป็น 0
     if (typeof prevScore !== 'undefined') prevScore = nextScore; // อัปเดตตัวแปร local ถ้ามี
@@ -1961,9 +1970,11 @@ async function redeemReward(reward, btn){
         html: `
           <h5 class="fw-bold text-dark mt-2">${h(name)}</h5>
           <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
-          <div class="alert alert-warning small p-2">
-             <i class="fa-solid fa-camera"></i> แคปหน้าจอนี้ไว้เพื่อรับของรางวัล
+          <div class="alert alert-success small p-2 text-start">
+             สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหลักฐานรายการแลกแก่ จป.วิชาชีพ<br>
+             หรือติดต่อ <a href="tel:11991919" class="fw-bold">1199 1919</a> เพื่อตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่
           </div>
+          ${payload?.redemption?.id ? `<div class="small text-muted">เลขรายการ: ${h(payload.redemption.id)}</div>` : ''}
         `,
         confirmButtonText: "ตกลง",
         confirmButtonColor: "#22c55e"
@@ -2120,6 +2131,49 @@ async function handleCouponDeepLink() {
     return;
   }
   await redeemCode(ticket, 'ASSIGNED_LINK');
+}
+
+async function handleTransactionDeepLinks() {
+  if (window.__TRANSACTION_DEEP_LINK_HANDLED) return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('view') === 'score-history') {
+    window.__TRANSACTION_DEEP_LINK_HANDLED = true;
+    if (typeof openHistory === 'function') await openHistory();
+    return;
+  }
+
+  const redemptionId = String(params.get('redemption_id') || '').trim();
+  if (!redemptionId) return;
+  window.__TRANSACTION_DEEP_LINK_HANDLED = true;
+  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
+  if (!uid) throw new Error('ยังไม่พบข้อมูลผู้ใช้');
+  const response = await fetch(`${API_SPEND}?uid=${encodeURIComponent(uid)}&redemptionId=${encodeURIComponent(redemptionId)}`, { cache: 'no-store' });
+  const payload = await safeJson(response);
+  if (!response.ok || payload?.status !== 'success') throw new Error(payload?.message || 'โหลดหลักฐานรับของไม่สำเร็จ');
+  const item = payload.data || {};
+  const statusMeta = {
+    legacy: { label: 'ประวัติเก่า', tone: 'secondary', detail: 'รายการนี้เกิดขึ้นก่อนเริ่มใช้ระบบยืนยันการรับของใหม่' },
+    approved: { label: 'รอรับของ', tone: 'success', detail: 'สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหน้าจอนี้แก่ จป.วิชาชีพ' },
+    received: { label: 'รับของแล้ว', tone: 'primary', detail: 'รายการนี้เสร็จสมบูรณ์แล้ว' },
+    cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info', detail: item.cancelReason || 'ผู้ดูแลยกเลิกรายการและคืนคะแนนแล้ว' }
+  }[item.redemptionStatus] || { label: item.redemptionStatus || '-', tone: 'secondary', detail: '' };
+  if (window.Swal) {
+    await Swal.fire({
+      title: 'หลักฐานรายการแลก',
+      imageUrl: item.rewardImage || undefined,
+      imageWidth: 140,
+      imageAlt: item.rewardName || 'ของรางวัล',
+      html: `<div class="text-start">
+        <div class="fw-bold fs-5 text-center mb-2">${h(item.rewardName || 'ของรางวัล')}</div>
+        <div class="text-center mb-3"><span class="badge bg-${h(statusMeta.tone)}-subtle text-${h(statusMeta.tone)}">${h(statusMeta.label)}</span></div>
+        <div class="small"><b>เลขรายการ:</b> <code>${h(item.id)}</code></div>
+        <div class="small mt-1"><b>คะแนนที่ใช้:</b> ${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</div>
+        <div class="small mt-1"><b>วันที่แลก:</b> ${h(new Date(item.createdAt).toLocaleString('th-TH'))}</div>
+        <div class="alert alert-light border small mt-3 mb-0">${h(statusMeta.detail)}${item.redemptionStatus === 'approved' ? '<br>โทร <a href="tel:11991919" class="fw-bold">1199 1919</a> เพื่อตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่' : ''}</div>
+      </div>`,
+      confirmButtonText: 'ปิด'
+    });
+  }
 }
 
 // แปลง res/json → ข้อความสำหรับผู้ใช้ และประเภท error ที่สนใจ
@@ -3006,6 +3060,7 @@ async function initAppFast() {
   }
 
   try { await handleCouponDeepLink(); } catch (e) { console.warn('coupon deep link failed', e); }
+  try { await handleTransactionDeepLinks(); } catch (e) { console.warn('transaction deep link failed', e); }
 
   // 6) ปิด skeleton
   try { hideRewardSkeleton && hideRewardSkeleton(); } catch {}

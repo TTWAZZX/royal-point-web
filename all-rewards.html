@@ -445,16 +445,24 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
     button.textContent = 'กำลังแลก...';
   }
 
+  const redeemRequestKey = `RP_REDEEM_REQUEST:${uid}:${rewardId}`;
+  let redeemRequestId = sessionStorage.getItem(redeemRequestKey) || '';
+  if (!redeemRequestId) {
+    redeemRequestId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    sessionStorage.setItem(redeemRequestKey, redeemRequestId);
+  }
+
   try {
     // 3. เรียก API
-    await Loading.apiFetch('/api/spend', {
+    const spendResult = await Loading.apiFetch('/api/spend', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
-      body: JSON.stringify({ uid, rewardId, cost })
+      body: JSON.stringify({ uid, rewardId, cost, requestId: redeemRequestId })
     }, { scope: 'overlay', msg: 'กำลังบันทึกข้อมูล...' });
+    sessionStorage.removeItem(redeemRequestKey);
 
     // 4. ตัดคะแนนในตัวแปร และ LocalStorage ทันที
-    CURRENT_SCORE = Math.max(0, CURRENT_SCORE - cost);
+    CURRENT_SCORE = Number.isFinite(Number(spendResult?.balance)) ? Number(spendResult.balance) : Math.max(0, CURRENT_SCORE - cost);
     localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
     
     // 5. อัปเดต UI (ตัดสต็อก + ล็อกปุ่มรางวัลอื่นถ้าคะแนนไม่พอแล้ว)
@@ -470,9 +478,11 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
         html: `
           <h5 class="fw-bold text-dark mt-2">${escapeHtml(rewardName)}</h5>
           <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
-          <div class="alert alert-warning small p-2">
-             <i class="fa-solid fa-camera"></i> แคปหน้าจอนี้ไว้เพื่อรับของรางวัล
+          <div class="alert alert-success small p-2 text-start">
+             สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหลักฐานรายการแลกแก่ จป.วิชาชีพ<br>
+             หรือติดต่อ <a href="tel:11991919" class="fw-bold">1199 1919</a> เพื่อตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่
           </div>
+          ${spendResult?.redemption?.id ? `<div class="small text-muted">เลขรายการ: ${escapeHtml(spendResult.redemption.id)}</div>` : ''}
         `,
         confirmButtonText: "ตกลง",
         confirmButtonColor: "#22c55e"

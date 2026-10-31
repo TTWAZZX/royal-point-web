@@ -28,6 +28,7 @@ let SAFETY_PULSE_TAB = 'action';
 let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
+let LINE_NOTIFICATION_ROWS = [];
 
 function scrollSafetySubtabIntoView() {
     const anchor = document.querySelector('.safety-subnav-card');
@@ -412,7 +413,7 @@ async function giveawayToAll() {
     title: '📝 ระบุเหตุผล',
     input: 'text',
     inputLabel: 'เช่น กิจกรรมพิเศษ, ชดเชยระบบ',
-    inputValue: 'Admin Giveaway',
+    inputValue: 'แจกคะแนนกิจกรรมพิเศษ',
     showCancelButton: true,
     confirmButtonText: 'ยืนยันการแจก',
     confirmButtonColor: '#22c55e'
@@ -553,6 +554,14 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    const lineBtn = document.getElementById('tabLineNotificationsBtn');
+    if (lineBtn) lineBtn.addEventListener('shown.bs.tab', loadLineNotifications);
+    document.getElementById('btnRefreshLineNotifications')?.addEventListener('click', loadLineNotifications);
+    document.getElementById('lineNotificationSearch')?.addEventListener('input', renderLineNotifications);
+    document.getElementById('lineNotificationStatus')?.addEventListener('change', loadLineNotifications);
+    document.getElementById('lineNotificationKind')?.addEventListener('change', loadLineNotifications);
+    document.getElementById('lineNotificationDate')?.addEventListener('change', renderLineNotifications);
+
     const safetyBtn = document.getElementById('tabSafetyBtn');
     if (safetyBtn) {
         safetyBtn.addEventListener('shown.bs.tab', () => {
@@ -657,22 +666,45 @@ function renderHistoryList(list) {
             }
         } catch(e) {}
 
+        const statusMeta = {
+          legacy: { label: 'ประวัติเก่าก่อนระบบรับของ', tone: 'secondary' },
+          approved: { label: 'รอรับของ', tone: 'success' },
+          received: { label: 'รับของแล้ว', tone: 'primary' },
+          cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info' }
+        }[item.status] || { label: item.status || '-', tone: 'secondary' };
+        const lineItems = [item.created_notification, item.received_notification, item.cancelled_notification].filter(Boolean);
+        const failedNotification = lineItems.find(row => row.status === 'failed');
+        const latestNotification = lineItems[lineItems.length - 1] || null;
+        const lineBadge = !latestNotification
+          ? '<span class="badge bg-secondary-subtle text-secondary">ยังไม่มีข้อมูล LINE</span>'
+          : latestNotification.status === 'sent'
+            ? '<span class="badge bg-success-subtle text-success">ส่ง LINE แล้ว</span>'
+            : latestNotification.status === 'failed'
+              ? '<span class="badge bg-danger-subtle text-danger">ส่ง LINE ไม่สำเร็จ</span>'
+              : '<span class="badge bg-warning-subtle text-warning">รอส่ง LINE</span>';
+        const idArg = escapeAuditHtml(JSON.stringify(String(item.id || '')));
+        const retryArg = escapeAuditHtml(JSON.stringify(String(failedNotification?.id || '')));
+        const actionButtons = item.status === 'approved' ? `
+          <button class="btn btn-sm btn-success rounded-pill" onclick="confirmRedemptionReceived(${idArg})"><i class="fa-solid fa-box-open me-1"></i>ยืนยันรับของ</button>
+          <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="cancelRedemptionAndRefund(${idArg})">ยกเลิก/คืนคะแนน</button>
+        ` : '';
+
         return `
         <div class="m-card mb-2">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="d-flex align-items-center gap-3">
                     
                     <div class="position-relative">
-                        <img src="${item.reward_img}" class="rounded-3 border bg-light" 
+                        <img src="${escapeAuditHtml(item.reward_img)}" class="rounded-3 border bg-light"
                              style="width:55px; height:55px; object-fit:contain;"
                              onerror="this.src='https://placehold.co/100?text=Err'">
                     </div>
 
                     <div>
-                        <div class="fw-bold text-dark" style="font-size:1rem;">${item.reward_name}</div>
+                        <div class="fw-bold text-dark" style="font-size:1rem;">${escapeAuditHtml(item.reward_name)}</div>
                         
                         <div class="text-muted small mt-1">
-                           <i class="fa-solid fa-user-check me-1 text-success"></i> ${item.user_name}
+                           <i class="fa-solid fa-user-check me-1 text-success"></i> ${escapeAuditHtml(item.user_name)}
                         </div>
                     </div>
                 </div>
@@ -682,6 +714,17 @@ function renderHistoryList(list) {
                     <div class="text-muted mt-1" style="font-size:0.7rem;">${dateStr}</div>
                 </div>
             </div>
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top">
+              <div class="d-flex flex-wrap gap-1">
+                <span class="badge bg-${statusMeta.tone}-subtle text-${statusMeta.tone}">${escapeAuditHtml(statusMeta.label)}</span>
+                ${lineBadge}
+              </div>
+              <div class="d-flex flex-wrap gap-1">
+                ${failedNotification ? `<button class="btn btn-sm btn-outline-warning rounded-pill" onclick="retryTransactionNotification(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>ส่ง LINE ใหม่</button>` : ''}
+                ${actionButtons}
+              </div>
+            </div>
+            ${item.cancel_reason ? `<div class="small text-muted mt-2">เหตุผล: ${escapeAuditHtml(item.cancel_reason)}</div>` : ''}
         </div>
         `;
     }).join('');
@@ -691,12 +734,189 @@ function renderHistoryList(list) {
 window.filterHistory = () => {
     const term = document.getElementById('historySearch').value.toLowerCase();
     const filtered = HISTORY_DATA.filter(x => 
-        (x.user && x.user.toLowerCase().includes(term)) ||
-        (x.reward && x.reward.toLowerCase().includes(term)) ||
-        (x.uid && x.uid.toLowerCase().includes(term))
+        (x.user_name && x.user_name.toLowerCase().includes(term)) ||
+        (x.reward_name && x.reward_name.toLowerCase().includes(term)) ||
+        (x.user_uid && x.user_uid.toLowerCase().includes(term)) ||
+        (x.id && x.id.toLowerCase().includes(term))
     );
     renderHistoryList(filtered);
 };
+
+window.confirmRedemptionReceived = async (redemptionId) => {
+  const confirmation = await Swal.fire({
+    title: 'ยืนยันว่าผู้ใช้รับของแล้ว?',
+    text: 'กรุณาตรวจหลักฐานและส่งมอบของให้ผู้ใช้ก่อนยืนยัน',
+    icon: 'question', showCancelButton: true,
+    confirmButtonText: 'ยืนยันรับของแล้ว', cancelButtonText: 'กลับ', confirmButtonColor: '#16a34a'
+  });
+  if (!confirmation.isConfirmed) return;
+  try {
+    sysOverlay.show('กำลังยืนยันการรับของ...');
+    const data = await adminAction({ action: 'redemption_receive', redemptionId });
+    await loadRedemptionHistory();
+    const sent = data?.lineNotification?.status === 'sent';
+    Swal.fire(sent ? 'เรียบร้อย' : 'ยืนยันแล้ว', sent ? 'บันทึกการรับของและส่ง LINE แล้ว' : 'บันทึกการรับของแล้ว แต่ส่ง LINE ไม่สำเร็จ สามารถส่งใหม่ได้', sent ? 'success' : 'warning');
+  } catch (error) {
+    toastErr(error.message || 'ยืนยันการรับของไม่สำเร็จ');
+  } finally { sysOverlay.hide(); }
+};
+
+window.cancelRedemptionAndRefund = async (redemptionId) => {
+  const result = await Swal.fire({
+    title: 'ยกเลิกและคืนคะแนน?',
+    text: 'ใช้เฉพาะกรณียังไม่ได้ส่งมอบของ ระบบจะคืนคะแนนและสต็อกโดยอัตโนมัติ',
+    input: 'textarea', inputPlaceholder: 'ระบุเหตุผลอย่างน้อย 3 ตัวอักษร', inputAttributes: { maxlength: '300' },
+    icon: 'warning', showCancelButton: true,
+    confirmButtonText: 'ยกเลิกและคืนคะแนน', cancelButtonText: 'กลับ', confirmButtonColor: '#dc2626',
+    preConfirm: value => String(value || '').trim().length < 3 ? Swal.showValidationMessage('กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร') : String(value).trim()
+  });
+  if (!result.isConfirmed) return;
+  try {
+    sysOverlay.show('กำลังคืนคะแนนและสต็อก...');
+    const data = await adminAction({ action: 'redemption_cancel_refund', redemptionId, reason: result.value });
+    await Promise.all([loadRedemptionHistory(), typeof loadRewardsAdmin === 'function' ? loadRewardsAdmin() : Promise.resolve()]);
+    const sent = data?.lineNotification?.status === 'sent';
+    Swal.fire(sent ? 'คืนคะแนนแล้ว' : 'คืนคะแนนแล้ว', sent ? 'คืนคะแนน สต็อก และส่ง LINE ให้ผู้ใช้แล้ว' : 'คืนคะแนนและสต็อกแล้ว แต่ส่ง LINE ไม่สำเร็จ สามารถส่งใหม่ได้', sent ? 'success' : 'warning');
+  } catch (error) {
+    toastErr(error.message || 'ยกเลิกรายการไม่สำเร็จ');
+  } finally { sysOverlay.hide(); }
+};
+
+window.retryTransactionNotification = async (notificationId) => {
+  try {
+    sysOverlay.show('กำลังส่ง LINE ใหม่...');
+    const data = await adminAction({ action: 'line_notification_retry', notificationId });
+    if (data?.status !== 'sent') throw new Error(data?.last_error || 'LINE ยังรับข้อความไม่ได้');
+    await loadRedemptionHistory();
+    Swal.fire('ส่งแล้ว', 'ส่ง Flex Message ให้ผู้ใช้เรียบร้อย', 'success');
+  } catch (error) {
+    toastErr(error.message || 'ส่ง LINE ไม่สำเร็จ');
+  } finally { sysOverlay.hide(); }
+};
+
+const LINE_KIND_LABELS = {
+  score_adjusted: 'เพิ่ม–ตัดคะแนน',
+  redemption_created: 'แลกของสำเร็จ',
+  redemption_received: 'รับของแล้ว',
+  redemption_cancelled: 'ยกเลิกและคืนคะแนน',
+  coupon_issued: 'มอบคูปอง',
+  coupon_redeemed: 'ใช้คูปอง',
+  coupon_cancelled: 'ยกเลิกคูปอง',
+  auth_help_admin_new: 'เรื่องช่วยเหลือใหม่',
+  auth_help_user_approved: 'อนุมัติโหมดช่วยเหลือ',
+  auth_help_user_resolved: 'แก้ไขการเข้าสู่ระบบแล้ว'
+};
+
+async function loadLineNotifications() {
+  const area = document.getElementById('lineNotificationList');
+  if (!area) return;
+  area.innerHTML = '<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-success"></div><div class="mt-2">กำลังโหลดสถานะ LINE...</div></div>';
+  try {
+    const status = document.getElementById('lineNotificationStatus')?.value || 'all';
+    const kind = document.getElementById('lineNotificationKind')?.value || 'all';
+    const query = new URLSearchParams({ action: 'line_notifications', adminUid: ADMIN_UID || '', status, kind, limit: '300', t: String(Date.now()) });
+    const response = await fetch(`${API_ADMIN_ACTIONS}?${query}`, { cache: 'no-store' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดสถานะ LINE ไม่สำเร็จ');
+    LINE_NOTIFICATION_ROWS = Array.isArray(payload.data) ? payload.data : [];
+    const failedCount = LINE_NOTIFICATION_ROWS.filter(row => row.status === 'failed').length;
+    const badge = document.getElementById('lineFailedCount');
+    if (badge) {
+      badge.textContent = String(failedCount);
+      badge.classList.toggle('d-none', failedCount === 0);
+    }
+    renderLineNotifications();
+  } catch (error) {
+    area.innerHTML = `<div class="alert alert-danger">${escapeAuditHtml(error.message || 'โหลดสถานะ LINE ไม่สำเร็จ')}</div>`;
+  }
+}
+
+function renderLineNotifications() {
+  const area = document.getElementById('lineNotificationList');
+  if (!area) return;
+  const term = String(document.getElementById('lineNotificationSearch')?.value || '').trim().toLocaleLowerCase('th-TH');
+  const requestedDate = String(document.getElementById('lineNotificationDate')?.value || '');
+  const rows = LINE_NOTIFICATION_ROWS.filter(row => {
+    const matchesTerm = !term || [row.dedupe_key, row.recipient_uid, row.message_kind, row.status, row.user?.name, row.user?.room, row.last_error]
+      .some(value => String(value || '').toLocaleLowerCase('th-TH').includes(term));
+    const rowDate = row.created_at ? new Date(row.created_at).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' }) : '';
+    return matchesTerm && (!requestedDate || rowDate === requestedDate);
+  });
+  if (!rows.length) {
+    area.innerHTML = '<div class="m-card text-center py-5 text-muted"><i class="fa-brands fa-line fa-2x mb-3 opacity-25"></i><br>ไม่พบรายการแจ้งเตือน</div>';
+    return;
+  }
+  area.innerHTML = rows.map(row => {
+    const statusMeta = row.status === 'sent'
+      ? { label: 'ส่งแล้ว', tone: 'success', icon: 'fa-circle-check' }
+      : row.status === 'failed'
+        ? { label: 'ส่งไม่สำเร็จ', tone: 'danger', icon: 'fa-triangle-exclamation' }
+        : { label: 'รอส่ง', tone: 'warning', icon: 'fa-clock' };
+    const retryArg = escapeAuditHtml(JSON.stringify(String(row.id || '')));
+    const sourceKeyArg = escapeAuditHtml(JSON.stringify(String(row.dedupe_key || '')));
+    const sourceKindArg = escapeAuditHtml(JSON.stringify(String(row.message_kind || '')));
+    const uid = String(row.recipient_uid || '');
+    const maskedUid = uid.length > 14 ? `${uid.slice(0, 7)}…${uid.slice(-4)}` : uid;
+    return `<div class="m-card p-3 mb-2">
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div style="min-width:0">
+          <div class="fw-bold">${escapeAuditHtml(LINE_KIND_LABELS[row.message_kind] || row.message_kind)}</div>
+          <div class="small text-muted text-truncate">${escapeAuditHtml(row.user?.name || maskedUid)}${row.user?.room ? ` · ${escapeAuditHtml(row.user.room)}` : ''}</div>
+          <div class="small text-muted mt-1 text-break"><code>${escapeAuditHtml(row.dedupe_key)}</code></div>
+        </div>
+        <span class="badge bg-${statusMeta.tone}-subtle text-${statusMeta.tone}"><i class="fa-solid ${statusMeta.icon} me-1"></i>${statusMeta.label}</span>
+      </div>
+      <div class="small text-muted mt-2">ลองส่ง ${Number(row.attempt_count || 0)} ครั้ง · ${escapeAuditHtml(formatAuditDate(row.sent_at || row.updated_at || row.created_at))}</div>
+      ${row.line_request_id ? `<div class="small text-muted">LINE Request ID: ${escapeAuditHtml(row.line_request_id)}</div>` : ''}
+      ${row.last_error ? `<div class="small text-danger mt-1">${escapeAuditHtml(row.last_error)}</div>` : ''}
+      <div class="text-end mt-2 d-flex justify-content-end gap-1">
+        <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="openLineNotificationSource(${sourceKeyArg},${sourceKindArg})"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>เปิดรายการต้นทาง</button>
+        ${row.status === 'failed' ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryLineNotificationFromCenter(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>ส่งใหม่</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.retryLineNotificationFromCenter = async (notificationId) => {
+  try {
+    sysOverlay.show('กำลังส่ง LINE ใหม่...');
+    const data = await adminAction({ action: 'line_notification_retry', notificationId });
+    if (data?.status !== 'sent') throw new Error(data?.last_error || 'LINE ยังรับข้อความไม่ได้');
+    await loadLineNotifications();
+    Swal.fire('ส่งแล้ว', 'ส่งข้อความ LINE เรียบร้อย', 'success');
+  } catch (error) {
+    Swal.fire('ส่ง LINE ไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+    loadLineNotifications();
+  } finally { sysOverlay.hide(); }
+};
+
+window.openLineNotificationSource = (dedupeKey, messageKind) => {
+  const key = String(dedupeKey || '');
+  if (String(messageKind).startsWith('coupon_')) {
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#pills-coupons"]')).show();
+    const couponCode = key.split(':').slice(1).join(':');
+    const input = document.getElementById('couponSearch');
+    if (input) input.value = couponCode;
+    COUPON_SEARCH = couponCode;
+    renderCoupons();
+    return;
+  }
+  if (String(messageKind).startsWith('redemption_')) {
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('tabHistoryBtn')).show();
+    const redemptionId = key.split(':').slice(1).join(':');
+    const input = document.getElementById('historySearch');
+    if (input) input.value = redemptionId;
+    if (!HISTORY_DATA.length) loadRedemptionHistory(); else window.filterHistory();
+    return;
+  }
+  if (String(messageKind).startsWith('auth_')) {
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('tabAuthHelpBtn')).show();
+    return;
+  }
+  bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#pills-users"]')).show();
+};
+
+window.loadLineNotifications = loadLineNotifications;
 
 function escapeAuditHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -773,6 +993,10 @@ const AUDIT_EVENT_META = {
   coupon_assigned:              { label: 'มอบคูปองให้ผู้ใช้',               icon: 'fa-ticket',          tone: 'success' },
   coupon_assignment_cancelled:  { label: 'ยกเลิกคูปองเฉพาะบุคคล',          icon: 'fa-ban',             tone: 'warning' },
   coupon_notification_retry:    { label: 'ส่งข้อความคูปองทาง LINE ใหม่',    icon: 'fa-paper-plane',     tone: 'primary' },
+  admin_points_adjusted:        { label: 'เพิ่ม–ตัดคะแนนโดยผู้ดูแล',         icon: 'fa-coins',           tone: 'primary' },
+  redemption_received:          { label: 'ยืนยันการรับของรางวัล',            icon: 'fa-box-open',        tone: 'success' },
+  redemption_cancelled_refunded:{ label: 'ยกเลิกและคืนคะแนนรายการแลก',      icon: 'fa-rotate-left',     tone: 'info' },
+  line_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',              icon: 'fa-paper-plane',     tone: 'primary' },
   daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
   daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
   daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
@@ -812,6 +1036,14 @@ function formatAuditDetail(eventType, detail) {
     case 'coupon_assignment_cancelled':
       return [`${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason].filter(Boolean).join(' · ');
     case 'coupon_notification_retry':
+      return [d.messageKind, d.error].filter(Boolean).join(' · ');
+    case 'admin_points_adjusted':
+      return [`${Number(d.delta || 0) > 0 ? '+' : ''}${Number(d.delta || 0).toLocaleString('th-TH')} คะแนน`, `คงเหลือ ${Number(d.balanceAfter || 0).toLocaleString('th-TH')}`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+    case 'redemption_received':
+      return [d.rewardName, 'รับของแล้ว', `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+    case 'redemption_cancelled_refunded':
+      return [d.rewardName, `คืน ${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+    case 'line_notification_retry':
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
     case 'daily_checkin_success':
     case 'daily_checkin_duplicate': {

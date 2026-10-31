@@ -29,6 +29,7 @@ let sortDir  = "desc";
 let page     = 1;
 let pageSize = 20;
 let TARGET_USER = null; 
+let POINT_ADJUST_REQUEST_ID = '';
 let AUTH_HELP_CASES = [];
 let AUTH_HELP_DEEP_LINK_OPENED = false;
 
@@ -394,6 +395,7 @@ window.openActionModal = (uid) => {
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
     qs("#radioAdd").checked = true;
+    POINT_ADJUST_REQUEST_ID = window.crypto?.randomUUID ? window.crypto.randomUUID() : '';
     new bootstrap.Modal(qs('#actionModal')).show();
 };
 
@@ -484,7 +486,7 @@ async function closeAuthRecovery() {
 async function submitAdjust() {
     const mode = document.querySelector('input[name="adjustType"]:checked')?.value; 
     const amount = Number(qs("#adjustAmount")?.value || 0);
-    const note = qs("#adjustNote")?.value || "";
+    const note = String(qs("#adjustNote")?.value || "").trim();
     
     // ดึง UID ล่าสุด ณ วินาทีที่กดปุ่ม
     const finalAdminUid = getCurrentAdminUid();
@@ -494,6 +496,8 @@ async function submitAdjust() {
     }
 
     if (mode !== "reset" && amount <= 0) return Swal.fire("แจ้งเตือน","กรุณาระบุจำนวนแต้ม","warning");
+    if (note.length < 3) return Swal.fire("กรุณาระบุเหตุผล", "เหตุผลต้องมีอย่างน้อย 3 ตัวอักษร เพื่อใช้ตรวจสอบย้อนหลัง", "warning");
+    if (!POINT_ADJUST_REQUEST_ID && window.crypto?.randomUUID) POINT_ADJUST_REQUEST_ID = window.crypto.randomUUID();
 
     let action = "adjust";
     let delta = (mode === "add") ? amount : -amount;
@@ -510,13 +514,20 @@ async function submitAdjust() {
             action, 
             targetUid: TARGET_USER.uid, 
             delta, 
-            note 
+            note,
+            requestId: POINT_ADJUST_REQUEST_ID
         })
       });
       const j = await res.json();
       if (!res.ok || j.status !== "success") throw new Error(j.message || "Failed");
       
-      Swal.fire("สำเร็จ", "บันทึกเรียบร้อย", "success");
+      const lineSent = j.data?.lineNotification?.status === 'sent';
+      POINT_ADJUST_REQUEST_ID = '';
+      Swal.fire({
+        icon: lineSent ? 'success' : 'warning',
+        title: 'บันทึกคะแนนเรียบร้อย',
+        text: lineSent ? 'ส่ง Flex Message แจ้งผู้ใช้ทาง LINE แล้ว' : 'ปรับคะแนนสำเร็จ แต่ส่ง LINE ไม่สำเร็จ สามารถส่งใหม่ได้จากเมนูสถานะ LINE'
+      });
       loadPageUsers();
     } catch (e) { 
         console.error(e);

@@ -162,6 +162,12 @@
         </button>
       </li>
       <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-line-notifications" id="tabLineNotificationsBtn">
+          <i class="fa-brands fa-line me-1"></i> สถานะ LINE
+          <span class="badge bg-danger ms-1 d-none" id="lineFailedCount">0</span>
+        </button>
+      </li>
+      <li class="nav-item">
         <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-audit" id="tabAuditBtn">
           <i class="fa-solid fa-clipboard-list me-1"></i> บันทึกระบบ
         </button>
@@ -321,6 +327,45 @@
             <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
             <div>กำลังโหลดข้อมูล...</div>
           </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="pills-line-notifications" role="tabpanel">
+        <div class="m-card p-2 mb-3">
+          <div class="input-group mb-2">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="search" id="lineNotificationSearch" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหาชื่อ UID ประเภท หรือเลขอ้างอิง">
+            <button type="button" class="btn btn-light border-0" id="btnRefreshLineNotifications" aria-label="โหลดสถานะ LINE ใหม่"><i class="fa-solid fa-rotate-right"></i></button>
+          </div>
+          <div class="row g-2">
+            <div class="col-6">
+              <select id="lineNotificationStatus" class="form-select border-0 bg-light">
+                <option value="all">ทุกสถานะ</option>
+                <option value="failed">ส่งไม่สำเร็จ</option>
+                <option value="pending">รอส่ง</option>
+                <option value="sent">ส่งแล้ว</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <select id="lineNotificationKind" class="form-select border-0 bg-light">
+                <option value="all">ทุกประเภท</option>
+                <option value="score_adjusted">เพิ่ม–ตัดคะแนน</option>
+                <option value="redemption_created">แลกของสำเร็จ</option>
+                <option value="redemption_received">รับของแล้ว</option>
+                <option value="redemption_cancelled">ยกเลิก/คืนคะแนน</option>
+                <option value="coupon_issued">มอบคูปอง</option>
+                <option value="coupon_redeemed">ใช้คูปอง</option>
+                <option value="coupon_cancelled">ยกเลิกคูปอง</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <input type="date" id="lineNotificationDate" class="form-control border-0 bg-light" aria-label="กรองวันที่แจ้งเตือน LINE">
+            </div>
+          </div>
+        </div>
+        <div class="small text-muted mb-2 px-1">การส่งใหม่จะส่งเฉพาะข้อความ LINE และจะไม่ทำธุรกรรมคะแนน สต็อก คูปอง หรือการแลกซ้ำ</div>
+        <div id="lineNotificationList" class="pb-5">
+          <div class="text-center py-5 text-muted">เลือกแท็บเพื่อโหลดสถานะการแจ้งเตือน</div>
         </div>
       </div>
 
@@ -586,7 +631,7 @@
             </div>
 
             <input type="number" id="adjustAmount" class="form-control mb-2 text-center" placeholder="จำนวนแต้ม" style="font-size: 1.2rem;">
-            <input type="text" id="adjustNote" class="form-control mb-3 text-center small" placeholder="เหตุผล (ถ้ามี)">
+            <input type="text" id="adjustNote" class="form-control mb-3 text-center small" placeholder="เหตุผล (จำเป็น)" required minlength="3" maxlength="300">
             
             <button class="btn btn-primary w-100 rounded-pill fw-bold py-2" id="btnConfirmAdjust">ยืนยัน</button>
           </div>
