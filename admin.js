@@ -106,6 +106,8 @@ async function initAdminSystem() {
         await loadCoupons();
     }
 
+    await openRedemptionDeepLink();
+
   } catch (err) {
     console.error('Admin Init Error:', err);
   }
@@ -672,7 +674,7 @@ function renderHistoryList(list) {
           received: { label: 'รับของแล้ว', tone: 'primary' },
           cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info' }
         }[item.status] || { label: item.status || '-', tone: 'secondary' };
-        const lineItems = [item.created_notification, item.received_notification, item.cancelled_notification].filter(Boolean);
+        const lineItems = [item.created_notification, item.admin_notification, item.received_notification, item.cancelled_notification].filter(Boolean);
         const failedNotification = lineItems.find(row => row.status === 'failed');
         const latestNotification = lineItems[lineItems.length - 1] || null;
         const lineBadge = !latestNotification
@@ -689,8 +691,11 @@ function renderHistoryList(list) {
           <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="cancelRedemptionAndRefund(${idArg})">ยกเลิก/คืนคะแนน</button>
         ` : '';
 
+        const focusedRedemptionId = String(new URLSearchParams(window.location.search).get('redemption_id') || '');
+        const isFocused = focusedRedemptionId === String(item.id || '');
+
         return `
-        <div class="m-card mb-2">
+        <div id="redemption-card-${escapeAuditHtml(item.id)}" data-redemption-id="${escapeAuditHtml(item.id)}" class="m-card mb-2 ${isFocused ? 'border border-warning border-2 shadow-sm' : ''}">
             <div class="d-flex justify-content-between align-items-start mb-2">
                 <div class="d-flex align-items-center gap-3">
                     
@@ -706,6 +711,7 @@ function renderHistoryList(list) {
                         <div class="text-muted small mt-1">
                            <i class="fa-solid fa-user-check me-1 text-success"></i> ${escapeAuditHtml(item.user_name)}
                         </div>
+                        <div class="text-muted small"><i class="fa-solid fa-building me-1"></i>${escapeAuditHtml(item.user_room || '-')}</div>
                     </div>
                 </div>
 
@@ -728,6 +734,23 @@ function renderHistoryList(list) {
         </div>
         `;
     }).join('');
+
+    const targetId = String(new URLSearchParams(window.location.search).get('redemption_id') || '');
+    if (targetId) requestAnimationFrame(() => {
+      document.getElementById(`redemption-card-${targetId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+}
+
+async function openRedemptionDeepLink() {
+  const redemptionId = String(new URLSearchParams(window.location.search).get('redemption_id') || '').trim();
+  if (!/^[0-9a-f-]{36}$/i.test(redemptionId)) return;
+  const historyTab = document.getElementById('tabHistoryBtn');
+  if (!historyTab || typeof bootstrap === 'undefined') return;
+  const input = document.getElementById('historySearch');
+  if (input) input.value = redemptionId;
+  bootstrap.Tab.getOrCreateInstance(historyTab).show();
+  await loadRedemptionHistory();
+  window.filterHistory();
 }
 
 // 4. ฟังก์ชันค้นหา (Filter)
@@ -788,7 +811,7 @@ window.retryTransactionNotification = async (notificationId) => {
     const data = await adminAction({ action: 'line_notification_retry', notificationId });
     if (data?.status !== 'sent') throw new Error(data?.last_error || 'LINE ยังรับข้อความไม่ได้');
     await loadRedemptionHistory();
-    Swal.fire('ส่งแล้ว', 'ส่ง Flex Message ให้ผู้ใช้เรียบร้อย', 'success');
+    Swal.fire('ส่งแล้ว', 'ส่ง Flex Message เรียบร้อย', 'success');
   } catch (error) {
     toastErr(error.message || 'ส่ง LINE ไม่สำเร็จ');
   } finally { sysOverlay.hide(); }
@@ -797,6 +820,7 @@ window.retryTransactionNotification = async (notificationId) => {
 const LINE_KIND_LABELS = {
   score_adjusted: 'เพิ่ม–ตัดคะแนน',
   redemption_created: 'แลกของสำเร็จ',
+  redemption_admin_new: 'แจ้งแอดมินว่ามีรายการแลกใหม่',
   redemption_received: 'รับของแล้ว',
   redemption_cancelled: 'ยกเลิกและคืนคะแนน',
   coupon_issued: 'มอบคูปอง',

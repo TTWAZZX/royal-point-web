@@ -18,6 +18,7 @@ async function main() {
 
   const {
     buildAdminHelpMessage,
+    buildAdminRedemptionRequestMessage,
     buildCouponCancelledMessage,
     buildCouponIssuedMessage,
     buildCouponRedeemedMessage,
@@ -66,6 +67,12 @@ async function main() {
       redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', cost:40, created_at:new Date().toISOString() },
       reward:{ name:'ของรางวัลทดสอบ', img_url:'https://example.com/reward.png' }, balance:960,
       url:'https://liff.line.me/1234567890-AbcdEfgh?redemption_id=adb9d292-f1da-4a73-9802-66a13b0ccfca'
+    }),
+    buildAdminRedemptionRequestMessage({
+      redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', cost:40, created_at:new Date().toISOString() },
+      reward:{ name:'ของรางวัลทดสอบ', img_url:'https://example.com/reward.png' },
+      user:{ name:'ผู้ใช้ทดสอบระบบ', room:'SHE' },
+      url:'https://example.com/admin.html?redemption_id=adb9d292-f1da-4a73-9802-66a13b0ccfca'
     }),
     buildRedemptionReceivedMessage({
       redemption:{ id:'adb9d292-f1da-4a73-9802-66a13b0ccfca', received_at:new Date().toISOString() },

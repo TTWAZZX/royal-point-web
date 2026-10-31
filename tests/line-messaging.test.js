@@ -6,7 +6,9 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 
 const {
   adminCaseUrl,
+  adminRedemptionUrl,
   buildAdminHelpMessage,
+  buildAdminRedemptionRequestMessage,
   buildCouponCancelledMessage,
   buildCouponIssuedMessage,
   buildCouponRedeemedMessage,
@@ -49,8 +51,10 @@ test('builds LINE Flex Messages for every authentication help stage', () => {
 test('creates direct user and admin links without exposing a UID', () => {
   const recoveryUrl = userRecoveryUrl(req, 'one-time-secret')
   const adminUrl = adminCaseUrl(req, 7)
+  const adminRedemption = adminRedemptionUrl(req, 'adb9d292-f1da-4a73-9802-66a13b0ccfca')
   assert.equal(new URL(recoveryUrl).searchParams.get('recovery_ticket'), 'one-time-secret')
   assert.equal(new URL(adminUrl).searchParams.get('helpCase'), '7')
+  assert.equal(new URL(adminRedemption).searchParams.get('redemption_id'), 'adb9d292-f1da-4a73-9802-66a13b0ccfca')
   assert.equal(recoveryUrl.includes(helpCase.target_uid), false)
 })
 
@@ -82,6 +86,10 @@ test('builds point and reward transaction Flex Messages', () => {
     user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://liff.line.me/test?view=score-history'
   }))
   assertFlex(buildRedemptionCreatedMessage({ redemption, reward, balance:960, url:redemptionUrl }))
+  assertFlex(buildAdminRedemptionRequestMessage({
+    redemption, reward, user:{ name:'ผู้ใช้ทดสอบ', room:'SHE' },
+    url:adminRedemptionUrl(req, redemption.id)
+  }))
   assertFlex(buildRedemptionReceivedMessage({ redemption, reward, url:redemptionUrl }))
   assertFlex(buildRedemptionCancelledMessage({ redemption, reward, reason:'ของจริงไม่พร้อมจ่าย', balance:1000, url:'https://liff.line.me/test?view=score-history' }))
 })

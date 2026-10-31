@@ -1585,7 +1585,7 @@ module.exports = async (req, res) => {
            cancel_reason,
            refund_balance,
            reward_id,
-           users:user_id ( name, uid ),
+           users:user_id ( name, uid, room ),
            rewards:reward_id ( name, img_url )
         `)
         .order('created_at', { ascending: false })
@@ -1606,7 +1606,7 @@ module.exports = async (req, res) => {
         ? await supabaseAdmin
             .from('line_notification_outbox')
             .select('id,dedupe_key,message_kind,status,attempt_count,last_error,sent_at,updated_at')
-            .in('message_kind', ['redemption_created', 'redemption_received', 'redemption_cancelled'])
+            .in('message_kind', ['redemption_created', 'redemption_admin_new', 'redemption_received', 'redemption_cancelled'])
             .order('created_at', { ascending: false })
             .limit(300)
         : { data: [], error: null }
@@ -1621,6 +1621,7 @@ module.exports = async (req, res) => {
          
          user_name: row.users?.name || 'ไม่ระบุชื่อ',
          user_uid:  row.users?.uid  || 'N/A',
+         user_room: row.users?.room || '-',
          user_img:  '', // ใน DB ไม่มีรูป ก็ปล่อยว่างไว้ เดี๋ยวหน้าบ้านใส่ Default ให้
          
          reward_name: row.rewards?.name || 'ของรางวัล (ลบแล้ว)', 
@@ -1636,6 +1637,7 @@ module.exports = async (req, res) => {
          cancel_reason: row.cancel_reason,
          refund_balance: row.refund_balance,
          created_notification: notificationMap.get(`redemption-created:${row.id}`) || null,
+         admin_notification: notificationMap.get(`redemption-admin:${row.id}`) || null,
          received_notification: notificationMap.get(`redemption-received:${row.id}`) || null,
          cancelled_notification: notificationMap.get(`redemption-cancelled:${row.id}`) || null
       }))

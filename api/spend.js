@@ -3,6 +3,8 @@ const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
 const {
+  adminRedemptionUrl,
+  buildAdminRedemptionRequestMessage,
   buildRedemptionCreatedMessage,
   queueLineNotification,
   userRedemptionUrl
@@ -109,9 +111,16 @@ module.exports = async (req, res) => {
       img_url: result.reward_image || ''
     }
 
-    let notification = null
+    const { data: userProfile } = await supabaseAdmin
+      .from('users')
+      .select('name,room')
+      .eq('uid', cleanUid)
+      .maybeSingle()
+
+    let userNotification = null
+    let adminNotification = null
     try {
-      notification = await queueLineNotification({
+      userNotification = await queueLineNotification({
         dedupeKey: `redemption-created:${redemption.id}`,
         recipientUid: cleanUid,
         messageKind: 'redemption_created',
@@ -123,7 +132,26 @@ module.exports = async (req, res) => {
         })
       })
     } catch (notifyError) {
-      console.error('[spend] redemption LINE notification failed:', notifyError?.message || notifyError)
+      console.error('[spend] user redemption LINE notification failed:', notifyError?.message || notifyError)
+    }
+
+    const adminUid = String(process.env.ADMIN_UID || '').trim()
+    if (adminUid) {
+      try {
+        adminNotification = await queueLineNotification({
+          dedupeKey: `redemption-admin:${redemption.id}`,
+          recipientUid: adminUid,
+          messageKind: 'redemption_admin_new',
+          payload: buildAdminRedemptionRequestMessage({
+            redemption,
+            reward,
+            user: userProfile || { name: 'ผู้ใช้ Royal Point' },
+            url: adminRedemptionUrl(req, redemption.id)
+          })
+        })
+      } catch (notifyError) {
+        console.error('[spend] admin redemption LINE notification failed:', notifyError?.message || notifyError)
+      }
     }
 
     await auditEvent(supabaseAdmin, {
@@ -136,7 +164,8 @@ module.exports = async (req, res) => {
         requestId: cleanRequestId,
         duplicate: Boolean(result.was_duplicate),
         balanceAfter: redemption.balance_after,
-        lineStatus: notification?.status || 'failed'
+        lineStatus: userNotification?.status || 'failed',
+        adminLineStatus: adminNotification?.status || (adminUid ? 'failed' : 'not_configured')
       }
     })
 
@@ -148,7 +177,10 @@ module.exports = async (req, res) => {
       balance: redemption.balance_after,
       redemption,
       duplicate: Boolean(result.was_duplicate),
-      lineNotification: notification ? { status: notification.status } : { status: 'failed' }
+      lineNotification: {
+        status: userNotification?.status || 'failed',
+        adminStatus: adminNotification?.status || (adminUid ? 'failed' : 'not_configured')
+      }
     })
   } catch (error) {
     if (error instanceof AuthError) return sendAuthError(res, error)
