@@ -29,6 +29,34 @@ let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
 let LINE_NOTIFICATION_ROWS = [];
+const ADMIN_ACTIVE_TAB_KEY = 'RP_ADMIN_ACTIVE_TAB';
+
+function hasAdminDeepLink() {
+    const params = new URLSearchParams(window.location.search);
+    return params.has('helpCase') || params.has('redemption_id');
+}
+
+function setupPersistentAdminTab() {
+    const tabButtons = [...document.querySelectorAll('[data-bs-toggle="pill"][data-bs-target^="#pills-"]')];
+    if (!tabButtons.length || typeof bootstrap === 'undefined') return;
+
+    for (const button of tabButtons) {
+        button.addEventListener('shown.bs.tab', event => {
+            const target = String(event.target?.getAttribute('data-bs-target') || '');
+            if (target) sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, target);
+        });
+    }
+
+    if (hasAdminDeepLink()) return;
+    const savedTarget = String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '');
+    if (!savedTarget) return;
+    const savedButton = tabButtons.find(button => button.getAttribute('data-bs-target') === savedTarget);
+    if (savedButton) {
+        setTimeout(() => bootstrap.Tab.getOrCreateInstance(savedButton).show(), 0);
+    } else {
+        sessionStorage.removeItem(ADMIN_ACTIVE_TAB_KEY);
+    }
+}
 
 function scrollSafetySubtabIntoView() {
     const anchor = document.querySelector('.safety-subnav-card');
@@ -541,6 +569,7 @@ let HISTORY_DATA = [];
 
 // 1. ผูก Event เมื่อกด Tab "ประวัติ" ให้โหลดข้อมูลทันที
 document.addEventListener("DOMContentLoaded", () => {
+    setupPersistentAdminTab();
     const histBtn = document.getElementById('tabHistoryBtn');
     if(histBtn) {
         histBtn.addEventListener('shown.bs.tab', () => {
