@@ -295,7 +295,7 @@ async function completeHelp(req, res) {
     entityType: 'auth_help_case',
     entityId: helpCase.id,
     status: 'success',
-    detail: { caseNo: helpCase.case_no }
+    detail: { caseNo: helpCase.case_no, resolutionMethod: 'recovery_completed' }
   })
 
   return res.status(200).json({ status: 'success', data: { caseNo: helpCase.case_no, caseStatus: helpCase.status } })

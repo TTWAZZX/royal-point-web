@@ -57,10 +57,32 @@ function authBadge(auth) {
 const AUTH_HELP_STATUS = {
   open: { label:'รอดำเนินการ', tone:'warning' },
   approved: { label:'เปิดช่วยเหลือแล้ว', tone:'primary' },
-  resolved: { label:'แก้ไขแล้ว', tone:'success' },
+  resolved: { label:'ผู้ใช้เข้าใช้งานสำเร็จ', tone:'success' },
   expired: { label:'หมดอายุ', tone:'secondary' },
   closed: { label:'ปิดเรื่อง', tone:'dark' }
 };
+
+function helpOutcomeSummary(helpCase) {
+    if (helpCase?.status === 'resolved') {
+        const viaRecovery = helpCase.resolution_method === 'recovery_completed';
+        return {
+            label: viaRecovery ? 'เข้าใช้งานผ่านโหมดช่วยเหลือสำเร็จ' : 'ยืนยัน LINE สำเร็จ',
+            tone: 'success',
+            icon: 'fa-circle-check',
+            time: helpCase.resolved_at || null
+        };
+    }
+    if (helpCase?.status === 'expired') {
+        return { label:'ยังไม่พบการยืนยันสำเร็จก่อนหมดเวลา', tone:'secondary', icon:'fa-clock', time:null };
+    }
+    if (helpCase?.status === 'approved') {
+        return { label:'รอผู้ใช้กดลิงก์และกลับเข้าสู่ระบบ', tone:'primary', icon:'fa-hourglass-half', time:null };
+    }
+    if (helpCase?.status === 'open') {
+        return { label:'รอผู้ดูแลดำเนินการ', tone:'warning', icon:'fa-headset', time:null };
+    }
+    return { label:'ปิดเรื่องโดยยังไม่มีผลยืนยัน', tone:'dark', icon:'fa-circle-minus', time:null };
+}
 
 const AUTH_ERROR_LABEL = {
   AUTH_PROVIDER_UNAVAILABLE: 'เชื่อมต่อ LINE ไม่ได้ชั่วคราว',
@@ -233,6 +255,7 @@ function renderAuthHelpCases() {
     area.innerHTML = filtered.map(item => {
         const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
         const delivery = notificationSummary(item);
+        const outcome = helpOutcomeSummary(item);
         const canApprove = item.status === 'open';
         return `<div class="m-card" id="auth-help-case-${escapeHtml(item.id)}">
           <div class="d-flex align-items-start justify-content-between gap-2">
@@ -244,6 +267,7 @@ function renderAuthHelpCases() {
           </div>
           <div class="small mt-3"><span class="text-muted">สาเหตุ:</span> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || 'ยืนยันตัวตนไม่สำเร็จ')}</div>
           <div class="small text-muted mt-1">แจ้งล่าสุด ${escapeHtml(formatDateTime(item.last_requested_at))} · ${Number(item.request_count || 1)} ครั้ง</div>
+          <div class="small mt-2 text-${outcome.tone}-emphasis"><i class="fa-solid ${outcome.icon} me-1"></i><b>ผลผู้ใช้:</b> ${escapeHtml(outcome.label)}${outcome.time ? ` · ${escapeHtml(formatDateTime(outcome.time))}` : ''}</div>
           <div class="d-flex align-items-center justify-content-between gap-2 mt-3 pt-2 border-top">
             <span class="badge bg-${delivery.tone}-subtle text-${delivery.tone}-emphasis"><i class="fa-brands fa-line me-1"></i>${delivery.label}</span>
             <div class="d-flex gap-1">
@@ -260,6 +284,7 @@ window.openAuthHelpCase = async (caseId) => {
     if (!item) return;
     const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
     const delivery = notificationSummary(item);
+    const outcome = helpOutcomeSummary(item);
     const recoveryText = item.recovery_until ? `<br><span class="small text-muted">สิทธิ์ถึง ${escapeHtml(formatDateTime(item.recovery_until))}</span>` : '';
     const result = await Swal.fire({
         title: item.case_no,
@@ -268,6 +293,7 @@ window.openAuthHelpCase = async (caseId) => {
           <div><b>UID:</b> <code>${escapeHtml(item.target_uid)}</code></div>
           <div><b>สาเหตุ:</b> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || item.error_code)}</div>
           <div><b>สถานะ:</b> ${meta.label}${recoveryText}</div>
+          <div><b>ผลผู้ใช้:</b> <span class="text-${outcome.tone}-emphasis">${escapeHtml(outcome.label)}</span>${outcome.time ? ` เมื่อ ${escapeHtml(formatDateTime(outcome.time))}` : ''}</div>
           <div><b>LINE:</b> ${delivery.label}</div>
           ${delivery.failed?.last_error ? `<div class="text-danger mt-2">${escapeHtml(delivery.failed.last_error)}</div>` : ''}
         </div>`,

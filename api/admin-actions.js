@@ -671,16 +671,56 @@ module.exports = async (req, res) => {
 
         const uids = [...new Set((cases || []).map(row => row.target_uid).filter(Boolean))]
         const caseIds = (cases || []).map(row => row.id)
-        const [usersResult, notificationsResult] = await Promise.all([
+        const [usersResult, notificationsResult, ticketsResult, migrationsResult] = await Promise.all([
           uids.length
             ? supabaseAdmin.from('users').select('uid,name,tel,room').in('uid', uids)
             : Promise.resolve({ data: [], error: null }),
           caseIds.length
             ? supabaseAdmin.from('line_notification_outbox').select('id,case_id,message_kind,status,attempt_count,last_error,sent_at,updated_at').in('case_id', caseIds).order('created_at', { ascending: false })
+            : Promise.resolve({ data: [], error: null }),
+          caseIds.length
+            ? supabaseAdmin.from('auth_recovery_tickets').select('case_id,consumed_at').in('case_id', caseIds).not('consumed_at', 'is', null)
+            : Promise.resolve({ data: [], error: null }),
+          uids.length
+            ? supabaseAdmin.from('user_auth_migrations').select('uid,last_verified_at').in('uid', uids)
             : Promise.resolve({ data: [], error: null })
         ])
         if (usersResult.error) throw usersResult.error
         if (notificationsResult.error) throw notificationsResult.error
+        if (ticketsResult.error) throw ticketsResult.error
+        if (migrationsResult.error) throw migrationsResult.error
+
+        // รองรับเรื่องเก่าที่ผู้ใช้ยืนยัน LINE สำเร็จแล้ว แต่เรื่องเคยค้างจนหมดอายุ
+        const migrations = new Map((migrationsResult.data || []).map(item => [item.uid, item]))
+        const verifiedCases = (cases || []).filter(helpCase => {
+          if (helpCase.status === 'resolved' || helpCase.status === 'closed') return false
+          const verifiedAt = new Date(migrations.get(helpCase.target_uid)?.last_verified_at || 0).getTime()
+          const requestedAt = new Date(helpCase.last_requested_at || helpCase.requested_at || 0).getTime()
+          return Number.isFinite(verifiedAt) && Number.isFinite(requestedAt) && verifiedAt > requestedAt
+        })
+        await Promise.all(verifiedCases.map(async helpCase => {
+          const resolvedAt = migrations.get(helpCase.target_uid).last_verified_at
+          const { data, error: resolveError } = await supabaseAdmin
+            .from('auth_help_cases')
+            .update({ status: 'resolved', resolved_at: resolvedAt, updated_at: now })
+            .eq('id', helpCase.id)
+            .in('status', ['open', 'approved', 'expired'])
+            .select('id')
+            .maybeSingle()
+          if (resolveError) throw resolveError
+          if (!data) return
+          helpCase.status = 'resolved'
+          helpCase.resolved_at = resolvedAt
+          await auditEvent(supabaseAdmin, {
+            type: 'auth_help_resolved',
+            actorUid: helpCase.target_uid,
+            targetUid: helpCase.target_uid,
+            entityType: 'auth_help_case',
+            entityId: helpCase.id,
+            status: 'success',
+            detail: { caseNo: helpCase.case_no, resolutionMethod: 'line_verified', reconciled: true }
+          })
+        }))
 
         const users = new Map((usersResult.data || []).map(user => [user.uid, user]))
         const notifications = new Map()
@@ -689,10 +729,14 @@ module.exports = async (req, res) => {
           current.push(item)
           notifications.set(item.case_id, current)
         }
+        const consumedRecoveryCases = new Set((ticketsResult.data || []).map(item => String(item.case_id)))
         const rows = (cases || []).map(helpCase => ({
           ...helpCase,
           user: users.get(helpCase.target_uid) || null,
-          notifications: notifications.get(helpCase.id) || []
+          notifications: notifications.get(helpCase.id) || [],
+          resolution_method: helpCase.status === 'resolved'
+            ? (consumedRecoveryCases.has(String(helpCase.id)) ? 'recovery_completed' : 'line_verified')
+            : null
         }))
         return res.status(200).json({ status: 'success', data: rows })
       } catch (error) {

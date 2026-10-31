@@ -8,6 +8,7 @@ process.env.LINE_LOGIN_CHANNEL_ID = '2007053300'
 
 const migrations = new Map()
 const recoveryTickets = []
+const helpCases = []
 const supabasePath = require.resolve('../lib/supabase')
 require.cache[supabasePath] = {
   id: supabasePath,
@@ -17,6 +18,28 @@ require.cache[supabasePath] = {
     getRedis: () => null,
     supabaseAdmin: {
       from(table) {
+        if (table === 'audit_logs') {
+          return { async insert() { return { error: null } } }
+        }
+        if (table === 'auth_help_cases') {
+          return {
+            update(changes) {
+              const filters = {}
+              let statuses = []
+              const builder = {
+                eq(field, value) { filters[field] = value; return builder },
+                in(field, values) { if (field === 'status') statuses = values; return builder },
+                select() { return builder },
+                async maybeSingle() {
+                  const row = helpCases.find(item => Object.entries(filters).every(([key, value]) => item[key] === value) && statuses.includes(item.status)) || null
+                  if (row) Object.assign(row, changes)
+                  return { data: row ? { id: row.id, case_no: row.case_no } : null, error: null }
+                }
+              }
+              return builder
+            }
+          }
+        }
         if (table === 'auth_recovery_tickets') {
           return {
             select() {
@@ -88,6 +111,7 @@ function mockLine({ uid = 'U-user-1', channelId = '2007053300', valid = true } =
 test.beforeEach(() => {
   migrations.clear()
   recoveryTickets.length = 0
+  helpCases.length = 0
   mockLine()
 })
 
@@ -173,6 +197,22 @@ test('successful token verification closes an active recovery window', async () 
   assert.equal(state.recovery_until, null)
   assert.equal(state.recovery_reason, null)
   assert.equal(state.recovery_by, null)
+})
+
+test('successful LINE verification resolves the related help case', async () => {
+  migrations.set('U-user-1', {
+    uid: 'U-user-1',
+    token_required: true,
+    recovery_until: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+    recovery_case_id: 12
+  })
+  helpCases.push({ id: 12, case_no: 'HELP-000012', target_uid: 'U-user-1', status: 'approved' })
+
+  await authenticateRequest(request('valid-token'), { claimedUid: 'U-user-1' })
+
+  assert.equal(helpCases[0].status, 'resolved')
+  assert.ok(helpCases[0].resolved_at)
+  assert.equal(migrations.get('U-user-1').recovery_case_id, null)
 })
 
 test('rejects a token whose LINE UID differs from the claimed UID', async () => {
