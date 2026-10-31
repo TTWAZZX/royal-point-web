@@ -1972,7 +1972,7 @@ async function redeemReward(reward, btn){
           <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
           <div class="alert alert-success small p-2 text-start">
              สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหลักฐานรายการแลกแก่ จป.วิชาชีพ<br>
-             หรือติดต่อ <a href="tel:11991919" class="fw-bold">1199 1919</a> เพื่อตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่
+             หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>
           </div>
           ${payload?.redemption?.id ? `<div class="small text-muted">เลขรายการ: ${h(payload.redemption.id)}</div>` : ''}
         `,
@@ -2169,7 +2169,7 @@ async function handleTransactionDeepLinks() {
         <div class="small"><b>เลขรายการ:</b> <code>${h(item.id)}</code></div>
         <div class="small mt-1"><b>คะแนนที่ใช้:</b> ${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</div>
         <div class="small mt-1"><b>วันที่แลก:</b> ${h(new Date(item.createdAt).toLocaleString('th-TH'))}</div>
-        <div class="alert alert-light border small mt-3 mb-0">${h(statusMeta.detail)}${item.redemptionStatus === 'approved' ? '<br>โทร <a href="tel:11991919" class="fw-bold">1199 1919</a> เพื่อตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่' : ''}</div>
+        <div class="alert alert-light border small mt-3 mb-0">${h(statusMeta.detail)}${item.redemptionStatus === 'approved' ? '<br>หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>' : ''}</div>
       </div>`,
       confirmButtonText: 'ปิด'
     });

@@ -113,10 +113,24 @@ test('transaction notifications and reward pickup are connected end to end', () 
   assert.match(read('admin.js'), /openRedemptionDeepLink/)
   assert.match(read('admin.js'), /RP_ADMIN_ACTIVE_TAB/)
   assert.match(read('admin.js'), /setupPersistentAdminTab/)
+  assert.match(read('admin.js'), /restorePersistentAdminTab/)
   assert.match(read('admin.js'), /hasAdminDeepLink/)
   assert.match(read('admin.js'), /cancelRedemptionAndRefund/)
   assert.match(read('app.js'), /handleTransactionDeepLinks/)
   assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
+})
+
+test('admin restores the saved tab only after administrator authentication finishes', () => {
+  const source = read('admin.js')
+  const init = source.indexOf('await initAdminSystem()')
+  const restore = source.indexOf('restorePersistentAdminTab()', init)
+  assert.ok(init >= 0 && restore > init, 'saved admin tab must restore after initAdminSystem completes')
+})
+
+test('internal desk numbers are never exposed as clickable telephone links', () => {
+  for (const file of ['lib/line-messaging.js', 'app.js', 'all-rewards.html']) {
+    assert.doesNotMatch(read(file), /tel:1199/i, `${file} must describe internal extensions as text only`)
+  }
 })
 
 test('user-facing source files contain no common UTF-8 mojibake sequences', () => {

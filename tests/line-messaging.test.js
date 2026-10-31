@@ -39,6 +39,24 @@ function assertFlex(message) {
   assert.ok(message.altText.length > 0 && message.altText.length <= 400)
   assert.equal(message.contents.type, 'bubble')
   assert.doesNotThrow(() => JSON.stringify(message))
+  assert.equal(JSON.stringify(message).includes('tel:'), false, 'เบอร์ภายในบริษัทต้องไม่เป็นลิงก์โทรศัพท์')
+
+  const visit = value => {
+    if (!value || typeof value !== 'object') return
+    if (value.type === 'button') {
+      const label = String(value.action?.label || '')
+      const graphemes = [...new Intl.Segmenter('th', { granularity: 'grapheme' }).segment(label)]
+      assert.ok(graphemes.length <= 20, `ป้ายปุ่ม LINE ยาวเกิน 20 ตัวอักษร: ${label}`)
+    }
+    if (value.type === 'text' && value.size === 'xl') {
+      assert.equal(value.wrap, true, `หัวข้อ Flex ต้องตัดบรรทัดได้: ${value.text}`)
+    }
+    for (const child of Object.values(value)) {
+      if (Array.isArray(child)) child.forEach(visit)
+      else if (child && typeof child === 'object') visit(child)
+    }
+  }
+  visit(message.contents)
 }
 
 test('builds LINE Flex Messages for every authentication help stage', () => {
@@ -85,7 +103,9 @@ test('builds point and reward transaction Flex Messages', () => {
     adjustment:{ adjustment_id:'2154e6c2-8cc4-4354-a156-3c3c7248ad55', applied_delta:50, balance_before:950, balance_after:1000, reason:'รางวัลกิจกรรม', mode:'add' },
     user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://liff.line.me/test?view=score-history'
   }))
-  assertFlex(buildRedemptionCreatedMessage({ redemption, reward, balance:960, url:redemptionUrl }))
+  const created = buildRedemptionCreatedMessage({ redemption, reward, balance:960, url:redemptionUrl })
+  assertFlex(created)
+  assert.match(JSON.stringify(created), /โทรศัพท์ภายในบริษัทที่ 1199 หรือ 1919/)
   assertFlex(buildAdminRedemptionRequestMessage({
     redemption, reward, user:{ name:'ผู้ใช้ทดสอบ', room:'SHE' },
     url:adminRedemptionUrl(req, redemption.id)

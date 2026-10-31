@@ -46,7 +46,11 @@ function setupPersistentAdminTab() {
             if (target) sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, target);
         });
     }
+}
 
+function restorePersistentAdminTab() {
+    const tabButtons = [...document.querySelectorAll('[data-bs-toggle="pill"][data-bs-target^="#pills-"]')];
+    if (!tabButtons.length || typeof bootstrap === 'undefined') return;
     if (hasAdminDeepLink()) return;
     const savedTarget = String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '');
     if (!savedTarget) return;
@@ -90,6 +94,7 @@ function toastErr(message) {
 document.addEventListener("DOMContentLoaded", async () => {
   await initAdminSystem();
   bindGlobalEvents();
+  restorePersistentAdminTab();
 });
 
 async function initAdminSystem() {
@@ -638,6 +643,14 @@ document.addEventListener("DOMContentLoaded", () => {
 async function loadRedemptionHistory() {
     const area = document.getElementById('historyListArea');
     if(!area) return;
+
+    if (!ADMIN_UID) {
+        area.innerHTML = `<div class="text-center text-warning py-5">
+            <i class="fa-solid fa-user-shield mb-2"></i><br>
+            กำลังยืนยันสิทธิ์ผู้ดูแล กรุณารอสักครู่แล้วลองใหม่
+        </div>`;
+        return;
+    }
 
     area.innerHTML = `
       <div class="text-center py-5 text-muted">
