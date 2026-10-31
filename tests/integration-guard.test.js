@@ -199,8 +199,8 @@ test('Safety Questions supports accurate totals, filters, pagination and fair da
   assert.match(adminApi, /query\.ilike\('question'/)
   assert.match(adminApi, /safety_question_batch_create/)
   assert.doesNotMatch(safetyQuestionsGet, /\.limit\(100\)/)
-  assert.match(dailyApi, /select\('id', \{ count: 'exact', head: true \}\)/)
-  assert.match(dailyApi, /\.range\(offset, offset\)/)
+  assert.match(dailyApi, /selectSmartSafetyQuestion/)
+  assert.match(dailyApi, /select\('safety_question_id,checkin_date,created_at'\)/)
   assert.doesNotMatch(dailyApi, /\.limit\(30\)/)
   for (const id of ['safetyQuestionSearch', 'safetyQuestionStatusFilter', 'safetyQuestionCategoryFilter', 'safetyQuestionSourceFilter', 'safetyQuestionSort', 'safetyQuestionPageSize']) {
     assert.match(adminHtml, new RegExp(`id="${id}"`))
@@ -208,6 +208,25 @@ test('Safety Questions supports accurate totals, filters, pagination and fair da
   assert.match(adminJs, /function renderSafetyQuestionPagination/)
   assert.match(adminJs, /showNewestSafetyQuestions/)
   assert.match(adminJs, /action: 'safety_question_batch_create'/)
+})
+
+test('Safety Questions rotate intelligently per user without changing during the day', () => {
+  const migration = read('supabase_safety_question_rotation_migration.sql')
+  const dailyApi = read('api/daily-checkin.js')
+  const rotation = read('lib/safety-question-rotation.js')
+
+  assert.match(migration, /create table if not exists public\.safety_question_assignments/)
+  assert.match(migration, /unique \(uid, assignment_date\)/)
+  assert.match(migration, /daily_checkins_question_rotation_idx/)
+  assert.match(migration, /to service_role/i)
+  assert.doesNotMatch(migration, /to (?:anon|authenticated)/i)
+  assert.match(dailyApi, /loadAssignedSafetyQuestion/)
+  assert.match(dailyApi, /persistSafetyQuestionAssignment/)
+  assert.match(dailyApi, /selectSafetyQuestionForUser/)
+  assert.match(dailyApi, /getTodaySafetyQuestion\(today, user, existing\)/)
+  assert.match(dailyApi, /mode: 'existing_checkin'/)
+  assert.match(rotation, /mode = 'least_recently_seen'/)
+  assert.match(rotation, /stableQuestionScore/)
 })
 
 test('admin restores the saved tab only after administrator authentication finishes', () => {

@@ -1,6 +1,7 @@
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
+const { selectSmartSafetyQuestion } = require('../lib/safety-question-rotation')
 
 const redis = getRedis()
 const CHECKIN_POINTS = 5
@@ -124,28 +125,117 @@ function safeQuestion(row) {
   }
 }
 
-async function getTodaySafetyQuestion(today) {
-  try {
-    const { count, error: countError } = await supabaseAdmin
-      .from('safety_questions')
-      .select('id', { count: 'exact', head: true })
-      .eq('active', true)
-    if (countError) throw countError
-    const activeCount = Number(count || 0)
-    if (!activeCount) return DEFAULT_SAFETY_QUESTION
-    let sum = 0
-    for (const ch of today) sum += ch.charCodeAt(0)
-    const offset = sum % activeCount
-    const { data, error } = await supabaseAdmin
+function isMissingSafetyAssignmentTable(error) {
+  return /safety_question_assignments|schema cache|relation .* does not exist/i.test(String(error?.message || error))
+}
+
+async function loadAssignedSafetyQuestion(uid, today) {
+  const { data: assignment, error: assignmentError } = await supabaseAdmin
+    .from('safety_question_assignments')
+    .select('id,question_id,selection_mode')
+    .eq('uid', uid)
+    .eq('assignment_date', today)
+    .maybeSingle()
+
+  if (assignmentError) throw assignmentError
+  if (!assignment?.question_id) return null
+
+  const { data: question, error: questionError } = await supabaseAdmin
+    .from('safety_questions')
+    .select('id,category,question,options')
+    .eq('id', assignment.question_id)
+    .eq('active', true)
+    .maybeSingle()
+
+  if (questionError) throw questionError
+  return question ? { assignment, question } : null
+}
+
+async function loadSafetyQuestionById(questionId) {
+  if (!questionId) return null
+  const { data, error } = await supabaseAdmin
+    .from('safety_questions')
+    .select('id,category,question,options')
+    .eq('id', questionId)
+    .maybeSingle()
+  if (error) throw error
+  return data || null
+}
+
+async function persistSafetyQuestionAssignment(user, today, selected) {
+  const payload = {
+    user_id: user.id,
+    uid: user.uid,
+    assignment_date: today,
+    question_id: selected.question.id,
+    selection_mode: selected.mode
+  }
+  const { error } = await supabaseAdmin
+    .from('safety_question_assignments')
+    .upsert(payload, { onConflict: 'uid,assignment_date' })
+
+  if (error) throw error
+}
+
+async function selectSafetyQuestionForUser(user, today) {
+  const [{ data: questions, error: questionError }, { data: history, error: historyError }] = await Promise.all([
+    supabaseAdmin
       .from('safety_questions')
       .select('id,category,question,options')
       .eq('active', true)
       .order('created_at', { ascending: true })
-      .order('id', { ascending: true })
-      .range(offset, offset)
-      .maybeSingle()
-    if (error) throw error
-    return safeQuestion(data)
+      .order('id', { ascending: true }),
+    supabaseAdmin
+      .from('daily_checkins')
+      .select('safety_question_id,checkin_date,created_at')
+      .eq('uid', user.uid)
+      .not('safety_question_id', 'is', null)
+      .order('checkin_date', { ascending: false })
+      .limit(1000)
+  ])
+
+  if (questionError) throw questionError
+  if (historyError && !isMissingSafetyColumns(historyError)) throw historyError
+
+  return selectSmartSafetyQuestion(questions, history || [], user.uid, today)
+}
+
+async function getTodaySafetyQuestion(today, user, existingCheckin = null) {
+  try {
+    if (existingCheckin?.safety_question_id) {
+      const answeredQuestion = await loadSafetyQuestionById(existingCheckin.safety_question_id)
+      if (answeredQuestion) {
+        try {
+          await persistSafetyQuestionAssignment(user, today, {
+            question: answeredQuestion,
+            mode: 'existing_checkin'
+          })
+        } catch (error) {
+          if (!isMissingSafetyAssignmentTable(error)) throw error
+        }
+        return safeQuestion(answeredQuestion)
+      }
+    }
+
+    try {
+      const assigned = await loadAssignedSafetyQuestion(user.uid, today)
+      if (assigned?.question) return safeQuestion(assigned.question)
+    } catch (error) {
+      if (!isMissingSafetyAssignmentTable(error)) throw error
+    }
+
+    const selected = await selectSafetyQuestionForUser(user, today)
+    if (!selected.question) return DEFAULT_SAFETY_QUESTION
+
+    try {
+      await persistSafetyQuestionAssignment(user, today, selected)
+      const assigned = await loadAssignedSafetyQuestion(user.uid, today)
+      if (assigned?.question) return safeQuestion(assigned.question)
+    } catch (error) {
+      if (!isMissingSafetyAssignmentTable(error)) throw error
+    }
+
+    return safeQuestion(selected.question)
   } catch (error) {
     if (/safety_questions|schema cache|relation .* does not exist/i.test(String(error?.message || error))) {
       return DEFAULT_SAFETY_QUESTION
@@ -391,7 +481,7 @@ module.exports = async (req, res) => {
     const today = bangkokDate()
     const existing = await loadCheckin(cleanUid, today)
     const [safetyQuestion, safetySettings] = await Promise.all([
-      getTodaySafetyQuestion(today),
+      getTodaySafetyQuestion(today, user, existing),
       getSafetySettings()
     ])
     const checkinRule = getCheckinRule(safetySettings)
