@@ -135,9 +135,20 @@ test('transaction notifications and reward pickup are connected end to end', () 
 
 test('admin restores the saved tab only after administrator authentication finishes', () => {
   const source = read('admin.js')
-  const init = source.indexOf('await startAdminSystem()')
-  const restore = source.indexOf('restorePersistentAdminTab()', init)
-  assert.ok(init >= 0 && restore > init, 'saved admin tab must restore after administrator authentication completes')
+  const auth = source.indexOf('const ready = await startAdminSystem()')
+  const restoreAndLoad = source.indexOf('await ensureInitialAdminTab()', auth)
+  assert.ok(auth >= 0 && restoreAndLoad > auth, 'saved admin tab must restore after administrator authentication completes')
+})
+
+test('admin restores and loads the previous tab before hiding the startup screen', () => {
+  const admin = read('admin.js')
+  const page = read('admin.page.js')
+  assert.match(admin, /RoyalAdminInitialTabReady = ensureInitialAdminTab/)
+  assert.match(admin, /await ensureInitialAdminTab\(\)/)
+  assert.match(admin, /scrollIntoView\(\{ behavior:'auto', block:'nearest', inline:'center' \}\)/)
+  assert.doesNotMatch(admin, /setTimeout\(\(\) => bootstrap\.Tab/)
+  assert.match(page, /await window\.RoyalAdminInitialTabReady\(\)/)
+  assert.ok(page.indexOf('await window.RoyalAdminInitialTabReady()') < page.indexOf('window.SystemBoot?.hide?.()'))
 })
 
 test('admin Flex deep links authenticate with LINE and preserve the target URL', () => {

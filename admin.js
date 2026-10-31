@@ -32,6 +32,8 @@ let LINE_NOTIFICATION_ROWS = [];
 const ADMIN_ACTIVE_TAB_KEY = 'RP_ADMIN_ACTIVE_TAB';
 const ADMIN_LOGIN_ATTEMPT_KEY = 'RP_ADMIN_LINE_LOGIN_AT';
 let ADMIN_INIT_PROMISE = null;
+let ADMIN_INITIAL_TAB_PROMISE = null;
+const ADMIN_TAB_LOADS = new Map();
 
 function hasAdminDeepLink() {
     const params = new URLSearchParams(window.location.search);
@@ -39,30 +41,77 @@ function hasAdminDeepLink() {
 }
 
 function setupPersistentAdminTab() {
-    const tabButtons = [...document.querySelectorAll('[data-bs-toggle="pill"][data-bs-target^="#pills-"]')];
+    const tabButtons = [...document.querySelectorAll('#adminTabs [data-bs-toggle="pill"][data-bs-target]')];
     if (!tabButtons.length || typeof bootstrap === 'undefined') return;
 
     for (const button of tabButtons) {
         button.addEventListener('shown.bs.tab', event => {
             const target = String(event.target?.getAttribute('data-bs-target') || '');
-            if (target) sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, target);
+            if (!target) return;
+            sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, target);
+            centerAdminTab(event.target);
+            void loadAdminTabData(target);
         });
     }
 }
 
 function restorePersistentAdminTab() {
-    const tabButtons = [...document.querySelectorAll('[data-bs-toggle="pill"][data-bs-target^="#pills-"]')];
-    if (!tabButtons.length || typeof bootstrap === 'undefined') return;
-    if (hasAdminDeepLink()) return;
-    const savedTarget = String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '');
-    if (!savedTarget) return;
+    const tabButtons = [...document.querySelectorAll('#adminTabs [data-bs-toggle="pill"][data-bs-target]')];
+    if (!tabButtons.length || typeof bootstrap === 'undefined') return '#tab-stock';
+    const params = new URLSearchParams(window.location.search);
+    const deepLinkTarget = params.has('helpCase')
+      ? '#pills-auth-help'
+      : (params.has('redemption_id') ? '#pills-history' : '');
+    const savedTarget = deepLinkTarget || String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '') || '#tab-stock';
     const savedButton = tabButtons.find(button => button.getAttribute('data-bs-target') === savedTarget);
     if (savedButton) {
-        setTimeout(() => bootstrap.Tab.getOrCreateInstance(savedButton).show(), 0);
+        bootstrap.Tab.getOrCreateInstance(savedButton).show();
+        centerAdminTab(savedButton);
+        return savedTarget;
     } else {
         sessionStorage.removeItem(ADMIN_ACTIVE_TAB_KEY);
+        return '#tab-stock';
     }
 }
+
+function centerAdminTab(button) {
+    if (!button) return;
+    requestAnimationFrame(() => button.scrollIntoView({ behavior:'auto', block:'nearest', inline:'center' }));
+}
+
+function loadAdminTabData(target) {
+    const cleanTarget = String(target || '#tab-stock');
+    if (ADMIN_TAB_LOADS.has(cleanTarget)) return ADMIN_TAB_LOADS.get(cleanTarget);
+    let loader = () => Promise.resolve();
+    if (cleanTarget === '#tab-stock') loader = () => window.loadRewardsData?.();
+    else if (cleanTarget === '#pills-users') loader = () => window.loadPageUsers?.();
+    else if (cleanTarget === '#pills-auth-help') loader = () => window.loadAuthHelpCases?.();
+    else if (cleanTarget === '#pills-coupons') loader = () => loadCoupons();
+    else if (cleanTarget === '#pills-history') loader = () => HISTORY_DATA.length ? Promise.resolve() : loadRedemptionHistory();
+    else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
+    else if (cleanTarget === '#pills-audit') loader = () => AUDIT_ROWS.length ? Promise.resolve() : loadAuditLogs();
+    else if (cleanTarget === '#pills-safety') loader = () => Promise.all([
+      SAFETY_PULSE ? Promise.resolve() : loadSafetyPulse(),
+      SAFETY_QUESTIONS.length ? Promise.resolve() : loadSafetyQuestions(),
+      loadSafetySettings()
+    ]);
+    const task = Promise.resolve().then(loader).finally(() => ADMIN_TAB_LOADS.delete(cleanTarget));
+    ADMIN_TAB_LOADS.set(cleanTarget, task);
+    return task;
+}
+
+function ensureInitialAdminTab() {
+    if (ADMIN_INITIAL_TAB_PROMISE) return ADMIN_INITIAL_TAB_PROMISE;
+    const target = restorePersistentAdminTab();
+    window.SystemBoot?.update?.('กำลังโหลดข้อมูลของแท็บเดิม');
+    ADMIN_INITIAL_TAB_PROMISE = loadAdminTabData(target).then(async () => {
+      if (target === '#pills-history') await openRedemptionDeepLink({ loadData:false });
+      return target;
+    });
+    return ADMIN_INITIAL_TAB_PROMISE;
+}
+
+window.RoyalAdminInitialTabReady = ensureInitialAdminTab;
 
 function scrollSafetySubtabIntoView() {
     const anchor = document.querySelector('.safety-subnav-card');
@@ -101,12 +150,12 @@ function startAdminSystem() {
 window.RoyalAdminReady = startAdminSystem;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  setupPersistentAdminTab();
   window.SystemBoot?.update?.('กำลังยืนยันสิทธิ์ผู้ดูแลผ่าน LINE');
   const ready = await startAdminSystem();
   if (!ready) return;
   bindGlobalEvents();
-  restorePersistentAdminTab();
-  window.SystemBoot?.update?.('กำลังโหลดข้อมูลสำหรับหน้าผู้ดูแล');
+  await ensureInitialAdminTab();
 });
 
 async function initAdminSystem() {
@@ -170,12 +219,6 @@ async function initAdminSystem() {
       return false;
     }
 
-    // 2. เริ่มโหลดข้อมูลส่วนคูปอง (ส่วน User ให้ admin.page.js ทำงานเอง)
-    if ($id('couponList')) {
-        await loadCoupons();
-    }
-
-    await openRedemptionDeepLink();
     return true;
 
   } catch (err) {
@@ -614,38 +657,11 @@ let HISTORY_DATA = [];
 
 // 1. ผูก Event เมื่อกด Tab "ประวัติ" ให้โหลดข้อมูลทันที
 document.addEventListener("DOMContentLoaded", () => {
-    setupPersistentAdminTab();
-    const histBtn = document.getElementById('tabHistoryBtn');
-    if(histBtn) {
-        histBtn.addEventListener('shown.bs.tab', () => {
-            // โหลดข้อมูลเมื่อกดแท็บครั้งแรก (ถ้ายังไม่มีข้อมูล)
-            if(HISTORY_DATA.length === 0) loadRedemptionHistory();
-        });
-    }
-
-    const auditBtn = document.getElementById('tabAuditBtn');
-    if (auditBtn) {
-        auditBtn.addEventListener('shown.bs.tab', () => {
-            if (AUDIT_ROWS.length === 0) loadAuditLogs();
-        });
-    }
-
-    const lineBtn = document.getElementById('tabLineNotificationsBtn');
-    if (lineBtn) lineBtn.addEventListener('shown.bs.tab', loadLineNotifications);
     document.getElementById('btnRefreshLineNotifications')?.addEventListener('click', loadLineNotifications);
     document.getElementById('lineNotificationSearch')?.addEventListener('input', renderLineNotifications);
     document.getElementById('lineNotificationStatus')?.addEventListener('change', loadLineNotifications);
     document.getElementById('lineNotificationKind')?.addEventListener('change', loadLineNotifications);
     document.getElementById('lineNotificationDate')?.addEventListener('change', renderLineNotifications);
-
-    const safetyBtn = document.getElementById('tabSafetyBtn');
-    if (safetyBtn) {
-        safetyBtn.addEventListener('shown.bs.tab', () => {
-            if (!SAFETY_PULSE) loadSafetyPulse();
-            if (!SAFETY_QUESTIONS.length) loadSafetyQuestions();
-            loadSafetySettings();
-        });
-    }
 
     const safetyPulseSubBtn = document.getElementById('tabSafetyPulseSubBtn');
     if (safetyPulseSubBtn) {
@@ -823,15 +839,15 @@ function renderHistoryList(list) {
     });
 }
 
-async function openRedemptionDeepLink() {
+async function openRedemptionDeepLink({ loadData = true } = {}) {
   const redemptionId = String(new URLSearchParams(window.location.search).get('redemption_id') || '').trim();
   if (!/^[0-9a-f-]{36}$/i.test(redemptionId)) return;
   const historyTab = document.getElementById('tabHistoryBtn');
   if (!historyTab || typeof bootstrap === 'undefined') return;
   const input = document.getElementById('historySearch');
   if (input) input.value = redemptionId;
-  bootstrap.Tab.getOrCreateInstance(historyTab).show();
-  await loadRedemptionHistory();
+  if (!historyTab.classList.contains('active')) bootstrap.Tab.getOrCreateInstance(historyTab).show();
+  if (loadData) await loadRedemptionHistory();
   window.filterHistory();
 }
 

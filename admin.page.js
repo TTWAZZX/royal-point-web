@@ -181,7 +181,6 @@ function bindEvents() {
   qs("#authHelpSearch")?.addEventListener("input", debounce(renderAuthHelpCases, 250));
   qs("#authHelpStatusFilter")?.addEventListener("change", renderAuthHelpCases);
   qs("#btnRefreshAuthHelp")?.addEventListener("click", loadAuthHelpCases);
-  qs("#tabAuthHelpBtn")?.addEventListener("shown.bs.tab", loadAuthHelpCases);
 }
 
 function notificationSummary(helpCase) {
@@ -573,9 +572,10 @@ async function boot() {
         MY_UID_PAGE = window.CURRENT_ADMIN_UID || sessionStorage.getItem('uid');
         if (!MY_UID_PAGE) return;
         bindEvents();
-        window.SystemBoot?.update?.('กำลังโหลดรายชื่อสมาชิกและข้อมูลผู้ดูแล');
-        await loadPageUsers();
-        if (new URLSearchParams(window.location.search).has('helpCase')) await loadAuthHelpCases();
+        window.SystemBoot?.update?.('กำลังเตรียมแท็บที่เปิดล่าสุด');
+        if (typeof window.RoyalAdminInitialTabReady === 'function') {
+          await window.RoyalAdminInitialTabReady();
+        }
         window.SystemBoot?.hide?.();
 
     } catch (e) { 
