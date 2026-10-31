@@ -1,5 +1,6 @@
 // /api/score-history.js — minimal & safe ordering (no id/uuid needed)
 const { createClient } = require('@supabase/supabase-js');
+const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -19,6 +20,11 @@ module.exports = async (req, res) => {
     const limit = Math.max(1, Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 25, 100));
     const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0);
     if (!uid) return res.status(400).json({ status: 'error', message: 'uid required' });
+
+    const auth = await authenticateRequest(req, { claimedUid: uid, enforceClaimMatch: false });
+    if (auth.mode === 'token' && auth.uid !== uid && !isAdminUid(auth.uid)) {
+      return res.status(403).json({ status: 'error', message: 'AUTH_UID_MISMATCH', code: 'AUTH_UID_MISMATCH' });
+    }
 
     // map uid -> user_id
     const { data: user, error: uerr } = await supabase
@@ -78,6 +84,7 @@ module.exports = async (req, res) => {
       nextOffset: offset + (data?.length || 0)
     });
   } catch (e) {
+    if (e instanceof AuthError) return sendAuthError(res, e);
     return res.status(500).json({ status: 'error', message: 'unhandled_error' });
   }
 };

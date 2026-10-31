@@ -1,5 +1,6 @@
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase');
 const { auditEvent } = require('../lib/audit');
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
 const redis = getRedis();
 
 module.exports = async (req, res) => {
@@ -14,6 +15,7 @@ module.exports = async (req, res) => {
     if (!cleanUid || !cleanCode) {
       return res.status(400).json({ status: 'error', message: 'uid and code required' });
     }
+    await authenticateRequest(req, { claimedUid: cleanUid });
 
     // หา user
     const { data: user, error: e1 } = await supabaseAdmin
@@ -93,6 +95,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ status: 'success', added: add });
 
   } catch (e) {
+    if (e instanceof AuthError) return sendAuthError(res, e);
     return res.status(500).json({ status: 'error', message: String(e) });
   }
 };

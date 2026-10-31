@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "test": "node tests/line-auth.test.js && node tests/line-messaging.test.js && node tests/loader-auth.test.js && node tests/integration-guard.test.js",
+    "check": "node --check app.js && node --check admin.js && node --check admin.page.js && node --check loader.js && node --check lib/line-auth.js && node --check lib/line-messaging.js && node --check api/auth-help.js && node --check api/admin-actions.js && node --check scripts/validate-line-flex.js && node --check scripts/send-line-auth-test.js",
+    "validate:line-flex": "node scripts/validate-line-flex.js",
+    "test:line-delivery": "node scripts/send-line-auth-test.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "@upstash/redis": "^1.35.4"

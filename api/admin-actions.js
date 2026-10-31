@@ -1,5 +1,13 @@
+const crypto = require('crypto')
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
+const {
+  buildRecoveryApprovedMessage,
+  queueLineNotification,
+  retryLineNotification,
+  userRecoveryUrl
+} = require('../lib/line-messaging')
 const redis = getRedis()
 
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
@@ -598,8 +606,82 @@ async function getSafetyMonthlySummary(monthText = '') {
 }
 
 module.exports = async (req, res) => {
+  if (!['GET', 'POST'].includes(req.method)) {
+    return res.status(405).json({ status: 'error', message: 'Method not allowed' })
+  }
+
+  const claimedAdminUid = String(
+    req.method === 'GET'
+      ? (req.query.adminUid || req.query.uid || '')
+      : (req.body?.adminUid || '')
+  ).trim()
+  try {
+    await authenticateRequest(req, { claimedUid: claimedAdminUid, allowRecovery: false })
+  } catch (error) {
+    if (error instanceof AuthError) return sendAuthError(res, error)
+    console.error('[admin-actions] auth error:', error)
+    return res.status(500).json({ status: 'error', message: 'AUTH_ERROR', code: 'AUTH_ERROR' })
+  }
+
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
   if (req.method === 'GET') {
+    if (req.query.action === 'auth_help_cases') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
+
+        const now = new Date().toISOString()
+        await supabaseAdmin
+          .from('auth_help_cases')
+          .update({ status: 'expired', updated_at: now })
+          .eq('status', 'approved')
+          .lt('recovery_until', now)
+
+        let query = supabaseAdmin
+          .from('auth_help_cases')
+          .select('*')
+          .order('last_requested_at', { ascending: false })
+          .limit(200)
+        const requestedStatus = String(req.query.status || '').trim()
+        if (requestedStatus && requestedStatus !== 'all') query = query.eq('status', requestedStatus)
+        const { data: cases, error } = await query
+        if (error) throw error
+
+        const uids = [...new Set((cases || []).map(row => row.target_uid).filter(Boolean))]
+        const caseIds = (cases || []).map(row => row.id)
+        const [usersResult, notificationsResult] = await Promise.all([
+          uids.length
+            ? supabaseAdmin.from('users').select('uid,name,tel,room').in('uid', uids)
+            : Promise.resolve({ data: [], error: null }),
+          caseIds.length
+            ? supabaseAdmin.from('line_notification_outbox').select('id,case_id,message_kind,status,attempt_count,last_error,sent_at,updated_at').in('case_id', caseIds).order('created_at', { ascending: false })
+            : Promise.resolve({ data: [], error: null })
+        ])
+        if (usersResult.error) throw usersResult.error
+        if (notificationsResult.error) throw notificationsResult.error
+
+        const users = new Map((usersResult.data || []).map(user => [user.uid, user]))
+        const notifications = new Map()
+        for (const item of notificationsResult.data || []) {
+          const current = notifications.get(item.case_id) || []
+          current.push(item)
+          notifications.set(item.case_id, current)
+        }
+        const rows = (cases || []).map(helpCase => ({
+          ...helpCase,
+          user: users.get(helpCase.target_uid) || null,
+          notifications: notifications.get(helpCase.id) || []
+        }))
+        return res.status(200).json({ status: 'success', data: rows })
+      } catch (error) {
+        const migrationMissing = /auth_help_cases|line_notification_outbox|schema cache|relation .* does not exist/i.test(String(error?.message || error))
+        return res.status(migrationMissing ? 503 : 500).json({
+          status: 'error',
+          message: migrationMissing ? 'ระบบเรื่องช่วยเหลือยังติดตั้งไม่ครบ' : String(error?.message || error)
+        })
+      }
+    }
+
     if (req.query.action === 'audit_logs') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
@@ -721,9 +803,6 @@ module.exports = async (req, res) => {
     return res.json({ isAdmin: Boolean(role), role, safetyAdmin: role === 'safety_admin', safetyViewer: role === 'safety_viewer' })
   }
 
-  // 1. ตรวจสอบ Method
-  if (req.method !== 'POST') return res.status(405).json({ status: 'error', message: 'Method not allowed' })
-
   // 2. รับค่า (เพิ่ม rewardId และ rewardData เข้ามาสำหรับฟังก์ชันใหม่)
   const {
     action,
@@ -744,7 +823,10 @@ module.exports = async (req, res) => {
     status,
     checkinTimeEnabled,
     checkinStartTime,
-    checkinEndTime
+    checkinEndTime,
+    durationMinutes,
+    caseId,
+    notificationId
   } = req.body || {}
 
   const requestedAction = String(action || '').trim()
@@ -754,6 +836,180 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'auth_recovery_open') {
+      const cleanTargetUid = String(targetUid || '').trim()
+      const cleanReason = String(note || '').trim().slice(0, 300)
+      const minutes = Math.max(5, Math.min(60, Number(durationMinutes) || 30))
+      if (!cleanTargetUid) return res.status(400).json({ status: 'error', message: 'target_uid_required' })
+      if (cleanReason.length < 3) return res.status(400).json({ status: 'error', message: 'recovery_reason_required' })
+
+      const { data: migration, error: findError } = await supabaseAdmin
+        .from('user_auth_migrations')
+        .select('uid,token_required')
+        .eq('uid', cleanTargetUid)
+        .maybeSingle()
+      if (findError) throw findError
+      if (!migration?.token_required) {
+        return res.status(409).json({ status: 'error', message: 'auth_not_migrated' })
+      }
+
+      const recoveryUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString()
+      let helpCase = null
+      let notification = null
+      let data = null
+      if (caseId) {
+        const { data: foundCase, error: caseFindError } = await supabaseAdmin
+          .from('auth_help_cases')
+          .select('*')
+          .eq('id', caseId)
+          .eq('target_uid', cleanTargetUid)
+          .in('status', ['open', 'approved'])
+          .maybeSingle()
+        if (caseFindError) throw caseFindError
+        if (!foundCase) return res.status(404).json({ status: 'error', message: 'help_case_not_found' })
+
+        const rawTicket = crypto.randomBytes(32).toString('base64url')
+        const ticketExpiresAt = new Date(Math.min(
+          new Date(recoveryUntil).getTime(),
+          Date.now() + 15 * 60 * 1000
+        )).toISOString()
+        const { data: approvedCase, error: openError } = await supabaseAdmin.rpc('open_auth_recovery_case', {
+          p_case_id: foundCase.id,
+          p_target_uid: cleanTargetUid,
+          p_admin_uid: adminUid,
+          p_reason: cleanReason,
+          p_recovery_until: recoveryUntil,
+          p_ticket_hash: crypto.createHash('sha256').update(rawTicket).digest('hex'),
+          p_ticket_expires_at: ticketExpiresAt
+        })
+        if (openError) throw openError
+        helpCase = Array.isArray(approvedCase) ? approvedCase[0] : approvedCase
+        data = {
+          uid: cleanTargetUid,
+          token_required: true,
+          recovery_until: recoveryUntil,
+          recovery_reason: cleanReason,
+          recovery_by: adminUid,
+          recovery_case_id: foundCase.id
+        }
+
+        const { data: user } = await supabaseAdmin
+          .from('users')
+          .select('uid,name')
+          .eq('uid', cleanTargetUid)
+          .maybeSingle()
+        try {
+          notification = await queueLineNotification({
+            dedupeKey: `auth-help:${foundCase.id}:user-approved:${helpCase.approved_at}`,
+            caseId: foundCase.id,
+            recipientUid: cleanTargetUid,
+            messageKind: 'auth_help_user_approved',
+            payload: buildRecoveryApprovedMessage({
+              helpCase: approvedCase,
+              user,
+              url: userRecoveryUrl(req, rawTicket)
+            })
+          })
+        } catch (notifyError) {
+          console.error('[admin-actions] recovery LINE notification failed:', notifyError?.message || notifyError)
+        }
+      } else {
+        const { data: recoveryData, error } = await supabaseAdmin
+          .from('user_auth_migrations')
+          .update({
+            recovery_until: recoveryUntil,
+            recovery_reason: cleanReason,
+            recovery_by: adminUid,
+            recovery_case_id: null
+          })
+          .eq('uid', cleanTargetUid)
+          .select('uid,token_required,migrated_at,last_verified_at,recovery_until,recovery_reason,recovery_by,recovery_case_id')
+          .single()
+        if (error) throw error
+        data = recoveryData
+      }
+
+      await auditEvent(supabaseAdmin, {
+        type: 'auth_recovery_open',
+        actorUid: adminUid,
+        targetUid: cleanTargetUid,
+        entityType: 'user_auth_migration',
+        entityId: cleanTargetUid,
+        status: 'success',
+        detail: {
+          recoveryUntil,
+          minutes,
+          reason: cleanReason,
+          caseId: helpCase?.id || null,
+          caseNo: helpCase?.case_no || null,
+          notificationStatus: notification?.status || (helpCase ? 'failed' : 'not_requested')
+        }
+      })
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...data,
+          helpCase,
+          lineNotification: notification ? {
+            id: notification.id,
+            status: notification.status,
+            lastError: notification.last_error || null
+          } : null
+        }
+      })
+    }
+
+    if (action === 'auth_recovery_close') {
+      const cleanTargetUid = String(targetUid || '').trim()
+      if (!cleanTargetUid) return res.status(400).json({ status: 'error', message: 'target_uid_required' })
+
+      const { data, error } = await supabaseAdmin
+        .from('user_auth_migrations')
+        .update({ recovery_until: null, recovery_reason: null, recovery_by: null, recovery_case_id: null })
+        .eq('uid', cleanTargetUid)
+        .select('uid,token_required,migrated_at,last_verified_at,recovery_until,recovery_reason,recovery_by,recovery_case_id')
+        .single()
+      if (error) throw error
+
+      if (caseId) {
+        const now = new Date().toISOString()
+        const { error: caseCloseError } = await supabaseAdmin
+          .from('auth_help_cases')
+          .update({ status: 'closed', closed_at: now, updated_at: now })
+          .eq('id', caseId)
+          .eq('target_uid', cleanTargetUid)
+          .in('status', ['open', 'approved'])
+        if (caseCloseError) throw caseCloseError
+      }
+
+      await auditEvent(supabaseAdmin, {
+        type: 'auth_recovery_close',
+        actorUid: adminUid,
+        targetUid: cleanTargetUid,
+        entityType: 'user_auth_migration',
+        entityId: cleanTargetUid,
+        status: 'success',
+        detail: { reason: String(note || 'admin-closed-recovery').trim().slice(0, 300) }
+      })
+      return res.status(200).json({ status: 'success', data })
+    }
+
+    if (action === 'auth_notification_retry') {
+      const cleanNotificationId = String(notificationId || '').trim()
+      if (!cleanNotificationId) return res.status(400).json({ status: 'error', message: 'notification_id_required' })
+      const notification = await retryLineNotification(cleanNotificationId)
+      await auditEvent(supabaseAdmin, {
+        type: 'auth_notification_retry',
+        actorUid: adminUid,
+        targetUid: notification.recipient_uid,
+        entityType: 'line_notification_outbox',
+        entityId: notification.id,
+        status: notification.status === 'sent' ? 'success' : 'error',
+        detail: { caseId: notification.case_id, messageKind: notification.message_kind, error: notification.last_error || null }
+      })
+      return res.status(200).json({ status: 'success', data: notification })
+    }
 
     if (action === 'safety_question_create') {
       const cleanQuestion = String(question || '').trim()

@@ -1,0 +1,46 @@
+const assert = require('node:assert/strict')
+const test = require('node:test')
+
+process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://example.supabase.co'
+process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'test-key'
+
+const {
+  adminCaseUrl,
+  buildAdminHelpMessage,
+  buildRecoveryApprovedMessage,
+  buildRecoverySuccessMessage,
+  userRecoveryUrl
+} = require('../lib/line-messaging')
+
+const req = { headers: { host: 'royal.example', 'x-forwarded-proto': 'https' } }
+const helpCase = {
+  id: 7,
+  case_no: 'HELP-000007',
+  target_uid: 'U12345678901234567890',
+  error_code: 'AUTH_TOKEN_INVALID',
+  request_count: 1,
+  last_requested_at: new Date().toISOString(),
+  recovery_until: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+}
+
+function assertFlex(message) {
+  assert.equal(message.type, 'flex')
+  assert.ok(message.altText.length > 0 && message.altText.length <= 400)
+  assert.equal(message.contents.type, 'bubble')
+  assert.doesNotThrow(() => JSON.stringify(message))
+}
+
+test('builds LINE Flex Messages for every authentication help stage', () => {
+  assertFlex(buildAdminHelpMessage({ helpCase, user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://royal.example/admin.html?helpCase=7' }))
+  assertFlex(buildRecoveryApprovedMessage({ helpCase, user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://liff.line.me/test?recovery_ticket=secret' }))
+  assertFlex(buildRecoverySuccessMessage({ helpCase, user:{ name:'ผู้ใช้ทดสอบ' }, url:'https://liff.line.me/test' }))
+  assertFlex(buildRecoverySuccessMessage({ helpCase, user:{ name:'ผู้ใช้ทดสอบ' }, admin:true, url:'https://royal.example/admin.html?helpCase=7' }))
+})
+
+test('creates direct user and admin links without exposing a UID', () => {
+  const recoveryUrl = userRecoveryUrl(req, 'one-time-secret')
+  const adminUrl = adminCaseUrl(req, 7)
+  assert.equal(new URL(recoveryUrl).searchParams.get('recovery_ticket'), 'one-time-secret')
+  assert.equal(new URL(adminUrl).searchParams.get('helpCase'), '7')
+  assert.equal(recoveryUrl.includes(helpCase.target_uid), false)
+})

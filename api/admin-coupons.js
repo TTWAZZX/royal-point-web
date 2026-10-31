@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { randomBytes } = require('crypto');
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
 
 function genCode(len = 6) {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -10,6 +11,7 @@ function genCode(len = 6) {
 }
 
 module.exports = async (req, res) => {
+  try {
   if (!['GET', 'DELETE', 'POST'].includes(req.method)) {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' });
   }
@@ -24,6 +26,7 @@ module.exports = async (req, res) => {
   if (!adminUid || adminUid !== process.env.ADMIN_UID) {
     return res.status(403).json({ status: 'error', message: 'Forbidden' });
   }
+  await authenticateRequest(req, { claimedUid: adminUid, allowRecovery: false });
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
@@ -102,4 +105,9 @@ module.exports = async (req, res) => {
   }));
 
   return res.status(200).json({ status: 'success', data: items });
+  } catch (error) {
+    if (error instanceof AuthError) return sendAuthError(res, error);
+    console.error('[admin-coupons] error:', error);
+    return res.status(500).json({ status: 'error', message: 'internal_error' });
+  }
 };

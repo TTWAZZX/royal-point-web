@@ -1,11 +1,14 @@
 const { supabaseAdmin } = require('../lib/supabase')
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
 
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(405).json({ status:'error', message:'Method not allowed' })
     const { uid, name, room, dob, passport, tel } = req.body || {}
-    const cleanUid = String(uid || '').trim()
-    if (!cleanUid) return res.status(400).json({ status:'error', message:'uid required' })
+    const claimedUid = String(uid || '').trim()
+    if (!claimedUid) return res.status(400).json({ status:'error', message:'uid required' })
+    const auth = await authenticateRequest(req, { claimedUid, requireToken: true })
+    const cleanUid = auth.uid
 
     const row = {
       uid: cleanUid,
@@ -21,6 +24,7 @@ module.exports = async (req, res) => {
 
     res.status(200).json({ status:'success' })
   } catch (e) {
+    if (e instanceof AuthError) return sendAuthError(res, e)
     res.status(500).json({ status:'error', message:String(e) })
   }
 }

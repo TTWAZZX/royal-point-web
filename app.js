@@ -333,20 +333,26 @@ window.ensureLiffInit = async function ensureLiffInit(LIFF_ID){
 async function initApp(ctx = {}) {
   if (window.__SKIP_AUTO_INIT__ && !ctx.force) return;
   try {
+    await (window.RoyalAuth?.ready || Promise.resolve());
+    const recoveryMode = Boolean(ctx.recovery || window.RoyalAuth?.isRecoveryMode?.());
     // ใช้ค่า LIFF_ID ตัวจริงที่ประกาศไว้ตอนบนไฟล์ (ไม่ต้องประกาศใหม่ในฟังก์ชันนี้)
     const liffId = (typeof LIFF_ID !== 'undefined' ? LIFF_ID : window.LIFF_ID);
-    await ensureLiffInit(liffId);
+    if (!recoveryMode) await ensureLiffInit(liffId);
 
     // 2) resolve UID/PROFILE
     let uid  = ctx.uid || window.__UID || sessionStorage.getItem('uid');
     let prof = ctx.profile || null;
 
-    if (liff.isLoggedIn()) {
-      if (!prof) prof = await liff.getProfile().catch(() => null);
-      if (!uid)  uid  = prof?.userId || '';
+    if (recoveryMode) {
+      if (!uid) throw new Error('recovery_uid_not_found');
     } else {
-      liff.login();
-      return;
+      if (liff.isLoggedIn()) {
+        if (!prof) prof = await liff.getProfile().catch(() => null);
+        if (!uid)  uid  = prof?.userId || '';
+      } else {
+        liff.login();
+        return;
+      }
     }
 
     if (uid) {
@@ -406,7 +412,7 @@ async function initApp(ctx = {}) {
     }
 
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
-    if (typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
+    if (!recoveryMode && typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
 
   } catch (err) {
     console.error('[initApp] error:', err);
@@ -2196,10 +2202,7 @@ async function openHistory(){
       : [];
     const redemptionItems = Array.isArray(redeemJson.items) ? redeemJson.items : [];
 
-    const timeline = [
-      ...pointItems.map(toPointTimelineItem),
-      ...redemptionItems.map(toRedemptionTimelineItem)
-    ].filter(Boolean).sort((a,b) => {
+    const timeline = mergeHistoryTimeline(pointItems, redemptionItems).sort((a,b) => {
       const ta = new Date(a.created_at || 0).getTime();
       const tb = new Date(b.created_at || 0).getTime();
       return tb - ta;
@@ -2233,6 +2236,8 @@ function toPointTimelineItem(it) {
   const meta = historyTypeMeta(it.type || it.activity, amount);
   return {
     kind: 'point',
+    source_id: it.id || '',
+    source_type: String(it.type || it.activity || ''),
     created_at: it.created_at || it.time || it.ts,
     title: meta.label,
     subtitle: it.code || it.note || it.type || '',
@@ -2254,6 +2259,46 @@ function toRedemptionTimelineItem(it) {
     tone: 'minus',
     status: it.status || ''
   };
+}
+
+/**
+ * A reward redemption is written to both point_transactions and redemptions.
+ * Merge the matching pair so one user action appears only once. If the
+ * redemption log failed, the unmatched point transaction is still shown.
+ */
+function mergeHistoryTimeline(pointRows = [], redemptionRows = []) {
+  const points = pointRows.map(toPointTimelineItem).filter(Boolean);
+  const redemptions = redemptionRows.map(toRedemptionTimelineItem).filter(Boolean);
+  const matchedPointIndexes = new Set();
+  const normalize = value => String(value || '').trim().toLocaleLowerCase('th-TH');
+
+  redemptions.forEach(redemption => {
+    const redemptionTime = new Date(redemption.created_at || 0).getTime();
+    let bestIndex = -1;
+    let bestTimeDiff = Infinity;
+
+    points.forEach((point, index) => {
+      if (matchedPointIndexes.has(index)) return;
+      if (!String(point.source_type || '').toUpperCase().includes('SPEND')) return;
+      if (Number(point.amount) !== Number(redemption.amount)) return;
+      if (normalize(point.subtitle) !== normalize(redemption.subtitle)) return;
+
+      const pointTime = new Date(point.created_at || 0).getTime();
+      const timeDiff = Math.abs(pointTime - redemptionTime);
+      // Both rows are normally created seconds apart; allow a small DB delay.
+      if (Number.isFinite(timeDiff) && timeDiff <= 2 * 60 * 1000 && timeDiff < bestTimeDiff) {
+        bestIndex = index;
+        bestTimeDiff = timeDiff;
+      }
+    });
+
+    if (bestIndex >= 0) matchedPointIndexes.add(bestIndex);
+  });
+
+  return [
+    ...points.filter((_, index) => !matchedPointIndexes.has(index)),
+    ...redemptions
+  ];
 }
 
 function renderUserTimeline(items = []) {

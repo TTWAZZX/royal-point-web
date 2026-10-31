@@ -1,5 +1,6 @@
 // /api/get-score.js  (Supabase + Rewards; response shape compatible with frontend)
 const { createClient } = require('@supabase/supabase-js');
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
 
 let redis = null;
 try {
@@ -25,6 +26,7 @@ module.exports = async (req, res) => {
     if (!uid) {
       return res.status(400).json({ status: 'error', message: 'uid required' });
     }
+    await authenticateRequest(req, { claimedUid: uid });
 
     const cacheKey = `score_v2:${uid}`; // v2: รวม rewards ด้วยแล้ว
 
@@ -102,7 +104,7 @@ module.exports = async (req, res) => {
     }
 
     // ---- Response (keep shape + rewards)
-    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', 'private, no-store');
     return res.status(200).json({
       status: 'success',
       uid,
@@ -115,6 +117,7 @@ module.exports = async (req, res) => {
     });
 
   } catch (err) {
+    if (err instanceof AuthError) return sendAuthError(res, err);
     console.error('[api/get-score] error:', err);
     return res.status(500).json({ status: 'error', message: String(err?.message || 'Internal Error') });
   }

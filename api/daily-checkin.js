@@ -1,5 +1,6 @@
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
+const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
 
 const redis = getRedis()
 const CHECKIN_POINTS = 5
@@ -366,6 +367,7 @@ module.exports = async (req, res) => {
     if (!cleanUid) {
       return sendStatus(res, 400, { error: true, message: 'uid required' })
     }
+    await authenticateRequest(req, { claimedUid: cleanUid })
 
     const user = await loadUser(cleanUid)
     if (!user) {
@@ -568,6 +570,7 @@ module.exports = async (req, res) => {
       }
     })
   } catch (error) {
+    if (error instanceof AuthError) return sendAuthError(res, error)
     return sendStatus(res, 500, { error: true, message: String(error?.message || error) })
   }
 }

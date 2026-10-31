@@ -1,5 +1,452 @@
 // ===== Unified Loading Manager & apiFetch wrapper =====
 (function (global) {
+  const nativeFetch = global.fetch.bind(global);
+  const RECOVERY_MODE_KEY = 'ROYAL_AUTH_RECOVERY_UNTIL';
+  const RECOVERY_TICKET_KEY = 'ROYAL_AUTH_HELP_TICKET';
+  const RECOVERY_CASE_KEY = 'ROYAL_AUTH_HELP_CASE';
+  const RECOVERY_COMPLETE_KEY = 'ROYAL_AUTH_HELP_COMPLETED';
+  let authHelpOpen = false;
+  let completingRecovery = false;
+
+  function isSameOriginApi(input) {
+    try {
+      const raw = typeof input === 'string' ? input : input?.url;
+      const url = new URL(raw, global.location.href);
+      return url.origin === global.location.origin && url.pathname.startsWith('/api/');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getLineAccessToken() {
+    try {
+      if (!global.liff || !global.liff.isLoggedIn()) return '';
+      return String(global.liff.getAccessToken() || '').trim();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function isRecoveryMode() {
+    try {
+      const until = Number(global.sessionStorage.getItem(RECOVERY_MODE_KEY) || 0);
+      if (until > Date.now()) return true;
+      global.sessionStorage.removeItem(RECOVERY_MODE_KEY);
+      global.sessionStorage.removeItem(RECOVERY_TICKET_KEY);
+      global.sessionStorage.removeItem(RECOVERY_CASE_KEY);
+      global.sessionStorage.removeItem(RECOVERY_COMPLETE_KEY);
+    } catch (_) {}
+    return false;
+  }
+
+  function enableRecoveryMode(minutes = 30) {
+    try {
+      global.sessionStorage.setItem(RECOVERY_MODE_KEY, String(Date.now() + minutes * 60 * 1000));
+    } catch (_) {}
+  }
+
+  function enableRecoveryUntil(value) {
+    const until = new Date(value || 0).getTime();
+    if (!Number.isFinite(until) || until <= Date.now()) return false;
+    try { global.sessionStorage.setItem(RECOVERY_MODE_KEY, String(until)); } catch (_) {}
+    return true;
+  }
+
+  function disableRecoveryMode() {
+    try {
+      global.sessionStorage.removeItem(RECOVERY_MODE_KEY);
+      global.sessionStorage.removeItem(RECOVERY_TICKET_KEY);
+      global.sessionStorage.removeItem(RECOVERY_CASE_KEY);
+      global.sessionStorage.removeItem(RECOVERY_COMPLETE_KEY);
+    } catch (_) {}
+  }
+
+  function getRecoveryProof() {
+    if (!isRecoveryMode()) return '';
+    try { return String(global.sessionStorage.getItem(RECOVERY_TICKET_KEY) || '').trim(); } catch (_) { return ''; }
+  }
+
+  function currentUid() {
+    try {
+      return String(global.__UID || global.sessionStorage.getItem('uid') || global.localStorage.getItem('uid') || '').trim();
+    } catch (_) {
+      return String(global.__UID || '').trim();
+    }
+  }
+
+  function reloadFresh() {
+    try {
+      const url = new URL(global.location.href);
+      url.searchParams.set('auth_refresh', String(Date.now()));
+      if (typeof global.location.replace === 'function') global.location.replace(url.toString());
+      else global.location.reload();
+    } catch (_) {
+      global.location.reload();
+    }
+  }
+
+  function loginWithLineAgain() {
+    disableRecoveryMode();
+    try {
+      if (global.liff?.isLoggedIn?.()) global.liff.logout();
+      if (global.liff) {
+        global.liff.login({ redirectUri: global.location.href });
+        return;
+      }
+    } catch (_) {}
+    reloadFresh();
+  }
+
+  async function sendHelpRequest(uid, errorCode) {
+    const response = await nativeFetch('/api/auth-help', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Royal-Client': 'line-token-v1' },
+      body: JSON.stringify({
+        action: 'request',
+        uid,
+        errorCode,
+        detail: `หน้า ${global.location?.pathname || '/'} ส่งคำขอจากระบบช่วยเหลืออัตโนมัติ`
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'ส่งคำขอไม่สำเร็จ');
+    return payload.data;
+  }
+
+  async function contactAdmin(uid, canUseRecovery, errorCode) {
+    if (!global.Swal) return;
+    const safeUid = String(uid || '').replace(/[&<>"']/g, '');
+    const result = await global.Swal.fire({
+      title: 'ส่งคำขอให้ผู้ดูแล',
+      html: safeUid
+        ? `ระบบจะส่งเรื่องพร้อมสาเหตุไปยังผู้ดูแลโดยอัตโนมัติ<br><span class="d-inline-block mt-2 small text-muted">UID: <code>${safeUid}</code></span>`
+        : 'ไม่พบ UID ในอุปกรณ์นี้ กรุณาแจ้งชื่อและเบอร์โทรที่ลงทะเบียนไว้แก่ผู้ดูแล',
+      icon: 'info',
+      showConfirmButton: Boolean(safeUid),
+      showDenyButton: Boolean(canUseRecovery),
+      showCancelButton: true,
+      confirmButtonText: 'ส่งคำขอช่วยเหลือ',
+      denyButtonText: 'ฉันได้รับสิทธิ์แล้ว',
+      cancelButtonText: 'ปิด',
+      allowOutsideClick: false
+    });
+
+    if (result.isConfirmed && safeUid) {
+      try {
+        global.Swal.fire({ title: 'กำลังส่งคำขอ...', allowOutsideClick: false, didOpen: () => global.Swal.showLoading() });
+        const data = await sendHelpRequest(safeUid, errorCode);
+        const deliveryNote = data.lineNotification === 'sent'
+          ? 'ระบบแจ้งผู้ดูแลผ่าน LINE แล้ว'
+          : 'ระบบบันทึกเรื่องแล้ว ผู้ดูแลสามารถเห็นคำขอในหน้าจัดการ';
+        await global.Swal.fire({
+          title: 'ส่งคำขอเรียบร้อย',
+          html: `หมายเลขเรื่อง <b>${String(data.caseNo || '').replace(/[&<>"']/g, '')}</b><br><span class="small text-muted">${deliveryNote}</span>`,
+          icon: 'success',
+          confirmButtonText: 'รับทราบ'
+        });
+      } catch (error) {
+        await global.Swal.fire('ส่งคำขอไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+      }
+    }
+    if (result.isDenied) {
+      enableRecoveryMode(30);
+      reloadFresh();
+    }
+  }
+
+  function authDialogConfig(code) {
+    const configs = {
+      AUTH_PROVIDER_UNAVAILABLE: {
+        title: 'ไม่สามารถเชื่อมต่อ LINE ได้ชั่วคราว',
+        detail: 'ระบบลองเชื่อมต่อให้อัตโนมัติแล้ว 2 ครั้ง แต่ยังไม่สำเร็จ',
+        icon: 'warning',
+        confirmText: 'ลองอีกครั้ง',
+        confirmAction: 'reload',
+        denyText: 'เข้าสู่ระบบ LINE ใหม่',
+        denyAction: 'login',
+        canUseRecovery: true
+      },
+      AUTH_TOKEN_INVALID: {
+        title: 'ข้อมูลยืนยัน LINE หมดอายุหรือไม่ถูกต้อง',
+        detail: 'กรุณาเข้าสู่ระบบ LINE ใหม่เพื่อยืนยันว่าเป็นเจ้าของบัญชี',
+        icon: 'warning',
+        confirmText: 'เข้าสู่ระบบ LINE ใหม่',
+        confirmAction: 'login',
+        denyText: 'ลองโหลดใหม่',
+        denyAction: 'reload',
+        canUseRecovery: true
+      },
+      AUTH_TOKEN_REQUIRED: {
+        title: 'ต้องเข้าสู่ระบบ LINE',
+        detail: 'ระบบไม่พบข้อมูลยืนยันตัวตนจาก LINE',
+        icon: 'warning',
+        confirmText: 'เข้าสู่ระบบ LINE',
+        confirmAction: 'login',
+        denyText: 'ลองโหลดใหม่',
+        denyAction: 'reload',
+        canUseRecovery: true
+      },
+      AUTH_UPGRADE_REQUIRED: {
+        title: 'ต้องโหลดระบบเวอร์ชันใหม่',
+        detail: 'บัญชีนี้เปลี่ยนมาใช้การยืนยันตัวตนผ่าน LINE แล้ว',
+        icon: 'info',
+        confirmText: 'โหลดระบบเวอร์ชันใหม่',
+        confirmAction: 'reload',
+        denyText: 'เข้าสู่ระบบ LINE ใหม่',
+        denyAction: 'login',
+        canUseRecovery: true
+      },
+      AUTH_UID_MISMATCH: {
+        title: 'บัญชี LINE ไม่ตรงกับผู้ใช้',
+        detail: 'กรุณาออกจากบัญชี LINE ปัจจุบันและเข้าสู่ระบบด้วยบัญชีที่ถูกต้อง',
+        icon: 'error',
+        confirmText: 'เข้าสู่ระบบ LINE ใหม่',
+        confirmAction: 'login',
+        canUseRecovery: false
+      },
+      AUTH_MIGRATION_NOT_READY: {
+        title: 'ระบบกำลังปรับปรุง',
+        detail: 'ระบบยืนยันตัวตนฝั่งผู้ดูแลยังติดตั้งไม่ครบ กรุณาติดต่อผู้ดูแลและลองใหม่ภายหลัง',
+        icon: 'error',
+        confirmText: 'ลองใหม่ภายหลัง',
+        confirmAction: 'reload',
+        canUseRecovery: false
+      },
+      AUTH_RECOVERY_TICKET_REQUIRED: {
+        title: 'ต้องเปิดจากลิงก์ช่วยเหลือใน LINE',
+        detail: 'สิทธิ์นี้ผูกกับลิงก์ที่ผู้ดูแลส่งให้ กรุณากลับไปกดปุ่ม “กลับเข้าสู่ระบบ” ใน LINE',
+        icon: 'warning',
+        confirmText: 'โหลดใหม่',
+        confirmAction: 'reload',
+        canUseRecovery: false
+      },
+      AUTH_RECOVERY_TICKET_INVALID: {
+        title: 'ลิงก์ช่วยเหลือไม่ถูกต้อง',
+        detail: 'ลิงก์อาจถูกใช้จากอุปกรณ์อื่นหรือข้อมูลใน session ไม่ครบ กรุณาส่งคำขอใหม่',
+        icon: 'error',
+        confirmText: 'โหลดใหม่',
+        confirmAction: 'reload',
+        canUseRecovery: false
+      }
+    };
+    return configs[code] || {
+      title: 'ยืนยันตัวตนไม่สำเร็จ',
+      detail: 'กรุณาลองโหลดระบบใหม่ หรือติดต่อผู้ดูแล',
+      icon: 'warning',
+      confirmText: 'ลองอีกครั้ง',
+      confirmAction: 'reload',
+      canUseRecovery: false
+    };
+  }
+
+  async function showAuthHelp(payload) {
+    if (authHelpOpen || !payload?.code || !String(payload.code).startsWith('AUTH_')) return;
+    authHelpOpen = true;
+    const code = payload.code;
+    const uid = currentUid();
+    const config = authDialogConfig(code);
+    const uidText = uid ? `<div class="mt-2 small text-muted">UID สำหรับแจ้งผู้ดูแล: <code>${uid.replace(/[&<>"']/g, '')}</code></div>` : '';
+
+    try {
+      if (!global.Swal) {
+        global.alert?.(`${config.title}\n${config.detail}${uid ? `\nUID: ${uid}` : ''}`);
+        return;
+      }
+      const result = await global.Swal.fire({
+        title: config.title,
+        html: `${config.detail}${uidText}`,
+        icon: config.icon,
+        showCancelButton: true,
+        showDenyButton: Boolean(config.denyText),
+        confirmButtonText: config.confirmText,
+        denyButtonText: config.denyText || '',
+        cancelButtonText: 'ติดต่อผู้ดูแล',
+        allowOutsideClick: false,
+        allowEscapeKey: false
+      });
+
+      if (result.isConfirmed) {
+        if (config.confirmAction === 'login') loginWithLineAgain();
+        else {
+          disableRecoveryMode();
+          reloadFresh();
+        }
+        return;
+      }
+      if (result.isDenied) {
+        if (config.denyAction === 'login') loginWithLineAgain();
+        else {
+          disableRecoveryMode();
+          reloadFresh();
+        }
+        return;
+      }
+      if (result.isDismissed) await contactAdmin(uid, config.canUseRecovery, code);
+    } finally {
+      authHelpOpen = false;
+    }
+  }
+
+  function canReplayRequest(input, init = {}) {
+    if (typeof Request !== 'undefined' && input instanceof Request) return false;
+    const method = String(init.method || 'GET').toUpperCase();
+    return ['GET', 'HEAD', 'OPTIONS'].includes(method) || typeof init.body === 'string';
+  }
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function readAuthPayload(response) {
+    if (![401, 403, 503].includes(response?.status) || typeof response.clone !== 'function') return null;
+    try {
+      const payload = await response.clone().json();
+      return String(payload?.code || '').startsWith('AUTH_') ? payload : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function consumeRecoveryLink() {
+    let ticket = '';
+    try {
+      const url = new URL(global.location.href);
+      ticket = String(url.searchParams.get('recovery_ticket') || '').trim();
+      if (!ticket) return { consumed: false };
+
+      const response = await nativeFetch('/api/auth-help', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Royal-Client': 'line-token-v1' },
+        body: JSON.stringify({ action: 'consume', ticket })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'เปิดลิงก์ช่วยเหลือไม่สำเร็จ');
+      const data = payload.data || {};
+      if (!enableRecoveryUntil(data.recoveryUntil)) throw new Error('สิทธิ์ช่วยเหลือหมดอายุแล้ว');
+      global.sessionStorage.setItem('uid', String(data.uid || ''));
+      global.localStorage?.setItem('uid', String(data.uid || ''));
+      global.sessionStorage.setItem(RECOVERY_TICKET_KEY, ticket);
+      global.sessionStorage.setItem(RECOVERY_CASE_KEY, String(data.caseId || ''));
+      global.sessionStorage.removeItem(RECOVERY_COMPLETE_KEY);
+      global.__UID = String(data.uid || '');
+      url.searchParams.delete('recovery_ticket');
+      if (global.history?.replaceState) global.history.replaceState({}, '', url.toString());
+      return { consumed: true, data };
+    } catch (error) {
+      try {
+        const url = new URL(global.location.href);
+        url.searchParams.delete('recovery_ticket');
+        if (global.history?.replaceState) global.history.replaceState({}, '', url.toString());
+      } catch (_) {}
+      setTimeout(async () => {
+        if (!global.Swal) return;
+        const result = await global.Swal.fire({
+          title: 'เปิดลิงก์ช่วยเหลือไม่ได้',
+          text: error.message || 'กรุณาส่งคำขอใหม่',
+          icon: 'error',
+          showCancelButton: Boolean(currentUid()),
+          confirmButtonText: 'ปิด',
+          cancelButtonText: 'ส่งคำขอใหม่'
+        });
+        if (result.isDismissed && currentUid()) {
+          await contactAdmin(currentUid(), false, 'AUTH_UPGRADE_REQUIRED');
+        }
+      }, 0);
+      return { consumed: false, error };
+    }
+  }
+
+  async function completeRecoveryIfNeeded() {
+    if (completingRecovery || !isRecoveryMode()) return;
+    let ticket = '';
+    try {
+      ticket = String(global.sessionStorage.getItem(RECOVERY_TICKET_KEY) || '');
+      if (global.sessionStorage.getItem(RECOVERY_COMPLETE_KEY) === '1') return;
+    } catch (_) {}
+    if (!ticket) return;
+    completingRecovery = true;
+    try {
+      const response = await nativeFetch('/api/auth-help', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Royal-Client': 'line-token-v1' },
+        body: JSON.stringify({ action: 'complete', ticket })
+      });
+      if (response.ok) {
+        global.sessionStorage.setItem(RECOVERY_COMPLETE_KEY, '1');
+      }
+    } catch (_) {
+      // Keep the ticket in this browser session and retry after the next successful API call.
+    } finally {
+      completingRecovery = false;
+    }
+  }
+
+  const recoveryReady = consumeRecoveryLink();
+
+  // Attach the LIFF access token to every same-origin API request. Existing
+  // pages without this bridge continue in legacy mode until their next reload.
+  global.fetch = async function authenticatedFetch(input, init = {}) {
+    if (!isSameOriginApi(input)) return nativeFetch(input, init);
+
+    const token = isRecoveryMode() ? '' : getLineAccessToken();
+    const requestHeaders = typeof Request !== 'undefined' && input instanceof Request
+      ? input.headers
+      : undefined;
+    const headers = new Headers(requestHeaders || {});
+    new Headers(init.headers || {}).forEach((value, key) => headers.set(key, value));
+    headers.set('X-Royal-Client', 'line-token-v1');
+    const recoveryProof = getRecoveryProof();
+    if (recoveryProof) headers.set('X-Royal-Recovery', recoveryProof);
+    if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+
+    const requestInit = { ...init, headers };
+    const replayable = canReplayRequest(input, init);
+    let response;
+    let authPayload = null;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await nativeFetch(input, requestInit);
+      } catch (error) {
+        const method = String(init.method || 'GET').toUpperCase();
+        const safeNetworkRetry = ['GET', 'HEAD', 'OPTIONS'].includes(method) && replayable;
+        if (safeNetworkRetry && attempt < 2) {
+          await sleep(400 + attempt * 500);
+          continue;
+        }
+        void showAuthHelp({ code: 'AUTH_PROVIDER_UNAVAILABLE' });
+        throw error;
+      }
+
+      authPayload = await readAuthPayload(response);
+      if (authPayload?.code === 'AUTH_PROVIDER_UNAVAILABLE' && replayable && attempt < 2) {
+        await sleep(400 + attempt * 500);
+        continue;
+      }
+      break;
+    }
+
+    if (authPayload) void showAuthHelp(authPayload);
+    else if (response?.ok) {
+      try {
+        const raw = typeof input === 'string' ? input : input?.url;
+        const path = new URL(raw, global.location.href).pathname;
+        if (path !== '/api/auth-help') void completeRecoveryIfNeeded();
+      } catch (_) {}
+    }
+    return response;
+  };
+
+  global.RoyalAuth = {
+    getAccessToken: getLineAccessToken,
+    hasToken: () => Boolean(getLineAccessToken()),
+    isRecoveryMode,
+    enableRecoveryMode,
+    enableRecoveryUntil,
+    disableRecoveryMode,
+    ready: recoveryReady
+  };
+
   const $ = (sel) => document.querySelector(sel);
   const topBar = $('#topProgressBar');
   const topWrap = $('#topProgress');

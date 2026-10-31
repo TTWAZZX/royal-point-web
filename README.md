@@ -70,6 +70,11 @@ Required:
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 ADMIN_UID=
+LINE_LOGIN_CHANNEL_ID=2007053300
+LINE_CHANNEL_ACCESS_TOKEN=
+APP_BASE_URL=https://your-production-domain.example
+LINE_LIFF_URL=https://liff.line.me/your-liff-id
+LINE_ADMIN_URL=https://your-production-domain.example/admin.html
 ```
 
 Safety / AI:
@@ -93,6 +98,10 @@ Notes:
 - `SAFETY_ADMIN_UIDS` จัดการ Safety ได้ แต่ไม่ควรได้สิทธิ admin ทั้งระบบ
 - `SAFETY_VIEWER_UIDS` ดู Safety dashboard/report ได้
 - ห้าม commit `.env.local` หรือ secret ใดๆ
+- `LINE_CHANNEL_ACCESS_TOKEN` ต้องเป็น Messaging API channel access token ของ LINE Official Account ที่ใช้แจ้งเตือน
+- `LINE_LIFF_URL` ใช้สร้างปุ่มกลับเข้าสู่ระบบสำหรับผู้ใช้ เช่น `https://liff.line.me/2007053300-QoEvbXyn`
+- `LINE_ADMIN_URL` ใช้เปิดเรื่องช่วยเหลือในหน้าแอดมินโดยตรง
+- ถ้าการส่ง LINE ไม่สำเร็จ เรื่องช่วยเหลือและสิทธิ์ recovery ยังคงถูกบันทึกตามปกติ
 
 ## Database Migrations
 
@@ -100,6 +109,7 @@ Notes:
 
 1. `supabase_audit_logs_migration.sql`
 2. `supabase_daily_checkins_migration.sql`
+3. `supabase_user_auth_migration.sql`
 
 ตารางสำคัญจาก safety migration:
 
@@ -349,11 +359,28 @@ npm install
 ตรวจ syntax:
 
 ```bash
-node --check app.js
-node --check admin.js
-node --check api/admin-actions.js
-node --check api/daily-checkin.js
+npm run check
 ```
+
+รันทดสอบระบบยืนยันตัวตน ศูนย์ช่วยเหลือ ลิงก์ใช้ครั้งเดียว และการเชื่อมต่อทุกส่วน:
+
+```bash
+npm test
+```
+
+ตรวจ Flex Message ทั้ง 4 รูปแบบกับ LINE โดยไม่ส่งข้อความจริง:
+
+```bash
+npm run validate:line-flex
+```
+
+หลัง deploy แล้ว ส่ง Flex Message ทดสอบจริงไปยัง `ADMIN_UID`:
+
+```bash
+npm run test:line-delivery
+```
+
+คำสั่งนี้ส่งข้อความจริงหนึ่งข้อความ จึงควรใช้เฉพาะหลังตรวจสอบ Production URL และ Environment Variables แล้ว
 
 ตรวจ diff:
 
@@ -362,7 +389,7 @@ git diff --check
 git status --short
 ```
 
-โปรเจกต์นี้ยังไม่มี `npm test` หรือ `npm run dev` ใน `package.json`
+โปรเจกต์นี้ยังไม่มี `npm run dev` ใน `package.json` หากต้องการจำลอง Vercel ให้ใช้คำสั่งด้านล่าง
 
 ถ้าจะใช้ Vercel local:
 
@@ -375,6 +402,74 @@ vercel dev
 
 ## Deployment Checklist
 
+### Progressive LINE token migration
+
+ระบบจะย้ายผู้ใช้ทีละคนเมื่อเปิดเว็บเวอร์ชันใหม่ โดยไม่แก้ `users.id`, `users.uid`,
+คะแนน, ประวัติ, คูปอง, การแลกรางวัล หรือ Safety Check-in เดิม
+
+ลำดับ deploy ที่ต้องใช้:
+
+1. รัน `supabase_user_auth_migration.sql` ใน Supabase SQL Editor ก่อน deploy โค้ด
+2. ตั้ง `LINE_LOGIN_CHANNEL_ID=2007053300` ใน Vercel Environment Variables
+3. Deploy โค้ด
+4. ผู้ใช้เก่าที่ยังไม่โหลดหน้าใหม่จะใช้ legacy mode ต่อได้
+5. เมื่อผู้ใช้โหลดหน้าใหม่และ LINE token ผ่านการตรวจสอบ ระบบจะบันทึก UID นั้นใน
+   `user_auth_migrations` และบังคับใช้ token สำหรับ UID นั้นตั้งแต่นั้นเป็นต้นไป
+6. ผู้ใช้ใหม่ต้องมี LINE token ที่ตรวจสอบผ่านก่อนลงทะเบียนเสมอ
+
+Frontend ส่ง access token จาก `liff.getAccessToken()` เป็น `Authorization: Bearer ...`.
+Backend ตรวจ token, Channel ID, วันหมดอายุ และดึง UID จาก LINE โดยตรง ห้ามใช้ UID
+จาก client เป็นหลักฐานยืนยันตัวตน
+
+หากยังไม่ได้รัน migration API จะตอบ `AUTH_MIGRATION_NOT_READY` เพื่อป้องกันการ deploy
+แบบครึ่งหนึ่งที่อาจทำให้ระบบกลับไปเชื่อ UID โดยไม่ตั้งใจ
+
+#### Admin authentication recovery
+
+เมื่อผู้ใช้ตรวจ token ไม่สำเร็จ หน้าระบบจะแสดง UID และปุ่ม `เข้าโหมดช่วยเหลือ` ผู้ดูแลทำดังนี้:
+
+1. เปิด Admin Console และค้นหาผู้ใช้จากรายชื่อ
+2. กดปุ่มจัดการผู้ใช้ แล้วเลือก `เปิดโหมดช่วยเหลือ 30 นาที`
+3. ระบุเหตุผลทุกครั้ง ระบบจะบันทึกผู้เปิด เหตุผล และเวลาหมดอายุใน audit log
+4. แจ้งให้ผู้ใช้กด `เข้าโหมดช่วยเหลือ`
+5. สิทธิ์จะหมดอายุอัตโนมัติภายใน 30 นาที หรือแอดมินกดปิดก่อนเวลาได้
+6. หากผู้ใช้ยืนยัน LINE token สำเร็จก่อนครบเวลา ระบบจะปิดโหมดช่วยเหลือทันที
+
+โหมดนี้ไม่แก้ UID ไม่สร้างบัญชีใหม่ และไม่แตะคะแนนหรือประวัติเดิม ห้ามเปิดแบบถาวร
+และเปิดได้เฉพาะผู้ใช้ที่เคยย้ายไปใช้ token แล้วเท่านั้น
+
+#### Authentication error UX
+
+- `AUTH_PROVIDER_UNAVAILABLE`: ลองอัตโนมัติ 2 ครั้ง แล้วแสดง `ลองอีกครั้ง`,
+  `เข้าสู่ระบบ LINE ใหม่` และ `ติดต่อผู้ดูแล`
+- `AUTH_TOKEN_INVALID` / `AUTH_TOKEN_REQUIRED`: แสดง `เข้าสู่ระบบ LINE ใหม่`,
+  `ลองโหลดใหม่` และ `ติดต่อผู้ดูแล`
+- `AUTH_UPGRADE_REQUIRED`: แสดง `โหลดระบบเวอร์ชันใหม่`, `เข้าสู่ระบบ LINE ใหม่`
+  และ `ติดต่อผู้ดูแล`
+- `AUTH_UID_MISMATCH`: บังคับออกจาก LINE และเข้าสู่บัญชีที่ถูกต้อง ไม่อนุญาต recovery
+- `AUTH_MIGRATION_NOT_READY`: แจ้งว่าระบบกำลังปรับปรุงและให้ติดต่อผู้ดูแล
+
+หน้าติดต่อผู้ดูแลแสดงและคัดลอก UID ได้ หากแอดมินเปิด recovery แล้ว ผู้ใช้กด
+`เข้าโหมดช่วยเหลือ` จากหน้านี้ได้ การโหลดระบบเวอร์ชันใหม่จะเพิ่ม `auth_refresh`
+ใน URL เพื่อบังคับดึงเอกสารหน้าใหม่โดยไม่ล้างข้อมูลผู้ใช้
+
+#### LINE authentication help center
+
+เส้นทางหลักของระบบช่วยเหลือ:
+
+1. ผู้ใช้กด `ส่งคำขอช่วยเหลือ` จากหน้าต่างข้อผิดพลาดการยืนยัน LINE
+2. `/api/auth-help` สร้างหรืออัปเดตเรื่องเดิมที่ยังเปิดอยู่ และส่ง Flex Message หา `ADMIN_UID`
+3. แอดมินเปิดแท็บ `เรื่องช่วยเหลือ` หรือตามปุ่มจาก LINE แล้วอนุมัติ 30 นาที
+4. ระบบสร้างลิงก์ recovery แบบสุ่ม ใช้ครั้งเดียว เก็บเฉพาะ SHA-256 hash และมีอายุไม่เกิน 15 นาที
+5. ผู้ใช้กดลิงก์ใน LINE ระบบเปิด recovery session และแนบ proof นี้กับ private API ทุกครั้งตลอดช่วงช่วยเหลือ
+6. Backend ผูก proof กับ UID และเรื่องช่วยเหลือ จึงไม่อนุญาตให้อุปกรณ์อื่นใช้เพียง UID เลียนแบบ session นี้
+7. หลัง private API แรกตอบสำเร็จ ระบบปิดเรื่องเป็น `resolved` และส่งผลสำเร็จให้ผู้ใช้กับแอดมิน
+
+ตารางที่ใช้คือ `auth_help_cases`, `auth_recovery_tickets` และ
+`line_notification_outbox` ซึ่งไม่แก้ไข `users`, คะแนน, คูปอง, การแลกรางวัล หรือประวัติเดิม
+การส่ง LINE ใช้ dedupe key และ `X-Line-Retry-Key` เดิมเมื่อกดส่งใหม่ จึงไม่สร้างข้อความซ้ำ
+หาก LINE ส่งไม่สำเร็จ แอดมินจะเห็นสถานะและปุ่ม `ส่ง LINE ใหม่` ในหน้าเรื่องช่วยเหลือ
+
 ก่อน deploy:
 
 1. รัน Supabase migration ล่าสุด
@@ -382,6 +477,11 @@ vercel dev
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `ADMIN_UID`
+   - `LINE_LOGIN_CHANNEL_ID` (`2007053300` สำหรับ LIFF ปัจจุบัน)
+   - `LINE_CHANNEL_ACCESS_TOKEN`
+   - `APP_BASE_URL`
+   - `LINE_LIFF_URL`
+   - `LINE_ADMIN_URL`
    - `GEMINI_API_KEY`
    - `SAFETY_ADMIN_UIDS` ถ้ามี
    - `SAFETY_VIEWER_UIDS` ถ้ามี

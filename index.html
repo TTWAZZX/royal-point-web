@@ -407,7 +407,7 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-<script src="/loader.js"></script>
+<script src="/loader.js?v=line-token-v1"></script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
 <script src="/app.js" defer></script>
@@ -431,12 +431,26 @@
 
   async function boot() {
     try {
-      await liff.init({ liffId: LIFF_ID });
-      if (!liff.isLoggedIn()) { liff.login(); return; }
+      await (window.RoyalAuth?.ready || Promise.resolve());
+      const recoveryMode = Boolean(window.RoyalAuth?.isRecoveryMode?.());
+      let prof = null;
+      let uid = '';
 
-      const prof = await liff.getProfile();
-      const uid  = prof.userId;
+      if (recoveryMode) {
+        uid = String(window.__UID || sessionStorage.getItem('uid') || localStorage.getItem('uid') || '').trim();
+        if (!uid) {
+          window.RoyalAuth?.disableRecoveryMode?.();
+          throw new Error('recovery_uid_not_found');
+        }
+      } else {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        prof = await liff.getProfile();
+        uid = String(prof?.userId || '').trim();
+      }
+
       window.__UID = uid;
+      sessionStorage.setItem('uid', uid);
 
       // เช็คว่ามีผู้ใช้แล้วหรือยัง โดยดู status 404 ตรงๆ
       let needRegister = false;
@@ -448,7 +462,7 @@
           throw new Error("get-score failed with status " + resp.status);
         } else {
           // ผู้ใช้เก่า → บูตแอปต่อเลย
-          if (typeof initApp === "function") initApp({ profile: prof, uid, force: true });
+          if (typeof initApp === "function") initApp({ profile: prof, uid, force: true, recovery: recoveryMode });
         }
       } catch (err) {
         console.warn("Direct fetch get-score error:", err);
@@ -456,6 +470,10 @@
 
       // ผู้ใช้ใหม่ → เปิดฟอร์ม + ซ่อนสเกเลตันที่ค้าง
       if (needRegister) {
+        if (recoveryMode) {
+          window.RoyalAuth?.disableRecoveryMode?.();
+          return Swal.fire('ไม่พบบัญชีเดิม', 'โหมดช่วยเหลือใช้ได้เฉพาะผู้ใช้ที่มีบัญชีเดิม กรุณายืนยันตัวตนผ่าน LINE', 'error');
+        }
         hideSkeletons();
         window.showRegisterModal(prof);
       }

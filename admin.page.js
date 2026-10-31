@@ -29,6 +29,8 @@ let sortDir  = "desc";
 let page     = 1;
 let pageSize = 20;
 let TARGET_USER = null; 
+let AUTH_HELP_CASES = [];
+let AUTH_HELP_DEEP_LINK_OPENED = false;
 
 /* ---------- Helpers ---------- */
 const qs  = (sel) => document.querySelector(sel);
@@ -39,6 +41,33 @@ function formatDateTime(ts) {
   const d = new Date(ts); if (isNaN(d)) return "";
   return d.toLocaleString('th-TH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
+
+function isRecoveryActive(auth) {
+  const until = new Date(auth?.recoveryUntil || 0).getTime();
+  return Number.isFinite(until) && until > Date.now();
+}
+
+function authBadge(auth) {
+  if (isRecoveryActive(auth)) return '<span class="badge bg-warning-subtle text-warning-emphasis ms-1">โหมดช่วยเหลือ</span>';
+  if (auth?.tokenRequired) return '<span class="badge bg-success-subtle text-success ms-1">ยืนยันผ่าน LINE แล้ว</span>';
+  return '<span class="badge bg-secondary-subtle text-secondary ms-1">รอย้ายระบบ</span>';
+}
+
+const AUTH_HELP_STATUS = {
+  open: { label:'รอดำเนินการ', tone:'warning' },
+  approved: { label:'เปิดช่วยเหลือแล้ว', tone:'primary' },
+  resolved: { label:'แก้ไขแล้ว', tone:'success' },
+  expired: { label:'หมดอายุ', tone:'secondary' },
+  closed: { label:'ปิดเรื่อง', tone:'dark' }
+};
+
+const AUTH_ERROR_LABEL = {
+  AUTH_PROVIDER_UNAVAILABLE: 'เชื่อมต่อ LINE ไม่ได้ชั่วคราว',
+  AUTH_TOKEN_INVALID: 'ข้อมูลยืนยัน LINE หมดอายุ',
+  AUTH_TOKEN_REQUIRED: 'ไม่พบข้อมูลยืนยัน LINE',
+  AUTH_UPGRADE_REQUIRED: 'หน้าเดิมยังไม่ส่งข้อมูลยืนยัน',
+  AUTH_MIGRATION_NOT_READY: 'ระบบย้ายบัญชียังไม่พร้อม'
+};
 
 // ⭐ Helper: พยายามหา UID แอดมินให้เจอไม่ว่าจะอยู่ที่ไหน
 function getCurrentAdminUid() {
@@ -69,6 +98,7 @@ function renderTable(totalPages) {
              </div>
              <div class="text-muted small">
                 <i class="fa-regular fa-id-card me-1 opacity-50"></i>${escapeHtml(r.room || r.tel || 'General User')}
+                ${authBadge(r.auth)}
              </div>
           </div>
 
@@ -110,7 +140,8 @@ async function loadPageUsers() {
     if (json.status !== "success") throw new Error(json.message || "Load failed");
 
     rows = json.data.map((r,i)=>({ 
-        uid: r.uid, name: r.name, score: Number(r.score||0), tel: r.tel || '', room: r.room || ''
+        uid: r.uid, name: r.name, score: Number(r.score||0), tel: r.tel || '', room: r.room || '',
+        auth: r.auth || { tokenRequired:false, migratedAt:null, lastVerifiedAt:null, recoveryUntil:null, recoveryReason:null, recoveryBy:null }
     }));
     applyFilterSortPaginate(true);
   } catch (e) {
@@ -121,7 +152,11 @@ async function loadPageUsers() {
 
 function applyFilterSortPaginate(resetPage=false) {
   const q = (qs("#searchInput")?.value || "").trim().toLowerCase();
-  view = rows.filter(r => !q || (r.name||"").toLowerCase().includes(q) || String(r.tel||"").includes(q)); 
+  view = rows.filter(r => !q ||
+    (r.name||"").toLowerCase().includes(q) ||
+    String(r.tel||"").includes(q) ||
+    String(r.uid||"").toLowerCase().includes(q)
+  );
   view.sort((a,b)=> b.score - a.score);
 
   const totalPages = Math.max(1, Math.ceil(view.length / pageSize));
@@ -140,6 +175,213 @@ function bindEvents() {
       if(page < max){ page++; applyFilterSortPaginate(); }
   });
   qs("#btnConfirmAdjust")?.addEventListener("click", submitAdjust);
+  qs("#btnOpenAuthRecovery")?.addEventListener("click", openAuthRecovery);
+  qs("#btnCloseAuthRecovery")?.addEventListener("click", closeAuthRecovery);
+  qs("#authHelpSearch")?.addEventListener("input", debounce(renderAuthHelpCases, 250));
+  qs("#authHelpStatusFilter")?.addEventListener("change", renderAuthHelpCases);
+  qs("#btnRefreshAuthHelp")?.addEventListener("click", loadAuthHelpCases);
+  qs("#tabAuthHelpBtn")?.addEventListener("shown.bs.tab", loadAuthHelpCases);
+}
+
+function notificationSummary(helpCase) {
+    const items = Array.isArray(helpCase?.notifications) ? helpCase.notifications : [];
+    if (!items.length) return { label:'ยังไม่มีการส่ง LINE', tone:'secondary', failed:null };
+    const failed = items.find(item => item.status === 'failed');
+    if (failed) return { label:'ส่ง LINE ไม่สำเร็จ', tone:'danger', failed };
+    const pending = items.find(item => item.status === 'pending');
+    if (pending) return { label:'รอส่ง LINE', tone:'warning', failed:null };
+    return { label:'ส่ง LINE แล้ว', tone:'success', failed:null };
+}
+
+async function loadAuthHelpCases() {
+    const area = qs('#authHelpListArea');
+    if (!area) return;
+    area.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary"></div><div class="small text-muted mt-2">กำลังโหลดเรื่องช่วยเหลือ...</div></div>';
+    try {
+        const adminUid = getCurrentAdminUid();
+        const response = await fetch(`${API_ACTIONS}?action=auth_help_cases&adminUid=${encodeURIComponent(adminUid || '')}&ts=${Date.now()}`, { cache:'no-store' });
+        const payload = await response.json();
+        if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดเรื่องช่วยเหลือไม่สำเร็จ');
+        AUTH_HELP_CASES = Array.isArray(payload.data) ? payload.data : [];
+        const openCount = AUTH_HELP_CASES.filter(item => item.status === 'open').length;
+        const count = qs('#authHelpOpenCount');
+        if (count) {
+            count.textContent = String(openCount);
+            count.classList.toggle('d-none', openCount === 0);
+        }
+        renderAuthHelpCases();
+        openDeepLinkedHelpCase();
+    } catch (error) {
+        area.innerHTML = `<div class="m-card text-center py-4 text-danger"><i class="fa-solid fa-triangle-exclamation mb-2"></i><br>${escapeHtml(error.message || 'โหลดไม่สำเร็จ')}<br><button class="btn btn-sm btn-outline-danger rounded-pill mt-3" onclick="loadAuthHelpCases()">ลองใหม่</button></div>`;
+    }
+}
+
+function renderAuthHelpCases() {
+    const area = qs('#authHelpListArea');
+    if (!area) return;
+    const term = String(qs('#authHelpSearch')?.value || '').trim().toLowerCase();
+    const statusFilter = String(qs('#authHelpStatusFilter')?.value || 'all');
+    const filtered = AUTH_HELP_CASES.filter(item => {
+        const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+        const haystack = [item.case_no, item.target_uid, item.user?.name, item.user?.tel, item.error_code].join(' ').toLowerCase();
+        return matchesStatus && (!term || haystack.includes(term));
+    });
+    if (!filtered.length) {
+        area.innerHTML = '<div class="m-card text-center py-5 text-muted"><i class="fa-solid fa-headset fa-2x mb-3 opacity-25"></i><br>ไม่พบเรื่องช่วยเหลือ</div>';
+        return;
+    }
+    area.innerHTML = filtered.map(item => {
+        const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
+        const delivery = notificationSummary(item);
+        const canApprove = item.status === 'open';
+        return `<div class="m-card" id="auth-help-case-${escapeHtml(item.id)}">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div style="min-width:0">
+              <div class="fw-bold text-dark">${escapeHtml(item.case_no)}</div>
+              <div class="text-muted small text-truncate">${escapeHtml(item.user?.name || 'ไม่ระบุชื่อ')} · ${escapeHtml(item.target_uid || '')}</div>
+            </div>
+            <span class="badge bg-${meta.tone}-subtle text-${meta.tone}-emphasis rounded-pill">${meta.label}</span>
+          </div>
+          <div class="small mt-3"><span class="text-muted">สาเหตุ:</span> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || 'ยืนยันตัวตนไม่สำเร็จ')}</div>
+          <div class="small text-muted mt-1">แจ้งล่าสุด ${escapeHtml(formatDateTime(item.last_requested_at))} · ${Number(item.request_count || 1)} ครั้ง</div>
+          <div class="d-flex align-items-center justify-content-between gap-2 mt-3 pt-2 border-top">
+            <span class="badge bg-${delivery.tone}-subtle text-${delivery.tone}-emphasis"><i class="fa-brands fa-line me-1"></i>${delivery.label}</span>
+            <div class="d-flex gap-1">
+              ${delivery.failed ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryAuthHelpNotification('${escapeHtml(delivery.failed.id)}')">ส่ง LINE ใหม่</button>` : ''}
+              <button class="btn btn-sm ${canApprove ? 'btn-primary' : 'btn-outline-primary'} rounded-pill" onclick="openAuthHelpCase('${escapeHtml(item.id)}')">${canApprove ? 'ดำเนินการ' : 'ดูรายละเอียด'}</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+}
+
+window.openAuthHelpCase = async (caseId) => {
+    const item = AUTH_HELP_CASES.find(row => String(row.id) === String(caseId));
+    if (!item) return;
+    const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
+    const delivery = notificationSummary(item);
+    const recoveryText = item.recovery_until ? `<br><span class="small text-muted">สิทธิ์ถึง ${escapeHtml(formatDateTime(item.recovery_until))}</span>` : '';
+    const result = await Swal.fire({
+        title: item.case_no,
+        html: `<div class="text-start small">
+          <div><b>ผู้ใช้:</b> ${escapeHtml(item.user?.name || 'ไม่ระบุชื่อ')}</div>
+          <div><b>UID:</b> <code>${escapeHtml(item.target_uid)}</code></div>
+          <div><b>สาเหตุ:</b> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || item.error_code)}</div>
+          <div><b>สถานะ:</b> ${meta.label}${recoveryText}</div>
+          <div><b>LINE:</b> ${delivery.label}</div>
+          ${delivery.failed?.last_error ? `<div class="text-danger mt-2">${escapeHtml(delivery.failed.last_error)}</div>` : ''}
+        </div>`,
+        icon: item.status === 'open' ? 'question' : 'info',
+        showCancelButton: item.status === 'open',
+        confirmButtonText: item.status === 'open' ? 'เปิดช่วยเหลือ 30 นาที' : 'ปิด',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: item.status === 'open' ? '#2563eb' : '#64748b'
+    });
+    if (item.status === 'open' && result.isConfirmed) await approveAuthHelpCase(item);
+};
+
+async function approveAuthHelpCase(item) {
+    const noteResult = await Swal.fire({
+        title: 'ระบุเหตุผลการอนุมัติ',
+        input: 'textarea',
+        inputPlaceholder: 'เช่น ผู้ใช้ยืนยันตัวตนผ่าน LINE ไม่สำเร็จและตรวจสอบข้อมูลแล้ว',
+        inputAttributes: { maxlength:'300' },
+        showCancelButton: true,
+        confirmButtonText: 'อนุมัติและส่ง LINE',
+        cancelButtonText: 'ยกเลิก',
+        inputValidator: value => String(value || '').trim().length < 3 ? 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร' : undefined
+    });
+    if (!noteResult.isConfirmed) return;
+    try {
+        Swal.fire({ title:'กำลังเปิดโหมดช่วยเหลือ...', allowOutsideClick:false, didOpen:() => Swal.showLoading() });
+        const response = await fetch(API_ACTIONS, {
+            method:'POST', headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({
+                action:'auth_recovery_open',
+                adminUid:getCurrentAdminUid(),
+                targetUid:item.target_uid,
+                caseId:item.id,
+                durationMinutes:30,
+                note:String(noteResult.value || '').trim()
+            })
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'อนุมัติไม่สำเร็จ');
+        const lineStatus = payload.data?.lineNotification?.status;
+        await Swal.fire({
+            title:'เปิดโหมดช่วยเหลือแล้ว',
+            text:lineStatus === 'sent' ? 'ส่งลิงก์กลับเข้าสู่ระบบให้ผู้ใช้ทาง LINE แล้ว' : 'เปิดสิทธิ์แล้ว แต่ส่ง LINE ไม่สำเร็จ สามารถกดส่งใหม่จากรายการได้',
+            icon:lineStatus === 'sent' ? 'success' : 'warning'
+        });
+        await Promise.all([loadAuthHelpCases(), loadPageUsers()]);
+    } catch (error) {
+        Swal.fire('ดำเนินการไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+    }
+}
+
+window.retryAuthHelpNotification = async (notificationId) => {
+    try {
+        Swal.fire({ title:'กำลังส่ง LINE ใหม่...', allowOutsideClick:false, didOpen:() => Swal.showLoading() });
+        const response = await fetch(API_ACTIONS, {
+            method:'POST', headers:{ 'Content-Type':'application/json' },
+            body:JSON.stringify({ action:'auth_notification_retry', adminUid:getCurrentAdminUid(), notificationId })
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'ส่ง LINE ไม่สำเร็จ');
+        if (payload.data?.status !== 'sent') throw new Error(payload.data?.last_error || 'LINE ยังรับข้อความไม่ได้');
+        await Swal.fire('ส่งแล้ว', 'ส่งข้อความ LINE เรียบร้อย', 'success');
+        loadAuthHelpCases();
+    } catch (error) {
+        Swal.fire('ส่ง LINE ไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+        loadAuthHelpCases();
+    }
+};
+
+function openDeepLinkedHelpCase() {
+    if (AUTH_HELP_DEEP_LINK_OPENED) return;
+    const caseId = new URLSearchParams(window.location.search).get('helpCase');
+    if (!caseId) return;
+    const item = AUTH_HELP_CASES.find(row => String(row.id) === String(caseId));
+    if (!item) return;
+    AUTH_HELP_DEEP_LINK_OPENED = true;
+    const tabButton = qs('#tabAuthHelpBtn');
+    if (tabButton && window.bootstrap?.Tab) bootstrap.Tab.getOrCreateInstance(tabButton).show();
+    setTimeout(() => window.openAuthHelpCase(caseId), 200);
+}
+
+function renderAuthRecoveryState(user) {
+    const auth = user?.auth || {};
+    const active = isRecoveryActive(auth);
+    const status = qs('#actionAuthStatus');
+    const detail = qs('#actionAuthDetail');
+    const openBtn = qs('#btnOpenAuthRecovery');
+    const closeBtn = qs('#btnCloseAuthRecovery');
+
+    if (!auth.tokenRequired) {
+        status.textContent = 'รอย้ายระบบ';
+        status.className = 'badge bg-secondary';
+        detail.textContent = 'ผู้ใช้ยังเข้าแบบเดิมได้อยู่ จึงยังไม่ต้องเปิดโหมดช่วยเหลือ';
+        openBtn?.classList.add('d-none');
+        closeBtn?.classList.add('d-none');
+        return;
+    }
+
+    if (active) {
+        status.textContent = 'ช่วยเหลือชั่วคราว';
+        status.className = 'badge bg-warning text-dark';
+        detail.textContent = `เข้าแบบเดิมได้ถึง ${formatDateTime(auth.recoveryUntil)} · ${auth.recoveryReason || 'ไม่ระบุเหตุผล'}`;
+        openBtn?.classList.add('d-none');
+        closeBtn?.classList.remove('d-none');
+        return;
+    }
+
+    status.textContent = 'ยืนยันผ่าน LINE';
+    status.className = 'badge bg-success';
+    detail.textContent = auth.lastVerifiedAt
+      ? `ยืนยันล่าสุด ${formatDateTime(auth.lastVerifiedAt)}`
+      : 'ผู้ใช้นี้ต้องยืนยันตัวตนผ่าน LINE';
+    openBtn?.classList.remove('d-none');
+    closeBtn?.classList.add('d-none');
 }
 
 window.openActionModal = (uid) => {
@@ -147,12 +389,96 @@ window.openActionModal = (uid) => {
     if (!u) return;
     TARGET_USER = u;
     qs("#actionUserName").textContent = u.name;
-    qs("#actionUserUID").textContent = ""; 
+    qs("#actionUserUID").textContent = u.uid;
+    renderAuthRecoveryState(u);
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
     qs("#radioAdd").checked = true;
     new bootstrap.Modal(qs('#actionModal')).show();
 };
+
+async function openAuthRecovery() {
+    if (!TARGET_USER?.uid || !TARGET_USER.auth?.tokenRequired) return;
+    const result = await Swal.fire({
+        title: 'เปิดโหมดช่วยเหลือ 30 นาที?',
+        html: `ผู้ใช้ <b>${escapeHtml(TARGET_USER.name || TARGET_USER.uid)}</b> จะสามารถเข้าแบบเดิมได้ชั่วคราว<br><span class="text-danger small">ใช้เฉพาะกรณียืนยันตัวตนผ่าน LINE ไม่สำเร็จ</span>`,
+        input: 'textarea',
+        inputLabel: 'เหตุผลที่เปิดสิทธิ์ชั่วคราว',
+        inputPlaceholder: 'เช่น โทรศัพท์เครื่องเดิมยืนยันตัวตนผ่าน LINE ไม่ผ่าน',
+        inputAttributes: { maxlength: '300' },
+        showCancelButton: true,
+        confirmButtonText: 'เปิด 30 นาที',
+        cancelButtonText: 'ยกเลิก',
+        confirmButtonColor: '#d97706',
+        preConfirm: value => {
+          const reason = String(value || '').trim();
+          if (reason.length < 3) return Swal.showValidationMessage('กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร');
+          return reason;
+        }
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      const res = await fetch(API_ACTIONS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auth_recovery_open',
+          adminUid: getCurrentAdminUid(),
+          targetUid: TARGET_USER.uid,
+          durationMinutes: 30,
+          note: result.value
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.message || 'recovery_open_failed');
+      TARGET_USER.auth = {
+        ...TARGET_USER.auth,
+        recoveryUntil: json.data.recovery_until,
+        recoveryReason: json.data.recovery_reason,
+        recoveryBy: json.data.recovery_by
+      };
+      renderAuthRecoveryState(TARGET_USER);
+      applyFilterSortPaginate();
+      Swal.fire('เปิดแล้ว', 'แจ้งให้ผู้ใช้กด “เข้าโหมดช่วยเหลือ” ภายใน 30 นาที', 'success');
+    } catch (error) {
+      Swal.fire('เปิดสิทธิ์ไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+    }
+}
+
+async function closeAuthRecovery() {
+    if (!TARGET_USER?.uid) return;
+    const confirm = await Swal.fire({
+      title: 'ปิดโหมดช่วยเหลือ?',
+      text: 'ผู้ใช้จะต้องกลับไปยืนยันตัวตนผ่าน LINE ตามปกติ',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'ปิดทันที',
+      cancelButtonText: 'ยกเลิก'
+    });
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await fetch(API_ACTIONS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'auth_recovery_close',
+          adminUid: getCurrentAdminUid(),
+          targetUid: TARGET_USER.uid,
+          note: 'admin-manual-close'
+        })
+      });
+      const json = await res.json();
+      if (!res.ok || json.status !== 'success') throw new Error(json.message || 'recovery_close_failed');
+      TARGET_USER.auth = { ...TARGET_USER.auth, recoveryUntil:null, recoveryReason:null, recoveryBy:null };
+      renderAuthRecoveryState(TARGET_USER);
+      applyFilterSortPaginate();
+      Swal.fire('ปิดแล้ว', 'ผู้ใช้ต้องยืนยันตัวตนผ่าน LINE ตามปกติ', 'success');
+    } catch (error) {
+      Swal.fire('ปิดสิทธิ์ไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+    }
+}
 
 // ⭐ แก้ไข: ฟังก์ชันบันทึกแต้ม (เพิ่มการเช็ค UID ให้ชัวร์)
 async function submitAdjust() {
@@ -233,6 +559,7 @@ async function boot() {
         console.warn("LIFF init slow, forcing start...");
         bindEvents();
         loadPageUsers();
+        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
     }, 1500);
 
     try {
@@ -252,12 +579,14 @@ async function boot() {
         clearTimeout(safetyTimer);
         bindEvents();
         loadPageUsers();
+        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
 
     } catch (e) { 
         clearTimeout(safetyTimer);
         console.error("Boot Error:", e);
         bindEvents(); 
         loadPageUsers(); 
+        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
     }
 }
 

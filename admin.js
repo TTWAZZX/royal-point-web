@@ -18,6 +18,7 @@ const API_AUDIT_LOGS    = "/api/admin-audit-logs";
 let ADMIN_UID = "";
 let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
+let COUPON_SEARCH = '';
 let AUDIT_ROWS = [];
 let SAFETY_PULSE = null;
 let SAFETY_PULSE_TAB = 'action';
@@ -133,10 +134,14 @@ function renderCoupons() {
   if (!listEl) return;
 
   // กรองข้อมูล
+  const search = COUPON_SEARCH.trim().toLocaleLowerCase('th-TH');
   const filtered = COUPON_ROWS.filter(c => {
-    if (COUPON_FILTER === 'used') return c.status === 'used';
-    if (COUPON_FILTER === 'unused') return c.status === 'unused';
-    return true;
+    if (COUPON_FILTER === 'used' && c.status !== 'used') return false;
+    if (COUPON_FILTER === 'unused' && c.status !== 'unused') return false;
+    if (!search) return true;
+
+    return [c.code, c.claimer, c.points, c.status]
+      .some(value => String(value ?? '').toLocaleLowerCase('th-TH').includes(search));
   });
 
   if (filtered.length === 0) {
@@ -151,12 +156,20 @@ function renderCoupons() {
   // Render HTML
   listEl.innerHTML = filtered.map(c => {
     const isUsed = c.status === 'used';
+    const safeCode = escapeAuditHtml(c.code);
+    const safePoints = escapeAuditHtml(c.points);
+    const safeClaimer = escapeAuditHtml(c.claimer || '?');
+    const codeArg = escapeAuditHtml(JSON.stringify(String(c.code || '')));
+    const usedDate = c.used_at ? new Date(c.used_at) : null;
+    const safeUsedDate = usedDate && !Number.isNaN(usedDate.getTime())
+      ? escapeAuditHtml(usedDate.toLocaleDateString('th-TH'))
+      : '-';
     const badge = isUsed 
       ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="fa-solid fa-check"></i> ใช้แล้ว</span>` 
       : `<span class="badge bg-success-subtle text-success border border-success-subtle">พร้อมใช้</span>`;
     
     const usedInfo = isUsed 
-      ? `<div class="small text-muted mt-1"><i class="fa-regular fa-user"></i> ${c.claimer || '?'} &bull; ${new Date(c.used_at).toLocaleDateString('th-TH')}</div>`
+      ? `<div class="small text-muted mt-1"><i class="fa-regular fa-user"></i> ${safeClaimer} &bull; ${safeUsedDate}</div>`
       : '';
 
     return `
@@ -164,24 +177,24 @@ function renderCoupons() {
         <div class="card-body p-3 d-flex justify-content-between align-items-center">
           <div class="overflow-hidden">
             <div class="d-flex align-items-center gap-2 mb-1">
-               <code class="fs-5 fw-bold text-primary">${c.code}</code>
+               <code class="fs-5 fw-bold text-primary">${safeCode}</code>
                ${badge}
             </div>
             <div class="small text-muted">
-               มูลค่า <b class="text-dark">${c.points}</b> แต้ม
+               มูลค่า <b class="text-dark">${safePoints}</b> แต้ม
             </div>
             ${usedInfo}
           </div>
           
           <div class="d-flex gap-2">
              ${!isUsed ? `
-             <button class="btn btn-light border text-secondary" onclick="copyCode('${c.code}')" title="คัดลอก">
+             <button class="btn btn-light border text-secondary" onclick="copyCode(${codeArg})" title="คัดลอก">
                <i class="fa-regular fa-copy"></i>
              </button>
-             <button class="btn btn-primary-soft text-primary border-0" onclick="openQrModal('${c.code}')" title="QR Code">
+             <button class="btn btn-primary-soft text-primary border-0" onclick="openQrModal(${codeArg})" title="QR Code">
                <i class="fa-solid fa-qrcode"></i>
              </button>
-             <button class="btn btn-light border text-danger" onclick="deleteCoupon('${c.code}')" title="ลบคูปองที่ยังไม่ใช้">
+             <button class="btn btn-light border text-danger" onclick="deleteCoupon(${codeArg})" title="ลบคูปองที่ยังไม่ใช้">
                <i class="fa-regular fa-trash-can"></i>
              </button>` 
              : '<button class="btn btn-light disabled border-0"><i class="fa-solid fa-lock text-muted"></i></button>'}
@@ -332,6 +345,17 @@ function bindGlobalEvents() {
   // ปุ่มส่วนคูปอง
   $id('btnGen')?.addEventListener('click', generateCoupons);
   $id('btnReload')?.addEventListener('click', loadCoupons);
+  $id('couponSearch')?.addEventListener('input', (event) => {
+    COUPON_SEARCH = event.target.value || '';
+    renderCoupons();
+  });
+  $id('couponSearchClear')?.addEventListener('click', () => {
+    const input = $id('couponSearch');
+    if (input) input.value = '';
+    COUPON_SEARCH = '';
+    renderCoupons();
+    input?.focus();
+  });
   
   // ปุ่มแจกแต้มทุกคน (Giveaway)
   $id('btnGiveaway')?.addEventListener('click', giveawayToAll);
@@ -341,8 +365,9 @@ function bindGlobalEvents() {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       document.querySelectorAll('#couponTabs .nav-link').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
-      COUPON_FILTER = e.target.dataset.filter;
+      const filterButton = e.target.closest('[data-filter]');
+      filterButton?.classList.add('active');
+      COUPON_FILTER = filterButton?.dataset.filter || 'all';
       renderCoupons();
     });
   });
@@ -581,6 +606,13 @@ async function loadAuditLogs() {
 }
 
 const AUDIT_EVENT_META = {
+  auth_recovery_open:           { label: 'เปิดโหมดช่วยเหลือการเข้าสู่ระบบ', icon: 'fa-unlock-keyhole', tone: 'warning' },
+  auth_recovery_close:          { label: 'ปิดโหมดช่วยเหลือการเข้าสู่ระบบ',  icon: 'fa-lock',           tone: 'primary' },
+  auth_help_requested:          { label: 'ผู้ใช้ส่งคำขอช่วยเหลือ',           icon: 'fa-headset',         tone: 'warning' },
+  auth_help_requested_again:    { label: 'ผู้ใช้ส่งคำขอช่วยเหลือซ้ำ',       icon: 'fa-headset',         tone: 'warning' },
+  auth_recovery_link_consumed:  { label: 'ผู้ใช้เปิดลิงก์ช่วยเหลือ',         icon: 'fa-link',            tone: 'primary' },
+  auth_help_resolved:           { label: 'แก้ไขเรื่องเข้าสู่ระบบแล้ว',       icon: 'fa-circle-check',    tone: 'success' },
+  auth_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',            icon: 'fa-paper-plane',     tone: 'primary' },
   daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
   daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
   daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
@@ -606,6 +638,15 @@ function formatAuditDetail(eventType, detail) {
   if (!detail || typeof detail !== 'object') return '';
   const d = detail;
   switch (eventType) {
+    case 'auth_help_requested':
+    case 'auth_help_requested_again':
+    case 'auth_recovery_link_consumed':
+    case 'auth_help_resolved':
+      return [d.caseNo, d.errorCode, d.notificationStatus].filter(Boolean).join(' · ');
+    case 'auth_recovery_open':
+      return [d.caseNo, d.recoveryUntil ? `ถึง ${formatAuditDate(d.recoveryUntil)}` : '', d.reason].filter(Boolean).join(' · ');
+    case 'auth_notification_retry':
+      return [d.messageKind, d.error].filter(Boolean).join(' · ');
     case 'daily_checkin_success':
     case 'daily_checkin_duplicate': {
       const parts = [];

@@ -146,6 +146,12 @@
         </button>
       </li>
       <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-auth-help" id="tabAuthHelpBtn">
+          <i class="fa-solid fa-headset me-1"></i> เรื่องช่วยเหลือ
+          <span class="badge bg-danger ms-1 d-none" id="authHelpOpenCount">0</span>
+        </button>
+      </li>
+      <li class="nav-item">
         <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-coupons">
           <i class="fa-solid fa-ticket me-1"></i> คูปอง
         </button>
@@ -224,6 +230,30 @@
         </div>
       </div>
 
+      <div class="tab-pane fade" id="pills-auth-help" role="tabpanel">
+        <div class="m-card p-2 mb-3">
+          <div class="input-group mb-2">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="search" id="authHelpSearch" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหาหมายเลขเรื่อง ชื่อ หรือ UID" aria-label="ค้นหาเรื่องช่วยเหลือ">
+            <button class="btn btn-light border-0 px-3" id="btnRefreshAuthHelp" title="โหลดใหม่" aria-label="โหลดเรื่องช่วยเหลือใหม่">
+              <i class="fa-solid fa-rotate-right text-secondary"></i>
+            </button>
+          </div>
+          <select id="authHelpStatusFilter" class="form-select border-0 bg-light rounded-3" aria-label="กรองสถานะเรื่องช่วยเหลือ">
+            <option value="all">ทุกสถานะ</option>
+            <option value="open">รอดำเนินการ</option>
+            <option value="approved">เปิดโหมดช่วยเหลือแล้ว</option>
+            <option value="resolved">แก้ไขแล้ว</option>
+            <option value="expired">หมดอายุ</option>
+            <option value="closed">ปิดเรื่อง</option>
+          </select>
+        </div>
+        <div class="small text-muted mb-2 px-1">การส่ง LINE ล้มเหลวจะไม่ยกเลิกเรื่อง ผู้ดูแลสามารถกดส่งใหม่ได้จากรายการ</div>
+        <div id="authHelpListArea" class="pb-5">
+          <div class="text-center py-5 text-muted">เลือกแท็บเพื่อโหลดเรื่องช่วยเหลือ</div>
+        </div>
+      </div>
+
       <div class="tab-pane fade" id="pills-coupons" role="tabpanel">
         <div class="m-card">
           <div class="fw-bold mb-2">สร้างคูปองใหม่</div>
@@ -239,6 +269,16 @@
                 <i class="fa-solid fa-magic me-1"></i> สร้างคูปอง
               </button>
             </div>
+          </div>
+        </div>
+
+        <div class="m-card p-2 mb-3">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="search" id="couponSearch" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหารหัสคูปอง ผู้ใช้ หรือจำนวนแต้ม..." aria-label="ค้นหาคูปอง" autocomplete="off">
+            <button type="button" id="couponSearchClear" class="btn btn-light border-0 px-3" title="ล้างคำค้น" aria-label="ล้างคำค้น">
+              <i class="fa-solid fa-xmark text-secondary"></i>
+            </button>
           </div>
         </div>
 
@@ -507,6 +547,20 @@
               <div class="fw-bold fs-5" id="actionUserName">-</div>
               <div class="small text-muted text-truncate" id="actionUserUID" style="max-width: 200px; margin: 0 auto;">-</div>
             </div>
+
+            <div class="border rounded-4 p-3 mb-3 bg-light" id="authRecoveryPanel">
+              <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                <span class="small fw-bold"><i class="fa-solid fa-shield-halved me-1"></i> การเข้าสู่ระบบ</span>
+                <span class="badge bg-secondary" id="actionAuthStatus">รอตรวจสอบ</span>
+              </div>
+              <div class="small text-muted mb-2" id="actionAuthDetail">-</div>
+              <button type="button" class="btn btn-sm btn-outline-warning w-100 rounded-pill" id="btnOpenAuthRecovery">
+                <i class="fa-solid fa-unlock-keyhole me-1"></i> เปิดโหมดช่วยเหลือ 30 นาที
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-danger w-100 rounded-pill d-none" id="btnCloseAuthRecovery">
+                <i class="fa-solid fa-lock me-1"></i> ปิดโหมดช่วยเหลือ
+              </button>
+            </div>
             
             <div class="btn-group w-100 mb-3" role="group">
               <input type="radio" class="btn-check" name="adjustType" id="radioAdd" value="add" checked>
@@ -572,7 +626,7 @@
   </div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="loader.js"></script>
+  <script src="loader.js?v=line-token-v1"></script>
   <script src="admin.js"></script>
   <script src="admin.page.js"></script>
 
