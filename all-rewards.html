@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>ของรางวัลทั้งหมด – Royal Point</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ctext y='.9em' font-size='56'%3E%F0%9F%8E%81%3C/text%3E%3C/svg%3E">
   <style id="systemBootCriticalStyles">#systemBootOverlay{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:20px;background:#f0fdfa;color:#0f172a;font-family:system-ui,sans-serif}#systemBootOverlay .system-boot-card{box-sizing:border-box;width:min(100%,420px);padding:28px 24px;text-align:center;background:#fff;border:1px solid #dbeafe;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.12)}#systemBootOverlay .system-boot-spinner{width:52px;height:52px;margin:0 auto 18px;border:5px solid #dbeafe;border-top-color:#10b981;border-radius:50%;animation:systemBootSpin .85s linear infinite}#systemBootOverlay .system-boot-title{font-size:1.18rem;font-weight:800;margin:0 0 6px}#systemBootOverlay .system-boot-message{min-height:48px;margin:0;color:#475569;line-height:1.55}#systemBootOverlay .system-boot-track{height:6px;margin-top:18px;border-radius:999px;background:#d1fae5;overflow:hidden}#systemBootOverlay .system-boot-bar{width:42%;height:100%;background:#10b981;animation:systemBootProgress 1.35s ease-in-out infinite}#systemBootOverlay .system-boot-hint{display:block;margin-top:12px;color:#64748b;font-size:.78rem}#systemBootOverlay .system-boot-retry{display:none}@keyframes systemBootSpin{to{transform:rotate(360deg)}}@keyframes systemBootProgress{from{transform:translateX(-110%)}to{transform:translateX(240%)}}</style>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -227,27 +228,40 @@ function friendlySpendError(err) {
 }
 
 async function resolveUid() {
-  const existing = getUid();
-  if (existing) return existing;
+  await (window.RoyalAuth?.ready || Promise.resolve());
 
-  try {
-    if (!window.liff) return '';
-    await liff.init({ liffId: LIFF_ID_REWARDS });
-    if (!liff.isLoggedIn()) {
-      liff.login({ redirectUri: window.location.href });
-      return '';
-    }
-    const profile = await liff.getProfile();
-    const uid = String(profile?.userId || '').trim();
-    if (uid) {
-      sessionStorage.setItem('uid', uid);
-      window.__UID = uid;
-    }
-    return uid;
-  } catch (err) {
-    console.warn('LIFF UID resolve failed:', err);
-    return '';
+  // โหมดช่วยเหลือเป็นกรณีเดียวที่อนุญาตให้ใช้ UID เดิมโดยไม่ส่ง LINE token
+  if (window.RoyalAuth?.isRecoveryMode?.()) {
+    const recoveryUid = getUid();
+    if (!recoveryUid) throw new Error('recovery_uid_not_found');
+    window.__UID = recoveryUid;
+    return { uid: recoveryUid, redirecting: false, recovery: true };
   }
+
+  // UID ใน URL/storage เป็นเพียงข้อมูลอ้างอิง ห้ามใช้แทนการยืนยันตัวตน LINE
+  if (!window.liff) throw new Error('liff_sdk_not_ready');
+  await liff.init({ liffId: LIFF_ID_REWARDS });
+  if (!liff.isLoggedIn()) {
+    window.SystemBoot?.update?.('กำลังเปิด LINE เพื่อยืนยันตัวตน');
+    liff.login({ redirectUri: window.location.href });
+    return { uid: '', redirecting: true, recovery: false };
+  }
+
+  const profile = await liff.getProfile();
+  const uid = String(profile?.userId || '').trim();
+  if (!uid) throw new Error('line_uid_not_found');
+
+  sessionStorage.setItem('uid', uid);
+  window.__UID = uid;
+
+  // รองรับลิงก์เก่าที่มี UID แต่ลบข้อมูลส่วนบุคคลออกจาก URL หลังยืนยันสำเร็จ
+  const cleanUrl = new URL(window.location.href);
+  if (cleanUrl.searchParams.has('uid')) {
+    cleanUrl.searchParams.delete('uid');
+    window.history.replaceState({}, '', cleanUrl.toString());
+  }
+
+  return { uid, redirecting: false, recovery: false };
 }
 
 /* ===============================
@@ -255,18 +269,23 @@ async function resolveUid() {
 ================================ */
 async function loadAllRewards() {
   const initialPageLoad = INITIAL_REWARDS_LOADING;
+  let keepBootVisible = false;
   if (initialPageLoad) window.SystemBoot?.update?.('กำลังโหลดคะแนนและรายการของรางวัลทั้งหมด');
   const grid = document.getElementById('rewardGrid');
   const skel = document.getElementById('skeletonGrid');
-  const uid  = await resolveUid();
-  
+
   try {
+    const auth = await resolveUid();
+    if (auth.redirecting) {
+      keepBootVisible = true;
+      return;
+    }
+    const uid = auth.uid;
+
     // ⭐ โหลดทั้งของรางวัล และ คะแนนล่าสุด พร้อมกัน
     const [rewardsRes, scoreRes] = await Promise.allSettled([
        Loading.apiFetch('/api/rewards?include=0', {cache:'no-store'}),
-       uid
-        ? fetch(`/api/get-score?uid=${encodeURIComponent(uid)}`, {cache:'no-store'}).then(r=>r.json())
-        : Promise.resolve(null)
+       Loading.apiFetch(`/api/get-score?uid=${encodeURIComponent(uid)}`, {cache:'no-store'})
     ]);
 
     // 1) จัดการคะแนน
@@ -312,8 +331,16 @@ async function loadAllRewards() {
   } catch (err) {
     console.error(err);
     skel.innerHTML = `<div class="col-12 text-center text-danger mt-5">โหลดข้อมูลไม่สำเร็จ</div>`;
+    await Swal.fire({
+      title: 'ยืนยันตัวตน LINE ไม่สำเร็จ',
+      text: 'กรุณาลองใหม่อีกครั้ง หากยังเข้าไม่ได้ให้กดติดต่อผู้ดูแลจากหน้าต่างช่วยเหลือ',
+      icon: 'error',
+      confirmButtonText: 'ลองใหม่',
+      confirmButtonColor: '#0ea5e9'
+    });
+    window.location.reload();
   } finally {
-    if (initialPageLoad) {
+    if (initialPageLoad && !keepBootVisible) {
       INITIAL_REWARDS_LOADING = false;
       window.SystemBoot?.hide?.();
     }

@@ -55,8 +55,20 @@ test('recovery is wired through database, backend, admin UI, user UI, and audit 
   assert.match(read('loader.js'), /ส่งคำขอช่วยเหลือ/)
   assert.match(read('index.html'), /recoveryMode/)
   assert.match(read('app.js'), /ctx\.recovery/)
-  assert.match(read('all-rewards.html'), /const existing = getUid\(\)/)
+  assert.match(read('all-rewards.html'), /RoyalAuth\?\.isRecoveryMode\?\.\(\)/)
   assert.match(read('api/admin-actions.js'), /allowRecovery: false/)
+})
+
+test('all rewards verifies LINE identity before using UID on desktop and mobile links', () => {
+  const rewards = read('all-rewards.html')
+  const app = read('app.js')
+
+  assert.match(rewards, /await liff\.init\(\{ liffId: LIFF_ID_REWARDS \}\)/)
+  assert.match(rewards, /liff\.login\(\{ redirectUri: window\.location\.href \}\)/)
+  assert.match(rewards, /const profile = await liff\.getProfile\(\)/)
+  assert.match(rewards, /cleanUrl\.searchParams\.delete\('uid'\)/)
+  assert.match(rewards, /if \(window\.RoyalAuth\?\.isRecoveryMode\?\.\(\)\)/)
+  assert.doesNotMatch(app, /allRewardsBtn\.href\s*=/)
 })
 
 test('LINE authentication help center is connected end to end', () => {

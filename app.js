@@ -358,17 +358,6 @@ async function initApp(ctx = {}) {
     if (uid) {
       window.__UID = uid;
       sessionStorage.setItem('uid', uid);
-
-      // ⭐ [เพิ่มใหม่ตรงนี้] : อัปเดตลิงก์ปุ่ม "ดูรางวัลทั้งหมด" ให้แนบ UID ไปด้วย
-      // เพื่อให้ User ทั่วไปกดเข้าไปแล้วไม่ต้องล็อกอินใหม่
-      const allRewardsBtn = document.querySelector('a[href*="all-rewards.html"]');
-      if (allRewardsBtn) {
-         const separator = allRewardsBtn.href.includes('?') ? '&' : '?';
-         // ป้องกันการเติมซ้ำ
-         if (!allRewardsBtn.href.includes('uid=')) {
-             allRewardsBtn.href = `${allRewardsBtn.href}${separator}uid=${uid}`;
-         }
-      }
     }
 
     // 3) preflight check
