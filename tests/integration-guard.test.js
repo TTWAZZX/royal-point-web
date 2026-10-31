@@ -6,6 +6,19 @@ const test = require('node:test')
 const root = path.resolve(__dirname, '..')
 const read = file => fs.readFileSync(path.join(root, file), 'utf8')
 
+test('Vercel serverless API file count stays within the 12-function budget', () => {
+  const apiFiles = fs.readdirSync(path.join(root, 'api')).filter(file => file.endsWith('.js')).sort()
+  assert.ok(apiFiles.length <= 12, `พบ API ${apiFiles.length} ไฟล์ เกินเพดาน 12: ${apiFiles.join(', ')}`)
+})
+
+test('all primary pages use the shared full-screen startup loading state', () => {
+  assert.match(read('loader.js'), /global\.SystemBoot =/)
+  assert.match(read('loader.js'), /การเชื่อมต่อใช้เวลานานกว่าปกติ/)
+  assert.match(read('index.html'), /SystemBoot\?\.hide/)
+  assert.match(read('admin.page.js'), /SystemBoot\?\.hide/)
+  assert.match(read('all-rewards.html'), /SystemBoot\?\.hide/)
+})
+
 test('all user-facing pages load the shared authentication bridge', () => {
   for (const file of ['index.html', 'admin.html', 'all-rewards.html']) {
     assert.match(read(file), /loader\.js\?v=line-token-v1/, `${file} must load the shared authentication bridge`)

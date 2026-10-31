@@ -7,6 +7,97 @@
   const RECOVERY_COMPLETE_KEY = 'ROYAL_AUTH_HELP_COMPLETED';
   let authHelpOpen = false;
   let completingRecovery = false;
+  let bootTimer = null;
+  let bootSlowTimer = null;
+
+  function ensureSystemBoot() {
+    if (!global.document?.body) return null;
+    let overlay = global.document.getElementById('systemBootOverlay');
+
+    if (!global.document.getElementById('systemBootStyles')) {
+      const style = global.document.createElement('style');
+      style.id = 'systemBootStyles';
+      style.textContent = `
+        #systemBootOverlay{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(145deg,rgba(240,253,250,.98),rgba(239,246,255,.98));color:#0f172a;font-family:"Noto Sans Thai","Kanit",system-ui,sans-serif;transition:opacity .22s ease}
+        #systemBootOverlay.is-leaving{opacity:0;pointer-events:none}
+        #systemBootOverlay .system-boot-card{box-sizing:border-box;width:min(100%,420px);padding:28px 24px;text-align:center;background:rgba(255,255,255,.94);border:1px solid rgba(148,163,184,.24);border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.12)}
+        #systemBootOverlay .system-boot-spinner{width:52px;height:52px;margin:0 auto 18px;border:5px solid #dbeafe;border-top-color:#0ea5e9;border-radius:50%;animation:systemBootSpin .85s linear infinite}
+        #systemBootOverlay .system-boot-title{font-size:1.18rem;font-weight:800;margin:0 0 6px}
+        #systemBootOverlay .system-boot-message{min-height:48px;margin:0;color:#475569;font-size:.94rem;line-height:1.55;overflow-wrap:anywhere}
+        #systemBootOverlay .system-boot-track{height:6px;margin-top:18px;overflow:hidden;border-radius:999px;background:#e2e8f0}
+        #systemBootOverlay .system-boot-bar{width:42%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#0ea5e9,#22c55e);animation:systemBootProgress 1.35s ease-in-out infinite}
+        #systemBootOverlay .system-boot-hint{display:block;margin-top:12px;color:#64748b;font-size:.78rem}
+        #systemBootOverlay .system-boot-retry{display:none;margin:16px auto 0;padding:9px 18px;border:0;border-radius:999px;background:#0ea5e9;color:#fff;font:inherit;font-weight:700}
+        #systemBootOverlay.is-slow .system-boot-retry{display:inline-flex}
+        @keyframes systemBootSpin{to{transform:rotate(360deg)}}
+        @keyframes systemBootProgress{0%{transform:translateX(-110%)}50%{transform:translateX(95%)}100%{transform:translateX(240%)}}
+        @media(max-width:480px){#systemBootOverlay{padding:14px}#systemBootOverlay .system-boot-card{padding:24px 18px;border-radius:20px}#systemBootOverlay .system-boot-title{font-size:1.05rem}}
+        @media(prefers-reduced-motion:reduce){#systemBootOverlay .system-boot-spinner,#systemBootOverlay .system-boot-bar{animation-duration:2.5s}}
+      `;
+      global.document.head.appendChild(style);
+    }
+
+    if (overlay) {
+      if (overlay.dataset.retryBound !== '1') {
+        overlay.querySelector('.system-boot-retry')?.addEventListener('click', () => global.location.reload());
+        overlay.dataset.retryBound = '1';
+      }
+      return overlay;
+    }
+
+    overlay = global.document.createElement('div');
+    overlay.id = 'systemBootOverlay';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.setAttribute('aria-busy', 'true');
+    overlay.innerHTML = `
+      <div class="system-boot-card">
+        <div class="system-boot-spinner" aria-hidden="true"></div>
+        <h2 class="system-boot-title">กำลังเปิดระบบ Royal Point</h2>
+        <p class="system-boot-message">กำลังโหลดทรัพยากรและเชื่อมต่อข้อมูล กรุณารอสักครู่</p>
+        <div class="system-boot-track" aria-hidden="true"><div class="system-boot-bar"></div></div>
+        <small class="system-boot-hint">กรุณาอย่าปิดหน้าต่างระหว่างกำลังโหลด</small>
+        <button type="button" class="system-boot-retry">โหลดระบบใหม่</button>
+      </div>`;
+    overlay.querySelector('.system-boot-retry')?.addEventListener('click', () => global.location.reload());
+    overlay.dataset.retryBound = '1';
+    global.document.body.appendChild(overlay);
+    return overlay;
+  }
+
+  function updateSystemBoot(message) {
+    const overlay = ensureSystemBoot();
+    const target = overlay?.querySelector('.system-boot-message');
+    if (target && message) target.textContent = String(message);
+  }
+
+  function showSystemBoot(message = 'กำลังโหลดทรัพยากรและเชื่อมต่อข้อมูล กรุณารอสักครู่') {
+    const overlay = ensureSystemBoot();
+    if (!overlay) return;
+    overlay.classList.remove('is-leaving', 'is-slow');
+    overlay.setAttribute('aria-busy', 'true');
+    updateSystemBoot(message);
+    clearTimeout(bootTimer);
+    clearTimeout(bootSlowTimer);
+    bootTimer = setTimeout(() => updateSystemBoot('ระบบยังคงกำลังโหลดข้อมูล กรุณารอสักครู่อีกนิด'), 5000);
+    bootSlowTimer = setTimeout(() => {
+      overlay.classList.add('is-slow');
+      updateSystemBoot('การเชื่อมต่อใช้เวลานานกว่าปกติ คุณสามารถรอต่อหรือลองโหลดระบบใหม่');
+    }, 12000);
+  }
+
+  function hideSystemBoot() {
+    clearTimeout(bootTimer);
+    clearTimeout(bootSlowTimer);
+    const overlay = global.document.getElementById('systemBootOverlay');
+    if (!overlay) return;
+    overlay.setAttribute('aria-busy', 'false');
+    overlay.classList.add('is-leaving');
+    setTimeout(() => overlay.remove(), 240);
+  }
+
+  global.SystemBoot = { show: showSystemBoot, update: updateSystemBoot, hide: hideSystemBoot };
+  showSystemBoot();
 
   function isSameOriginApi(input) {
     try {

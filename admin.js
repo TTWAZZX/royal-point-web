@@ -101,10 +101,12 @@ function startAdminSystem() {
 window.RoyalAdminReady = startAdminSystem;
 
 document.addEventListener("DOMContentLoaded", async () => {
+  window.SystemBoot?.update?.('กำลังยืนยันสิทธิ์ผู้ดูแลผ่าน LINE');
   const ready = await startAdminSystem();
   if (!ready) return;
   bindGlobalEvents();
   restorePersistentAdminTab();
+  window.SystemBoot?.update?.('กำลังโหลดข้อมูลสำหรับหน้าผู้ดูแล');
 });
 
 async function initAdminSystem() {
@@ -132,6 +134,7 @@ async function initAdminSystem() {
     // ลิงก์จาก Flex Message อาจเปิดเป็น LINE in-app browser ที่ยังไม่มี session
     // ให้ยืนยันผ่าน LINE แล้วกลับมาที่ URL เดิม เพื่อรักษา redemption_id/helpCase ไว้
     if (liffInitialized && !liff.isLoggedIn()) {
+      window.SystemBoot?.update?.('กำลังเปิดหน้าต่างยืนยันบัญชี LINE สำหรับผู้ดูแล');
       const redirectUri = window.location.href;
       const lastAttempt = Number(sessionStorage.getItem(ADMIN_LOGIN_ATTEMPT_KEY) || 0);
       if (Date.now() - lastAttempt < 15000) {
@@ -162,6 +165,7 @@ async function initAdminSystem() {
       window.CURRENT_ADMIN_UID = ADMIN_UID; 
     } else {
       console.error('Admin UID not found');
+      window.SystemBoot?.hide?.();
       await Swal.fire('ไม่สามารถยืนยันผู้ดูแลได้', 'กรุณาเปิดหน้านี้ผ่าน LINE แล้วลองใหม่อีกครั้ง', 'error');
       return false;
     }
@@ -176,6 +180,7 @@ async function initAdminSystem() {
 
   } catch (err) {
     console.error('Admin Init Error:', err);
+    window.SystemBoot?.hide?.();
     await Swal.fire('เริ่มระบบผู้ดูแลไม่สำเร็จ', 'กรุณาปิดหน้านี้แล้วเปิดจาก LINE อีกครั้ง', 'error');
     return false;
   }

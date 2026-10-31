@@ -573,11 +573,14 @@ async function boot() {
         MY_UID_PAGE = window.CURRENT_ADMIN_UID || sessionStorage.getItem('uid');
         if (!MY_UID_PAGE) return;
         bindEvents();
-        loadPageUsers();
-        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
+        window.SystemBoot?.update?.('กำลังโหลดรายชื่อสมาชิกและข้อมูลผู้ดูแล');
+        await loadPageUsers();
+        if (new URLSearchParams(window.location.search).has('helpCase')) await loadAuthHelpCases();
+        window.SystemBoot?.hide?.();
 
     } catch (e) { 
         console.error("Boot Error:", e);
+        window.SystemBoot?.hide?.();
         Swal.fire('เริ่มหน้าผู้ดูแลไม่สำเร็จ', 'กรุณาปิดหน้านี้แล้วเปิดจาก LINE อีกครั้ง', 'error');
     }
 }
