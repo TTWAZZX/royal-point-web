@@ -350,7 +350,7 @@ async function initApp(ctx = {}) {
         if (!prof) prof = await liff.getProfile().catch(() => null);
         if (!uid)  uid  = prof?.userId || '';
       } else {
-        liff.login();
+        liff.login({ redirectUri: window.location.href });
         return;
       }
     }

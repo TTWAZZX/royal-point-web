@@ -137,6 +137,15 @@ test('admin Flex deep links authenticate with LINE and preserve the target URL',
   assert.doesNotMatch(page, /LIFF init slow, forcing start/)
 })
 
+test('LINE login preserves deep links on both desktop and mobile entry points', () => {
+  for (const file of ['index.html', 'app.js', 'all-rewards.html', 'admin.js', 'loader.js']) {
+    const source = read(file)
+    assert.doesNotMatch(source, /liff\.login\(\s*\)/, `${file} must preserve the current deep-link URL during LINE login`)
+  }
+  assert.match(read('index.html'), /liff\.login\(\{ redirectUri: window\.location\.href \}\)/)
+  assert.match(read('app.js'), /liff\.login\(\{ redirectUri: window\.location\.href \}\)/)
+})
+
 test('internal desk numbers are never exposed as clickable telephone links', () => {
   for (const file of ['lib/line-messaging.js', 'app.js', 'all-rewards.html']) {
     assert.doesNotMatch(read(file), /tel:1199/i, `${file} must describe internal extensions as text only`)
