@@ -564,40 +564,21 @@ window.openHistoryModal = async (uid) => {
 
 async function boot() {
     if (!qs("#adminTableBody")) return;
-    
-    // ตั้งเวลา Timeout: ถ้า LIFF โหลดนานเกิน 1.5 วิ ให้ข้ามไปโหลดข้อมูลเลย
-    const safetyTimer = setTimeout(() => {
-        console.warn("LIFF init slow, forcing start...");
-        bindEvents();
-        loadPageUsers();
-        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
-    }, 1500);
 
     try {
-        if (typeof liff !== 'undefined') {
-            await liff.init({ liffId: window.LIFF_ID || "2007053300-QoEvbXyn" });
-            
-            if (liff.isLoggedIn()) {
-                const p = await liff.getProfile();
-                MY_UID_PAGE = p.userId;
-                // สำรองไว้ใน Storage เผื่อหลุด
-                sessionStorage.setItem('uid', p.userId);
-            }
-        } else {
-            MY_UID_PAGE = sessionStorage.getItem('uid');
-        }
-        
-        clearTimeout(safetyTimer);
+        const ready = typeof window.RoyalAdminReady === 'function'
+          ? await window.RoyalAdminReady()
+          : Boolean(getCurrentAdminUid());
+        if (!ready) return;
+        MY_UID_PAGE = window.CURRENT_ADMIN_UID || sessionStorage.getItem('uid');
+        if (!MY_UID_PAGE) return;
         bindEvents();
         loadPageUsers();
         if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
 
     } catch (e) { 
-        clearTimeout(safetyTimer);
         console.error("Boot Error:", e);
-        bindEvents(); 
-        loadPageUsers(); 
-        if (new URLSearchParams(window.location.search).has('helpCase')) loadAuthHelpCases();
+        Swal.fire('เริ่มหน้าผู้ดูแลไม่สำเร็จ', 'กรุณาปิดหน้านี้แล้วเปิดจาก LINE อีกครั้ง', 'error');
     }
 }
 

@@ -30,6 +30,8 @@ let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
 let LINE_NOTIFICATION_ROWS = [];
 const ADMIN_ACTIVE_TAB_KEY = 'RP_ADMIN_ACTIVE_TAB';
+const ADMIN_LOGIN_ATTEMPT_KEY = 'RP_ADMIN_LINE_LOGIN_AT';
+let ADMIN_INIT_PROMISE = null;
 
 function hasAdminDeepLink() {
     const params = new URLSearchParams(window.location.search);
@@ -91,34 +93,63 @@ function toastErr(message) {
 }
 
 // ============ INIT ============
+function startAdminSystem() {
+  if (!ADMIN_INIT_PROMISE) ADMIN_INIT_PROMISE = initAdminSystem();
+  return ADMIN_INIT_PROMISE;
+}
+
+window.RoyalAdminReady = startAdminSystem;
+
 document.addEventListener("DOMContentLoaded", async () => {
-  await initAdminSystem();
+  const ready = await startAdminSystem();
+  if (!ready) return;
   bindGlobalEvents();
   restorePersistentAdminTab();
 });
 
 async function initAdminSystem() {
   try {
+    let liffInitialized = false;
     // 1. LIFF / Auth Check
     if (typeof liff !== 'undefined') {
       try {
         await liff.init({ liffId: LIFF_ID_ADMIN });
+        liffInitialized = true;
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           ADMIN_UID = profile.userId;
+          sessionStorage.removeItem(ADMIN_LOGIN_ATTEMPT_KEY);
+          sessionStorage.setItem('uid', profile.userId);
           // แสดงชื่อแอดมิน (ถ้ามี Element)
           const nameEl = $id('adminName');
           if (nameEl) nameEl.textContent = profile.displayName;
-        } else {
-           // ถ้ายังไม่ล็อกอิน ให้ login ก่อน (หรือจะปล่อยผ่านถ้า test ในคอม)
-           // liff.login(); 
         }
       } catch (e) {
         console.warn('LIFF Init failed:', e);
       }
     }
 
-    // Fallback: ถ้า LIFF ไม่ได้ หรือ Test ในคอม ให้เอาจาก Storage
+    // ลิงก์จาก Flex Message อาจเปิดเป็น LINE in-app browser ที่ยังไม่มี session
+    // ให้ยืนยันผ่าน LINE แล้วกลับมาที่ URL เดิม เพื่อรักษา redemption_id/helpCase ไว้
+    if (liffInitialized && !liff.isLoggedIn()) {
+      const redirectUri = window.location.href;
+      const lastAttempt = Number(sessionStorage.getItem(ADMIN_LOGIN_ATTEMPT_KEY) || 0);
+      if (Date.now() - lastAttempt < 15000) {
+        const result = await Swal.fire({
+          icon: 'info',
+          title: 'ยืนยันสิทธิ์ผู้ดูแลผ่าน LINE',
+          text: 'กรุณายืนยันบัญชี LINE เพื่อเปิดหน้าจัดการรายการนี้',
+          confirmButtonText: 'เข้าสู่ระบบ LINE',
+          allowOutsideClick: false
+        });
+        if (!result.isConfirmed) return false;
+      }
+      sessionStorage.setItem(ADMIN_LOGIN_ATTEMPT_KEY, String(Date.now()));
+      liff.login({ redirectUri });
+      return false;
+    }
+
+    // Fallback สำหรับการพัฒนาใน Browser ที่ LIFF SDK เริ่มทำงานไม่ได้เท่านั้น
     if (!ADMIN_UID) {
       ADMIN_UID = sessionStorage.getItem('uid') || localStorage.getItem('uid');
     }
@@ -131,7 +162,8 @@ async function initAdminSystem() {
       window.CURRENT_ADMIN_UID = ADMIN_UID; 
     } else {
       console.error('Admin UID not found');
-      Swal.fire('Error', 'ไม่พบข้อมูลผู้ดูแลระบบ กรุณาเข้าสู่ระบบใหม่', 'error');
+      await Swal.fire('ไม่สามารถยืนยันผู้ดูแลได้', 'กรุณาเปิดหน้านี้ผ่าน LINE แล้วลองใหม่อีกครั้ง', 'error');
+      return false;
     }
 
     // 2. เริ่มโหลดข้อมูลส่วนคูปอง (ส่วน User ให้ admin.page.js ทำงานเอง)
@@ -140,9 +172,12 @@ async function initAdminSystem() {
     }
 
     await openRedemptionDeepLink();
+    return true;
 
   } catch (err) {
     console.error('Admin Init Error:', err);
+    await Swal.fire('เริ่มระบบผู้ดูแลไม่สำเร็จ', 'กรุณาปิดหน้านี้แล้วเปิดจาก LINE อีกครั้ง', 'error');
+    return false;
   }
 }
 

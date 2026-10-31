@@ -122,9 +122,19 @@ test('transaction notifications and reward pickup are connected end to end', () 
 
 test('admin restores the saved tab only after administrator authentication finishes', () => {
   const source = read('admin.js')
-  const init = source.indexOf('await initAdminSystem()')
+  const init = source.indexOf('await startAdminSystem()')
   const restore = source.indexOf('restorePersistentAdminTab()', init)
-  assert.ok(init >= 0 && restore > init, 'saved admin tab must restore after initAdminSystem completes')
+  assert.ok(init >= 0 && restore > init, 'saved admin tab must restore after administrator authentication completes')
+})
+
+test('admin Flex deep links authenticate with LINE and preserve the target URL', () => {
+  const admin = read('admin.js')
+  const page = read('admin.page.js')
+  assert.match(admin, /liff\.login\(\{ redirectUri \}\)/)
+  assert.match(admin, /const redirectUri = window\.location\.href/)
+  assert.match(admin, /window\.RoyalAdminReady = startAdminSystem/)
+  assert.match(page, /await window\.RoyalAdminReady\(\)/)
+  assert.doesNotMatch(page, /LIFF init slow, forcing start/)
 })
 
 test('internal desk numbers are never exposed as clickable telephone links', () => {
