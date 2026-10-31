@@ -136,7 +136,7 @@
   </section>
 
   <!-- Ads -->
-  <section class="rp-glass rp-card p-0 mb-3 hover-lift">
+  <section class="rp-glass rp-card p-0 mb-3 hover-lift" id="homeAdsSection">
     <div id="adsCarousel" class="carousel slide" data-bs-ride="carousel" data-bs-interval="3500">
       <div class="carousel-indicators">
         <button type="button" data-bs-target="#adsCarousel" data-bs-slide-to="0" class="active" aria-current="true"></button>
@@ -293,6 +293,27 @@
         <button id="rewardPreviewRedeemBtn" type="button" class="btn btn-success w-100 rounded-pill fw-bold mt-3">
           แลกรางวัล
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Advertisement Preview Modal -->
+<div class="modal fade" id="adPreviewModal" tabindex="-1" aria-hidden="true" aria-labelledby="adPreviewTitle">
+  <div class="modal-dialog modal-fullscreen-sm-down modal-xl modal-dialog-centered">
+    <div class="modal-content border-0 bg-dark text-white overflow-hidden">
+      <div class="modal-header border-0 position-absolute top-0 end-0" style="z-index:3;">
+        <button type="button" class="btn-close btn-close-white bg-dark bg-opacity-50 rounded-circle p-2" data-bs-dismiss="modal" aria-label="ปิด"></button>
+      </div>
+      <div class="ad-preview-stage">
+        <button type="button" id="adPreviewPrev" class="ad-preview-nav ad-preview-prev" aria-label="รูปก่อนหน้า"><i class="fa-solid fa-chevron-left"></i></button>
+        <img id="adPreviewImage" src="" alt="การ์ดประชาสัมพันธ์">
+        <button type="button" id="adPreviewNext" class="ad-preview-nav ad-preview-next" aria-label="รูปถัดไป"><i class="fa-solid fa-chevron-right"></i></button>
+      </div>
+      <div class="p-3 p-md-4 bg-dark">
+        <h5 id="adPreviewTitle" class="fw-bold mb-1">การ์ดประชาสัมพันธ์</h5>
+        <p id="adPreviewDescription" class="small text-white-50 mb-3"></p>
+        <a id="adPreviewLink" class="btn btn-success rounded-pill d-none" href="#" target="_blank" rel="noopener noreferrer">เปิดรายละเอียด <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i></a>
       </div>
     </div>
   </div>

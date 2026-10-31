@@ -151,6 +151,35 @@ test('transaction notifications and reward pickup are connected end to end', () 
   assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
 })
 
+test('admin-managed advertisement carousel keeps legacy fallback and full workflow', () => {
+  const migration = read('supabase_ad_banners_migration.sql')
+  const adminApi = read('api/admin-actions.js')
+  const publicApi = read('api/rewards.js')
+  const adminHtml = read('admin.html')
+  const adminJs = read('admin.js')
+  const app = read('app.js')
+  const index = read('index.html')
+
+  assert.match(migration, /create table if not exists public\.ad_banners/)
+  assert.match(migration, /insert into storage\.buckets/)
+  assert.match(migration, /10000000-0000-4000-8000-000000000003/)
+  assert.match(publicApi, /req\.query\.action \|\| ''\) === 'banners'/)
+  for (const action of ['ad_banner_save', 'ad_banner_toggle', 'ad_banner_delete', 'ad_banner_restore', 'ad_banner_reorder']) {
+    assert.match(adminApi, new RegExp(action))
+  }
+  assert.match(adminApi, /AD_MAX_BYTES = 2 \* 1024 \* 1024/)
+  assert.match(adminApi, /ad_image_signature_invalid/)
+  assert.match(adminHtml, /id="pills-ads"/)
+  assert.match(adminHtml, /id="adBannerFile"/)
+  assert.match(adminHtml, /id="adBannerImageUrl"/)
+  assert.match(adminJs, /function loadAdBanners/)
+  assert.match(adminJs, /window\.moveAdBanner = async/)
+  assert.match(app, /function readLegacyAdItems/)
+  assert.match(app, /using legacy fallback/)
+  assert.match(app, /interval: 3500/)
+  assert.match(index, /id="adPreviewModal"/)
+})
+
 test('admin restores the saved tab only after administrator authentication finishes', () => {
   const source = read('admin.js')
   const auth = source.indexOf('const ready = await startAdminSystem()')

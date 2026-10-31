@@ -13,6 +13,31 @@ module.exports = async (req, res) => {
       return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
     }
 
+    if (String(req.query.action || '') === 'banners') {
+      const { data, error } = await supabase
+        .from('ad_banners')
+        .select('id,title,alt_text,image_source,image_url,link_url,sort_index,updated_at')
+        .eq('active', true)
+        .is('deleted_at', null)
+        .order('sort_index', { ascending: true })
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
+      return res.status(200).json({
+        status: 'success',
+        items: (data || []).map(item => ({
+          id: item.id,
+          title: item.title,
+          altText: item.alt_text,
+          imageSource: item.image_source,
+          imageUrl: item.image_url,
+          linkUrl: item.link_url || '',
+          sortIndex: Number(item.sort_index) || 0,
+          updatedAt: item.updated_at || null
+        }))
+      });
+    }
+
     const include = String(req.query.include ?? '0') === '1';
 
     let query = supabase

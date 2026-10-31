@@ -29,6 +29,8 @@ let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
 let SAFETY_QUESTIONS = [];
 let MONTHLY_SAFETY = null;
 let LINE_NOTIFICATION_ROWS = [];
+let AD_BANNERS = [];
+let AD_PENDING_IMAGE_DATA = '';
 const ADMIN_ACTIVE_TAB_KEY = 'RP_ADMIN_ACTIVE_TAB';
 const ADMIN_LOGIN_ATTEMPT_KEY = 'RP_ADMIN_LINE_LOGIN_AT';
 let ADMIN_INIT_PROMISE = null;
@@ -87,6 +89,7 @@ function loadAdminTabData(target) {
     else if (cleanTarget === '#pills-users') loader = () => window.loadPageUsers?.();
     else if (cleanTarget === '#pills-auth-help') loader = () => window.loadAuthHelpCases?.();
     else if (cleanTarget === '#pills-coupons') loader = () => loadCoupons();
+    else if (cleanTarget === '#pills-ads') loader = () => loadAdBanners();
     else if (cleanTarget === '#pills-history') loader = () => HISTORY_DATA.length ? Promise.resolve() : loadRedemptionHistory();
     else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
     else if (cleanTarget === '#pills-audit') loader = () => AUDIT_ROWS.length ? Promise.resolve() : loadAuditLogs();
@@ -377,6 +380,210 @@ function newCouponRequestId() {
   const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+// ============ HOMEPAGE AD BANNERS ============
+async function loadAdBanners() {
+  const area = $id('adBannerList');
+  if (!area) return;
+  area.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary"></div><div class="small text-muted mt-2">กำลังโหลดการ์ดประชาสัมพันธ์...</div></div>';
+  try {
+    const response = await fetch(`${API_ADMIN_ACTIONS}?action=ad_banners&adminUid=${encodeURIComponent(ADMIN_UID || '')}&t=${Date.now()}`, { cache:'no-store' });
+    const payload = await response.json();
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดการ์ดประชาสัมพันธ์ไม่สำเร็จ');
+    AD_BANNERS = Array.isArray(payload.data) ? payload.data : [];
+    renderAdBanners();
+  } catch (error) {
+    area.innerHTML = `<div class="m-card text-center py-4 text-danger"><i class="fa-solid fa-triangle-exclamation mb-2"></i><br>${escapeAuditHtml(error.message || 'โหลดไม่สำเร็จ')}<br><button class="btn btn-sm btn-outline-danger rounded-pill mt-3" onclick="loadAdBanners()">ลองใหม่</button></div>`;
+  }
+}
+
+function renderAdBanners() {
+  const area = $id('adBannerList');
+  if (!area) return;
+  const term = String($id('adBannerSearch')?.value || '').trim().toLocaleLowerCase('th-TH');
+  const rows = AD_BANNERS.filter(item => !term || [item.title, item.alt_text, item.image_url, item.link_url]
+    .some(value => String(value || '').toLocaleLowerCase('th-TH').includes(term)));
+  const activeRows = AD_BANNERS.filter(item => !item.deleted_at);
+  if (!rows.length) {
+    area.innerHTML = '<div class="m-card text-center py-5 text-muted"><i class="fa-regular fa-images fa-2x mb-3 opacity-25"></i><br>ยังไม่มีการ์ดประชาสัมพันธ์</div>';
+    return;
+  }
+  area.innerHTML = rows.map(item => {
+    const deleted = Boolean(item.deleted_at);
+    const active = Boolean(item.active) && !deleted;
+    const position = activeRows.findIndex(row => row.id === item.id);
+    const idArg = escapeAuditHtml(JSON.stringify(String(item.id || '')));
+    const sourceLabel = item.image_source === 'upload' ? 'ไฟล์อัปโหลด' : 'URL';
+    return `<div class="m-card ${deleted ? 'opacity-75' : ''}">
+      <div class="ad-admin-card">
+        <img class="ad-admin-thumb" src="${escapeAuditHtml(item.image_url || '')}" alt="${escapeAuditHtml(item.alt_text || item.title || 'การ์ดประชาสัมพันธ์')}" loading="lazy">
+        <div class="flex-grow-1" style="min-width:0">
+          <div class="d-flex align-items-start justify-content-between gap-2">
+            <div>
+              <div class="fw-bold text-dark">${escapeAuditHtml(item.title || 'การ์ดประชาสัมพันธ์')}</div>
+              <div class="small text-muted text-truncate">${escapeAuditHtml(item.image_url || '')}</div>
+            </div>
+            <span class="badge bg-${deleted ? 'dark' : active ? 'success' : 'secondary'}-subtle text-${deleted ? 'dark' : active ? 'success' : 'secondary'}-emphasis">${deleted ? 'ลบแล้ว' : active ? 'กำลังแสดง' : 'ปิดชั่วคราว'}</span>
+          </div>
+          <div class="small text-muted mt-2"><i class="fa-solid fa-image me-1"></i>${sourceLabel} · ลำดับ ${Number(item.sort_index || 0)}</div>
+          <div class="ad-admin-actions">
+            ${deleted ? `<button class="btn btn-sm btn-outline-success rounded-pill" onclick="restoreAdBanner(${idArg})"><i class="fa-solid fa-rotate-left me-1"></i>กู้คืน</button>` : `
+              <button class="btn btn-sm btn-light border rounded-circle" onclick="moveAdBanner(${idArg},-1)" ${position <= 0 ? 'disabled' : ''} aria-label="เลื่อนขึ้น"><i class="fa-solid fa-arrow-up"></i></button>
+              <button class="btn btn-sm btn-light border rounded-circle" onclick="moveAdBanner(${idArg},1)" ${position < 0 || position >= activeRows.length - 1 ? 'disabled' : ''} aria-label="เลื่อนลง"><i class="fa-solid fa-arrow-down"></i></button>
+              <button class="btn btn-sm btn-outline-${active ? 'secondary' : 'success'} rounded-pill" onclick="toggleAdBanner(${idArg},${active ? 'false' : 'true'})">${active ? 'ปิดแสดง' : 'เปิดแสดง'}</button>
+              <button class="btn btn-sm btn-outline-primary rounded-pill" onclick="openAdBannerEditor(${idArg})"><i class="fa-solid fa-pen me-1"></i>แก้ไข</button>
+              <button class="btn btn-sm btn-outline-danger rounded-pill" onclick="deleteAdBanner(${idArg})"><i class="fa-regular fa-trash-can me-1"></i>ลบ</button>`}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function syncAdSourceFields() {
+  const source = $id('adBannerSource')?.value || 'upload';
+  $id('adBannerUploadGroup')?.classList.toggle('d-none', source !== 'upload');
+  $id('adBannerUrlGroup')?.classList.toggle('d-none', source !== 'url');
+  if (source === 'url') updateAdPreview($id('adBannerImageUrl')?.value || '');
+}
+
+function updateAdPreview(url) {
+  const preview = $id('adBannerPreview');
+  const error = $id('adBannerPreviewError');
+  if (!preview) return;
+  error?.classList.add('d-none');
+  if (!url) { preview.removeAttribute('src'); return; }
+  preview.onload = () => error?.classList.add('d-none');
+  preview.onerror = () => error?.classList.remove('d-none');
+  preview.src = String(url || '');
+}
+
+function verifyAdImageUrl(url) {
+  return new Promise(resolve => {
+    const image = new Image();
+    const timer = setTimeout(() => resolve(false), 8000);
+    image.onload = () => { clearTimeout(timer); resolve(image.naturalWidth > 0 && image.naturalHeight > 0); };
+    image.onerror = () => { clearTimeout(timer); resolve(false); };
+    image.src = String(url || '');
+  });
+}
+
+window.openAdBannerEditor = (id = '') => {
+  const item = id ? AD_BANNERS.find(row => String(row.id) === String(id)) : null;
+  AD_PENDING_IMAGE_DATA = '';
+  $id('adBannerForm')?.reset();
+  $id('adBannerId').value = item?.id || '';
+  $id('adBannerTitle').value = item?.title || '';
+  $id('adBannerAlt').value = item?.alt_text || '';
+  $id('adBannerSource').value = item?.image_source || 'upload';
+  $id('adBannerImageUrl').value = item?.image_source === 'url' ? (item.image_url || '') : '';
+  $id('adBannerLinkUrl').value = item?.link_url || '';
+  $id('adBannerActive').checked = item ? Boolean(item.active) : true;
+  $id('adBannerModalTitle').textContent = item ? 'แก้ไขการ์ดประชาสัมพันธ์' : 'เพิ่มการ์ดประชาสัมพันธ์';
+  syncAdSourceFields();
+  updateAdPreview(item?.image_url || '');
+  bootstrap.Modal.getOrCreateInstance($id('adBannerModal')).show();
+};
+
+async function adBannerAction(body) {
+  const response = await fetch(API_ADMIN_ACTIONS, {
+    method:'POST', headers:{ 'Content-Type':'application/json' },
+    body:JSON.stringify({ adminUid:ADMIN_UID, ...body })
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.status !== 'success') {
+    const labels = {
+      ad_image_url_invalid:'URL รูปภาพไม่ถูกต้อง ต้องเป็น https://',
+      ad_link_url_invalid:'ลิงก์รายละเอียดไม่ถูกต้อง ต้องเป็น https://',
+      ad_image_file_required:'กรุณาเลือกไฟล์รูปภาพใหม่',
+      ad_image_invalid:'ไฟล์รูปภาพไม่ถูกต้อง',
+      ad_image_size_invalid:'รูปภาพต้องมีขนาดไม่เกิน 2 MB',
+      ad_image_signature_invalid:'เนื้อหาไฟล์ไม่ตรงกับประเภท JPG, PNG หรือ WebP',
+      ad_banner_not_found:'ไม่พบการ์ดประชาสัมพันธ์นี้'
+    };
+    throw new Error(labels[payload.message] || payload.message || 'ดำเนินการไม่สำเร็จ');
+  }
+  return payload.data;
+}
+
+async function saveAdBanner(event) {
+  event.preventDefault();
+  const source = $id('adBannerSource').value;
+  const id = $id('adBannerId').value;
+  if (source === 'upload' && !AD_PENDING_IMAGE_DATA && !id) return Swal.fire('ยังไม่ได้เลือกรูป', 'กรุณาเลือกไฟล์ JPG, PNG หรือ WebP', 'warning');
+  if (source === 'url' && !$id('adBannerImageUrl').value.trim()) return Swal.fire('ยังไม่ได้ใส่ URL', 'กรุณาใส่ URL รูปภาพแบบ https://', 'warning');
+  const button = $id('btnSaveAdBanner');
+  button.disabled = true;
+  try {
+    if (source === 'url' && !await verifyAdImageUrl($id('adBannerImageUrl').value.trim())) {
+      return Swal.fire('เปิดรูปไม่ได้', 'กรุณาตรวจสอบ URL รูปภาพก่อนบันทึก', 'warning');
+    }
+    await adBannerAction({ action:'ad_banner_save', bannerData:{
+      id,
+      title:$id('adBannerTitle').value,
+      altText:$id('adBannerAlt').value,
+      imageSource:source,
+      imageUrl:$id('adBannerImageUrl').value,
+      imageData:AD_PENDING_IMAGE_DATA,
+      linkUrl:$id('adBannerLinkUrl').value,
+      active:$id('adBannerActive').checked
+    }});
+    bootstrap.Modal.getInstance($id('adBannerModal'))?.hide();
+    await loadAdBanners();
+    Swal.fire('บันทึกแล้ว', 'การ์ดประชาสัมพันธ์พร้อมใช้งาน', 'success');
+  } catch (error) {
+    Swal.fire('บันทึกไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+  } finally { button.disabled = false; }
+}
+
+window.toggleAdBanner = async (id, active) => {
+  try { await adBannerAction({ action:'ad_banner_toggle', id, active }); await loadAdBanners(); }
+  catch (error) { Swal.fire('ดำเนินการไม่สำเร็จ', error.message, 'error'); }
+};
+
+window.deleteAdBanner = async id => {
+  const result = await Swal.fire({ title:'ลบการ์ดนี้?', text:'รายการจะไม่แสดงแก่ผู้ใช้และสามารถกู้คืนได้', icon:'warning', showCancelButton:true, confirmButtonText:'ลบ', cancelButtonText:'ยกเลิก', confirmButtonColor:'#dc3545' });
+  if (!result.isConfirmed) return;
+  try { await adBannerAction({ action:'ad_banner_delete', id }); await loadAdBanners(); }
+  catch (error) { Swal.fire('ลบไม่สำเร็จ', error.message, 'error'); }
+};
+
+window.restoreAdBanner = async id => {
+  try { await adBannerAction({ action:'ad_banner_restore', id }); await loadAdBanners(); }
+  catch (error) { Swal.fire('กู้คืนไม่สำเร็จ', error.message, 'error'); }
+};
+
+window.moveAdBanner = async (id, direction) => {
+  const rows = AD_BANNERS.filter(item => !item.deleted_at);
+  const index = rows.findIndex(item => item.id === id);
+  const target = index + Number(direction || 0);
+  if (index < 0 || target < 0 || target >= rows.length) return;
+  [rows[index], rows[target]] = [rows[target], rows[index]];
+  try { await adBannerAction({ action:'ad_banner_reorder', bannerIds:rows.map(item => item.id) }); await loadAdBanners(); }
+  catch (error) { Swal.fire('เรียงลำดับไม่สำเร็จ', error.message, 'error'); }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  $id('btnOpenAdCreate')?.addEventListener('click', () => openAdBannerEditor(''));
+  $id('btnRefreshAdBanners')?.addEventListener('click', loadAdBanners);
+  $id('adBannerSearch')?.addEventListener('input', renderAdBanners);
+  $id('adBannerSource')?.addEventListener('change', syncAdSourceFields);
+  $id('adBannerImageUrl')?.addEventListener('input', event => updateAdPreview(event.target.value));
+  $id('adBannerFile')?.addEventListener('change', event => {
+    const file = event.target.files?.[0];
+    AD_PENDING_IMAGE_DATA = '';
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type) || file.size > 2 * 1024 * 1024) {
+      event.target.value = '';
+      return Swal.fire('ไฟล์ไม่ถูกต้อง', 'รองรับ JPG, PNG, WebP ขนาดไม่เกิน 2 MB', 'warning');
+    }
+    const reader = new FileReader();
+    reader.onload = () => { AD_PENDING_IMAGE_DATA = String(reader.result || ''); updateAdPreview(AD_PENDING_IMAGE_DATA); };
+    reader.onerror = () => Swal.fire('อ่านไฟล์ไม่สำเร็จ', 'กรุณาเลือกไฟล์ใหม่', 'error');
+    reader.readAsDataURL(file);
+  });
+  $id('adBannerForm')?.addEventListener('submit', saveAdBanner);
+});
 
 async function loadCouponUsers() {
   if (COUPON_USERS_LOADED) return COUPON_USERS;
@@ -1119,6 +1326,12 @@ const AUDIT_EVENT_META = {
   redemption_received:          { label: 'ยืนยันการรับของรางวัล',            icon: 'fa-box-open',        tone: 'success' },
   redemption_cancelled_refunded:{ label: 'ยกเลิกและคืนคะแนนรายการแลก',      icon: 'fa-rotate-left',     tone: 'info' },
   line_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',              icon: 'fa-paper-plane',     tone: 'primary' },
+  ad_banner_created:            { label: 'เพิ่มการ์ดประชาสัมพันธ์',            icon: 'fa-image',           tone: 'success' },
+  ad_banner_updated:            { label: 'แก้ไขการ์ดประชาสัมพันธ์',            icon: 'fa-pen',             tone: 'primary' },
+  ad_banner_toggled:            { label: 'เปิด–ปิดการ์ดประชาสัมพันธ์',         icon: 'fa-toggle-on',       tone: 'warning' },
+  ad_banner_deleted:            { label: 'ลบการ์ดประชาสัมพันธ์',               icon: 'fa-trash',           tone: 'danger' },
+  ad_banner_restored:           { label: 'กู้คืนการ์ดประชาสัมพันธ์',           icon: 'fa-rotate-left',     tone: 'success' },
+  ad_banner_reordered:          { label: 'เรียงลำดับการ์ดประชาสัมพันธ์',       icon: 'fa-arrow-down-up-across-line', tone: 'primary' },
   daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
   daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
   daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
@@ -1167,6 +1380,14 @@ function formatAuditDetail(eventType, detail) {
       return [d.rewardName, `คืน ${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
     case 'line_notification_retry':
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
+    case 'ad_banner_created':
+    case 'ad_banner_updated':
+    case 'ad_banner_toggled':
+    case 'ad_banner_deleted':
+    case 'ad_banner_restored':
+      return [d.title, d.imageSource, typeof d.active === 'boolean' ? (d.active ? 'กำลังแสดง' : 'ปิดแสดง') : ''].filter(Boolean).join(' · ');
+    case 'ad_banner_reordered':
+      return `เรียงลำดับ ${Array.isArray(d.ids) ? d.ids.length : 0} รายการ`;
     case 'daily_checkin_success':
     case 'daily_checkin_duplicate': {
       const parts = [];

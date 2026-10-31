@@ -18,6 +18,61 @@ const redis = getRedis()
 const ALLOWED_REWARD_FIELDS = ['name', 'cost', 'stock', 'stock_max', 'active', 'img_url', 'sort_index']
 const TIME_ZONE = 'Asia/Bangkok'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const AD_BUCKET = 'ad-banners'
+const AD_MAX_BYTES = 2 * 1024 * 1024
+const AD_MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
+
+function cleanAdText(value, max = 160) {
+  return String(value || '').trim().slice(0, max)
+}
+
+function safeHttpsUrl(value, { required = false } = {}) {
+  const raw = String(value || '').trim()
+  if (!raw && !required) return null
+  try {
+    const url = new URL(raw)
+    if (url.protocol !== 'https:') return null
+    const host = url.hostname.toLowerCase()
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || /^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) return null
+    return url.toString()
+  } catch (_) {
+    return null
+  }
+}
+
+function decodeAdImage(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/)
+  if (!match) throw new Error('ad_image_invalid')
+  const mime = match[1]
+  const buffer = Buffer.from(match[2], 'base64')
+  if (!buffer.length || buffer.length > AD_MAX_BYTES) throw new Error('ad_image_size_invalid')
+  const valid = mime === 'image/jpeg'
+    ? buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff
+    : mime === 'image/png'
+      ? buffer.subarray(0, 8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]))
+      : buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  if (!valid) throw new Error('ad_image_signature_invalid')
+  return { mime, buffer, ext: AD_MIME_EXT[mime] }
+}
+
+async function uploadAdImage(dataUrl) {
+  const image = decodeAdImage(dataUrl)
+  const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${image.ext}`
+  const { error } = await supabaseAdmin.storage.from(AD_BUCKET).upload(path, image.buffer, {
+    contentType: image.mime,
+    cacheControl: '31536000',
+    upsert: false
+  })
+  if (error) throw error
+  const { data } = supabaseAdmin.storage.from(AD_BUCKET).getPublicUrl(path)
+  return { path, url: data.publicUrl }
+}
+
+async function removeAdImage(path) {
+  if (!path) return
+  const { error } = await supabaseAdmin.storage.from(AD_BUCKET).remove([path])
+  if (error) console.error('[admin-actions] ad image cleanup failed:', error.message)
+}
 
 function adminErrorMessage(error) {
   const raw = String(error?.message || error || '')
@@ -647,6 +702,26 @@ module.exports = async (req, res) => {
 
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
   if (req.method === 'GET') {
+    if (req.query.action === 'ad_banners') {
+      try {
+        const adminUid = String(req.query.adminUid || '').trim()
+        if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
+        const { data, error } = await supabaseAdmin
+          .from('ad_banners')
+          .select('*')
+          .order('sort_index', { ascending: true })
+          .order('created_at', { ascending: true })
+        if (error) throw error
+        return res.status(200).json({ status: 'success', data: data || [] })
+      } catch (error) {
+        const missing = /ad_banners|schema cache|relation .* does not exist/i.test(String(error?.message || error))
+        return res.status(missing ? 503 : 500).json({
+          status: 'error',
+          message: missing ? 'ระบบการ์ดประชาสัมพันธ์ยังติดตั้งไม่ครบ' : String(error?.message || error)
+        })
+      }
+    }
+
     if (req.query.action === 'auth_help_cases') {
       try {
         const adminUid = String(req.query.adminUid || '').trim()
@@ -928,7 +1003,9 @@ module.exports = async (req, res) => {
     notificationId,
     requestId,
     redemptionId,
-    reason
+    reason,
+    bannerData,
+    bannerIds
   } = req.body || {}
 
   const requestedAction = String(action || '').trim()
@@ -938,6 +1015,131 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'ad_banner_save') {
+      const payload = bannerData && typeof bannerData === 'object' ? bannerData : {}
+      const bannerId = String(payload.id || '').trim()
+      const isUpdate = Boolean(bannerId)
+      if (isUpdate && !UUID_RE.test(bannerId)) return res.status(400).json({ status:'error', message:'ad_banner_id_invalid' })
+
+      let existing = null
+      if (isUpdate) {
+        const { data, error } = await supabaseAdmin.from('ad_banners').select('*').eq('id', bannerId).maybeSingle()
+        if (error) throw error
+        if (!data) return res.status(404).json({ status:'error', message:'ad_banner_not_found' })
+        existing = data
+      }
+
+      const title = cleanAdText(payload.title, 120) || 'การ์ดประชาสัมพันธ์'
+      const altText = cleanAdText(payload.altText, 180) || title
+      const imageSource = String(payload.imageSource || existing?.image_source || 'url').trim()
+      if (!['url', 'upload'].includes(imageSource)) return res.status(400).json({ status:'error', message:'ad_image_source_invalid' })
+      const rawLink = String(payload.linkUrl || '').trim()
+      const linkUrl = rawLink ? safeHttpsUrl(rawLink, { required:true }) : null
+      if (rawLink && !linkUrl) return res.status(400).json({ status:'error', message:'ad_link_url_invalid' })
+
+      let uploaded = null
+      let imageUrl = existing?.image_url || ''
+      let storagePath = existing?.storage_path || null
+      try {
+        if (imageSource === 'upload' && payload.imageData) {
+          uploaded = await uploadAdImage(payload.imageData)
+          imageUrl = uploaded.url
+          storagePath = uploaded.path
+        } else if (imageSource === 'url') {
+          const requestedUrl = String(payload.imageUrl || '').trim()
+          if (requestedUrl) imageUrl = safeHttpsUrl(requestedUrl, { required:true }) || ''
+          if (!imageUrl || (existing && existing.image_source !== 'url' && !requestedUrl)) {
+            return res.status(400).json({ status:'error', message:'ad_image_url_invalid' })
+          }
+          storagePath = null
+        } else if (!existing || existing.image_source !== 'upload') {
+          return res.status(400).json({ status:'error', message:'ad_image_file_required' })
+        }
+
+        const now = new Date().toISOString()
+        const record = {
+          title,
+          alt_text: altText,
+          image_source: imageSource,
+          image_url: imageUrl,
+          storage_path: storagePath,
+          link_url: linkUrl,
+          active: payload.active !== false,
+          updated_by: adminUid,
+          updated_at: now
+        }
+        let saved = null
+        if (isUpdate) {
+          const { data, error } = await supabaseAdmin.from('ad_banners').update(record).eq('id', bannerId).select('*').single()
+          if (error) throw error
+          saved = data
+        } else {
+          const { data: last } = await supabaseAdmin.from('ad_banners').select('sort_index').order('sort_index', { ascending:false }).limit(1).maybeSingle()
+          record.sort_index = Number(last?.sort_index || 0) + 10
+          record.created_by = adminUid
+          const { data, error } = await supabaseAdmin.from('ad_banners').insert(record).select('*').single()
+          if (error) throw error
+          saved = data
+        }
+
+        if (existing?.storage_path && existing.storage_path !== saved.storage_path) await removeAdImage(existing.storage_path)
+        await auditEvent(supabaseAdmin, {
+          type: isUpdate ? 'ad_banner_updated' : 'ad_banner_created',
+          actorUid: adminUid,
+          entityType: 'ad_banner',
+          entityId: saved.id,
+          status: 'success',
+          detail: { title: saved.title, imageSource: saved.image_source, active: saved.active }
+        })
+        return res.status(200).json({ status:'success', data:saved })
+      } catch (error) {
+        if (uploaded?.path) await removeAdImage(uploaded.path)
+        throw error
+      }
+    }
+
+    if (action === 'ad_banner_toggle') {
+      const bannerId = String(id || '').trim()
+      if (!UUID_RE.test(bannerId)) return res.status(400).json({ status:'error', message:'ad_banner_id_invalid' })
+      const { data, error } = await supabaseAdmin
+        .from('ad_banners')
+        .update({ active:Boolean(active), updated_by:adminUid, updated_at:new Date().toISOString() })
+        .eq('id', bannerId).is('deleted_at', null).select('*').single()
+      if (error) throw error
+      await auditEvent(supabaseAdmin, { type:'ad_banner_toggled', actorUid:adminUid, entityType:'ad_banner', entityId:bannerId, status:'success', detail:{ active:data.active } })
+      return res.status(200).json({ status:'success', data })
+    }
+
+    if (action === 'ad_banner_delete' || action === 'ad_banner_restore') {
+      const bannerId = String(id || '').trim()
+      if (!UUID_RE.test(bannerId)) return res.status(400).json({ status:'error', message:'ad_banner_id_invalid' })
+      const restoring = action === 'ad_banner_restore'
+      const now = new Date().toISOString()
+      const { data, error } = await supabaseAdmin
+        .from('ad_banners')
+        .update({ deleted_at:restoring ? null : now, active:restoring, updated_by:adminUid, updated_at:now })
+        .eq('id', bannerId).select('*').single()
+      if (error) throw error
+      await auditEvent(supabaseAdmin, { type:restoring ? 'ad_banner_restored' : 'ad_banner_deleted', actorUid:adminUid, entityType:'ad_banner', entityId:bannerId, status:'success', detail:{ title:data.title } })
+      return res.status(200).json({ status:'success', data })
+    }
+
+    if (action === 'ad_banner_reorder') {
+      const orderedIds = Array.isArray(bannerIds) ? [...new Set(bannerIds.map(value => String(value || '').trim()))] : []
+      if (!orderedIds.length || orderedIds.length > 100 || orderedIds.some(value => !UUID_RE.test(value))) {
+        return res.status(400).json({ status:'error', message:'ad_banner_order_invalid' })
+      }
+      const now = new Date().toISOString()
+      const updates = await Promise.all(orderedIds.map((bannerId, index) => supabaseAdmin
+        .from('ad_banners')
+        .update({ sort_index:(index + 1) * 10, updated_by:adminUid, updated_at:now })
+        .eq('id', bannerId).is('deleted_at', null)))
+      const failed = updates.find(result => result.error)
+      if (failed?.error) throw failed.error
+      await auditEvent(supabaseAdmin, { type:'ad_banner_reordered', actorUid:adminUid, entityType:'ad_banner', status:'success', detail:{ ids:orderedIds } })
+      return res.status(200).json({ status:'success' })
+    }
 
     if (action === 'auth_recovery_open') {
       const cleanTargetUid = String(targetUid || '').trim()

@@ -121,6 +121,22 @@ body{
 /* CAROUSEL IMG RADIUS */
 #Ads .carousel-inner img{border-radius: var(--radius-lg)}
 
+#adsCarousel .carousel-item { cursor: zoom-in; }
+#adsCarousel .carousel-item img { background:#e2e8f0; }
+.ad-preview-stage { position:relative; display:flex; align-items:center; justify-content:center; min-height:240px; background:#050505; touch-action:pan-y; }
+.ad-preview-stage img { display:block; width:100%; max-height:76vh; object-fit:contain; user-select:none; -webkit-user-drag:none; }
+.ad-preview-nav { position:absolute; top:50%; transform:translateY(-50%); z-index:2; width:46px; height:46px; border:0; border-radius:50%; background:rgba(15,23,42,.72); color:#fff; }
+.ad-preview-prev { left:14px; }
+.ad-preview-next { right:14px; }
+.ad-preview-nav:disabled { display:none; }
+@media (max-width:575.98px) {
+  .ad-preview-stage { min-height:60vh; }
+  .ad-preview-stage img { max-height:72vh; }
+  .ad-preview-nav { width:42px; height:42px; }
+  .ad-preview-prev { left:8px; }
+  .ad-preview-next { right:8px; }
+}
+
 /* MODAL */
 .modal-content{
   background: var(--card-2);

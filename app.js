@@ -2926,6 +2926,146 @@ document.addEventListener('DOMContentLoaded', () => {
   initAppFast();
 });
 
+// ===== Dynamic homepage advertisement carousel with legacy fallback =====
+let RP_AD_ITEMS = [];
+let RP_AD_INDEX = 0;
+let RP_AD_CAROUSEL = null;
+
+function safeAdUrl(value) {
+  try {
+    const url = new URL(String(value || ''), window.location.origin);
+    return url.protocol === 'https:' ? url.href : '';
+  } catch (_) { return ''; }
+}
+
+function readLegacyAdItems() {
+  return [...document.querySelectorAll('#adsCarousel .carousel-item')].map((slide, index) => {
+    const image = slide.querySelector('img');
+    const link = slide.querySelector('a');
+    return {
+      id: `legacy-${index + 1}`,
+      title: image?.alt && !/^ad\d+$/i.test(image.alt) ? image.alt : `การ์ดประชาสัมพันธ์ ${index + 1}`,
+      altText: image?.alt || `การ์ดประชาสัมพันธ์ ${index + 1}`,
+      imageUrl: image?.src || '',
+      linkUrl: safeAdUrl(link?.href || '')
+    };
+  }).filter(item => item.imageUrl);
+}
+
+function renderAdCarousel(items) {
+  const carousel = document.getElementById('adsCarousel');
+  const inner = carousel?.querySelector('.carousel-inner');
+  const indicators = carousel?.querySelector('.carousel-indicators');
+  if (!carousel || !inner || !indicators || !Array.isArray(items) || !items.length) return;
+  RP_AD_ITEMS = items;
+  inner.replaceChildren();
+  indicators.replaceChildren();
+
+  items.forEach((item, index) => {
+    const slide = document.createElement('div');
+    slide.className = `carousel-item${index === 0 ? ' active' : ''}`;
+    slide.setAttribute('role', 'button');
+    slide.setAttribute('tabindex', '0');
+    slide.setAttribute('aria-label', `เปิดดู ${item.title || item.altText || `รูปที่ ${index + 1}`}`);
+    const image = document.createElement('img');
+    image.className = 'd-block w-100';
+    image.src = item.imageUrl;
+    image.alt = item.altText || item.title || `การ์ดประชาสัมพันธ์ ${index + 1}`;
+    image.loading = index === 0 ? 'eager' : 'lazy';
+    slide.appendChild(image);
+    slide.addEventListener('click', () => openAdPreview(index));
+    slide.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openAdPreview(index); }
+    });
+    inner.appendChild(slide);
+
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.dataset.bsTarget = '#adsCarousel';
+    dot.dataset.bsSlideTo = String(index);
+    dot.setAttribute('aria-label', `ไปยังรูปที่ ${index + 1}`);
+    if (index === 0) { dot.className = 'active'; dot.setAttribute('aria-current', 'true'); }
+    indicators.appendChild(dot);
+  });
+
+  const previous = bootstrap.Carousel.getInstance(carousel);
+  previous?.dispose();
+  RP_AD_CAROUSEL = bootstrap.Carousel.getOrCreateInstance(carousel, {
+    interval: 3500,
+    ride: 'carousel',
+    pause: 'hover',
+    touch: true,
+    wrap: true
+  });
+  if (items.length > 1 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) RP_AD_CAROUSEL.cycle();
+  carousel.querySelector('.carousel-control-prev')?.classList.toggle('d-none', items.length < 2);
+  carousel.querySelector('.carousel-control-next')?.classList.toggle('d-none', items.length < 2);
+  indicators.classList.toggle('d-none', items.length < 2);
+}
+
+function showAdPreviewItem(index) {
+  if (!RP_AD_ITEMS.length) return;
+  RP_AD_INDEX = (index + RP_AD_ITEMS.length) % RP_AD_ITEMS.length;
+  const item = RP_AD_ITEMS[RP_AD_INDEX];
+  const image = document.getElementById('adPreviewImage');
+  const title = document.getElementById('adPreviewTitle');
+  const description = document.getElementById('adPreviewDescription');
+  const link = document.getElementById('adPreviewLink');
+  if (image) { image.src = item.imageUrl; image.alt = item.altText || item.title || 'การ์ดประชาสัมพันธ์'; }
+  if (title) title.textContent = item.title || 'การ์ดประชาสัมพันธ์';
+  if (description) description.textContent = item.altText || '';
+  const linkUrl = safeAdUrl(item.linkUrl);
+  if (link) { link.href = linkUrl || '#'; link.classList.toggle('d-none', !linkUrl); }
+  document.getElementById('adPreviewPrev')?.toggleAttribute('disabled', RP_AD_ITEMS.length < 2);
+  document.getElementById('adPreviewNext')?.toggleAttribute('disabled', RP_AD_ITEMS.length < 2);
+}
+
+function openAdPreview(index) {
+  RP_AD_CAROUSEL?.pause();
+  showAdPreviewItem(index);
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('adPreviewModal')).show();
+}
+
+async function loadHomepageBanners() {
+  const legacyItems = readLegacyAdItems();
+  renderAdCarousel(legacyItems);
+  try {
+    const response = await fetch(`/api/rewards?action=banners&t=${Date.now()}`, { cache:'no-store' });
+    const payload = await response.json();
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'banner_load_failed');
+    const items = (Array.isArray(payload.items) ? payload.items : []).map(item => ({
+      id:item.id,
+      title:String(item.title || 'การ์ดประชาสัมพันธ์'),
+      altText:String(item.altText || item.title || 'การ์ดประชาสัมพันธ์'),
+      imageUrl:safeAdUrl(item.imageUrl),
+      linkUrl:safeAdUrl(item.linkUrl)
+    })).filter(item => item.imageUrl);
+    if (items.length) renderAdCarousel(items);
+    else document.getElementById('homeAdsSection')?.classList.add('d-none');
+  } catch (error) {
+    console.warn('[ads] using legacy fallback:', error.message || error);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('adPreviewPrev')?.addEventListener('click', () => showAdPreviewItem(RP_AD_INDEX - 1));
+  document.getElementById('adPreviewNext')?.addEventListener('click', () => showAdPreviewItem(RP_AD_INDEX + 1));
+  const modal = document.getElementById('adPreviewModal');
+  modal?.addEventListener('hidden.bs.modal', () => RP_AD_CAROUSEL?.cycle());
+  modal?.addEventListener('keydown', event => {
+    if (event.key === 'ArrowLeft') showAdPreviewItem(RP_AD_INDEX - 1);
+    if (event.key === 'ArrowRight') showAdPreviewItem(RP_AD_INDEX + 1);
+  });
+  let touchStartX = 0;
+  const stage = document.querySelector('.ad-preview-stage');
+  stage?.addEventListener('touchstart', event => { touchStartX = event.changedTouches[0]?.clientX || 0; }, { passive:true });
+  stage?.addEventListener('touchend', event => {
+    const delta = (event.changedTouches[0]?.clientX || 0) - touchStartX;
+    if (Math.abs(delta) > 45) showAdPreviewItem(RP_AD_INDEX + (delta < 0 ? 1 : -1));
+  }, { passive:true });
+  loadHomepageBanners();
+});
+
 // ===== Local cache keys =====
 const LS_PROFILE  = 'RP_PROFILE';
 const LS_SCORE    = (uid)=>`RP_SCORE:${uid || 'anon'}`;

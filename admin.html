@@ -115,6 +115,15 @@
       box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4); z-index: 1030;
       font-size: 1.2rem; border: none;
     }
+    .ad-admin-thumb { width: 132px; aspect-ratio: 8/3; object-fit: cover; border-radius: 12px; background:#e2e8f0; }
+    .ad-admin-card { display:flex; gap:12px; align-items:flex-start; }
+    .ad-admin-actions { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+    .ad-preview-frame { width:100%; aspect-ratio:8/3; object-fit:contain; background:#f1f5f9; border:1px dashed #cbd5e1; border-radius:14px; }
+    @media (max-width: 575.98px) {
+      .ad-admin-card { display:block; }
+      .ad-admin-thumb { width:100%; margin-bottom:10px; }
+      .ad-admin-actions { justify-content:flex-start; margin-top:10px; }
+    }
   </style>
 </head>
 <body>
@@ -157,6 +166,11 @@
       <li class="nav-item">
         <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-coupons">
           <i class="fa-solid fa-ticket me-1"></i> คูปอง
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#pills-ads" id="tabAdsBtn">
+          <i class="fa-solid fa-images me-1"></i> การ์ดประชาสัมพันธ์
         </button>
       </li>
       <li class="nav-item">
@@ -260,6 +274,29 @@
         <div class="small text-muted mb-2 px-1">การส่ง LINE ล้มเหลวจะไม่ยกเลิกเรื่อง ผู้ดูแลสามารถกดส่งใหม่ได้จากรายการ</div>
         <div id="authHelpListArea" class="pb-5">
           <div class="text-center py-5 text-muted">เลือกแท็บเพื่อโหลดเรื่องช่วยเหลือ</div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="pills-ads" role="tabpanel">
+        <div class="m-card d-flex align-items-start justify-content-between gap-3">
+          <div>
+            <div class="fw-bold text-primary"><i class="fa-solid fa-images me-1"></i> จัดการการ์ดประชาสัมพันธ์</div>
+            <div class="small text-muted mt-1">เพิ่มได้ไม่จำกัด รองรับทั้งไฟล์อัปโหลดและ URL รูปภาพ รูปเดิมจะยังอยู่จนกว่าจะเปลี่ยนหรือลบ</div>
+          </div>
+          <button type="button" id="btnOpenAdCreate" class="btn btn-primary rounded-pill px-3 flex-shrink-0">
+            <i class="fa-solid fa-plus me-1"></i> เพิ่มรูป
+          </button>
+        </div>
+        <div class="m-card p-2 mb-3">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-0 ps-3"><i class="fa-solid fa-search text-muted"></i></span>
+            <input type="search" id="adBannerSearch" class="form-control border-0 bg-white shadow-none" placeholder="ค้นหาชื่อหรือ URL..." autocomplete="off">
+            <button type="button" id="btnRefreshAdBanners" class="btn btn-light border-0 px-3" aria-label="โหลดการ์ดประชาสัมพันธ์ใหม่"><i class="fa-solid fa-rotate-right"></i></button>
+          </div>
+        </div>
+        <div class="small text-muted mb-2 px-1"><i class="fa-solid fa-circle-info me-1"></i>รูปที่ปิดจะยังเก็บไว้แต่ไม่แสดงแก่ผู้ใช้ การลบสามารถกู้คืนได้</div>
+        <div id="adBannerList" class="pb-5">
+          <div class="text-center py-5 text-muted">เลือกแท็บเพื่อโหลดการ์ดประชาสัมพันธ์</div>
         </div>
       </div>
 
@@ -723,6 +760,67 @@
             <button type="button" id="btnAssignCoupon" class="btn btn-primary rounded-pill px-4">ยืนยันและส่ง LINE</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="adBannerModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+        <form class="modal-content border-0 rounded-4" id="adBannerForm">
+          <div class="modal-header border-0">
+            <div>
+              <h5 class="modal-title fw-bold" id="adBannerModalTitle">เพิ่มการ์ดประชาสัมพันธ์</h5>
+              <div class="small text-muted">รูปแนะนำ 1600 × 600 พิกเซล</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
+          </div>
+          <div class="modal-body pt-0">
+            <input type="hidden" id="adBannerId">
+            <div class="row g-3">
+              <div class="col-12 col-md-6">
+                <label class="form-label fw-semibold" for="adBannerTitle">ชื่อการ์ด</label>
+                <input type="text" id="adBannerTitle" class="form-control" maxlength="120" required placeholder="เช่น กิจกรรม Safety ประจำเดือน">
+              </div>
+              <div class="col-12 col-md-6">
+                <label class="form-label fw-semibold" for="adBannerAlt">คำอธิบายรูป</label>
+                <input type="text" id="adBannerAlt" class="form-control" maxlength="180" required placeholder="อธิบายเนื้อหาในรูปอย่างสั้น ๆ">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold" for="adBannerSource">แหล่งรูปภาพ</label>
+                <select id="adBannerSource" class="form-select">
+                  <option value="upload">อัปโหลดไฟล์ใหม่</option>
+                  <option value="url">ใช้ลิงก์ URL รูปภาพ</option>
+                </select>
+              </div>
+              <div class="col-12" id="adBannerUploadGroup">
+                <label class="form-label fw-semibold" for="adBannerFile">ไฟล์รูปภาพ</label>
+                <input type="file" id="adBannerFile" class="form-control" accept="image/jpeg,image/png,image/webp">
+                <div class="form-text">รองรับ JPG, PNG, WebP และขนาดไม่เกิน 2 MB</div>
+              </div>
+              <div class="col-12 d-none" id="adBannerUrlGroup">
+                <label class="form-label fw-semibold" for="adBannerImageUrl">URL รูปภาพ</label>
+                <input type="url" id="adBannerImageUrl" class="form-control" inputmode="url" placeholder="https://example.com/banner.jpg">
+              </div>
+              <div class="col-12">
+                <img id="adBannerPreview" class="ad-preview-frame" alt="ตัวอย่างการ์ดประชาสัมพันธ์">
+                <div id="adBannerPreviewError" class="small text-danger mt-1 d-none">ไม่สามารถเปิดรูปนี้ได้ กรุณาตรวจสอบไฟล์หรือ URL</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-semibold" for="adBannerLinkUrl">ลิงก์รายละเอียดเพิ่มเติม (ไม่บังคับ)</label>
+                <input type="url" id="adBannerLinkUrl" class="form-control" inputmode="url" placeholder="https://example.com/details">
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="adBannerActive" checked>
+                  <label class="form-check-label fw-semibold" for="adBannerActive">แสดงแก่ผู้ใช้ทันที</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="submit" id="btnSaveAdBanner" class="btn btn-primary rounded-pill px-4">บันทึกการ์ด</button>
+          </div>
+        </form>
       </div>
     </div>
 
