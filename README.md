@@ -56,7 +56,7 @@ Royal Point Web เป็นเว็บแอปสำหรับสะสม�
    ├─ score-history.js                # point/redemption history
    ├─ register.js                     # user registration
    ├─ all-scores.js                   # leaderboard/admin score listing
-   ├─ liff-guard.js                   # LIFF guard
+   ├─ liff-guard.js                   # handler ศูนย์ช่วยเหลือ LINE (rewrite จาก /api/auth-help)
    └─ cron-birthday.js                # birthday cron
 ```
 
