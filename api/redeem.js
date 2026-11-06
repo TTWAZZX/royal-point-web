@@ -15,11 +15,12 @@ function hashToken(value) {
 
 module.exports = async (req, res) => {
   try {
-    if (req.method !== 'POST') {
+    if (!['GET', 'POST'].includes(req.method)) {
       return res.status(405).json({ status: 'error', message: 'Method not allowed' });
     }
 
-    const { uid, code, couponTicket } = req.body || {};
+    const input = req.method === 'GET' ? (req.query || {}) : (req.body || {});
+    const { uid, code, couponTicket } = input;
     const cleanUid = String(uid || '').trim();
     const cleanCode = String(code || '').trim();
     const cleanTicket = String(couponTicket || '').trim();
@@ -30,6 +31,31 @@ module.exports = async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'coupon_ticket_invalid' });
     }
     await authenticateRequest(req, { claimedUid: cleanUid });
+
+    if (req.method === 'GET') {
+      if (!cleanTicket) {
+        return res.status(400).json({ status: 'error', message: 'coupon_ticket_required' });
+      }
+      const { data: coupon, error: couponError } = await supabaseAdmin
+        .from('coupons')
+        .select('code,point,status,claimer,coupon_type,assigned_uid,assignment_state,used_at')
+        .eq('assignment_token_hash', hashToken(cleanTicket))
+        .maybeSingle();
+      if (couponError) throw couponError;
+      if (!coupon) return res.status(404).json({ status: 'error', message: 'invalid_code' });
+      if (coupon.assigned_uid !== cleanUid) {
+        return res.status(403).json({ status: 'error', message: 'coupon_not_owner' });
+      }
+      const redeemed = coupon.status === 'used' && coupon.claimer === cleanUid;
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          state: redeemed ? 'redeemed' : (coupon.assignment_state === 'cancelled' ? 'cancelled' : 'pending'),
+          added: redeemed ? Number(coupon.point || 0) : 0,
+          usedAt: coupon.used_at || null
+        }
+      });
+    }
 
     // หา user
     const { data: user, error: e1 } = await supabaseAdmin

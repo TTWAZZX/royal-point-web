@@ -282,6 +282,43 @@ module.exports = async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'Invalid action' });
   }
 
+  const assignmentRequestId = String(req.query.assignmentRequestId || '').trim().toLowerCase();
+  if (req.method === 'GET' && assignmentRequestId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(assignmentRequestId)) {
+      return res.status(400).json({ status: 'error', message: 'รหัสตรวจสอบรายการไม่ถูกต้อง' });
+    }
+
+    const { data: assigned, error: assignedError } = await supabase
+      .from('coupons')
+      .select('code,point,status,coupon_type,assigned_uid,assigned_at,assigned_by,assignment_reason,assignment_request_id,assignment_state,created_at')
+      .eq('assignment_request_id', assignmentRequestId)
+      .maybeSingle();
+    if (assignedError) throw assignedError;
+    if (!assigned) {
+      return res.status(404).json({ status: 'error', message: 'ยังไม่พบรายการมอบคูปองนี้' });
+    }
+
+    const [userResult, notificationResult] = await Promise.all([
+      supabase.from('users').select('uid,name').eq('uid', assigned.assigned_uid).maybeSingle(),
+      supabase.from('line_notification_outbox')
+        .select('id,status,attempt_count,last_error,sent_at')
+        .eq('dedupe_key', `coupon-issued:${assigned.code}`)
+        .maybeSingle()
+    ]);
+    if (userResult.error) throw userResult.error;
+    if (notificationResult.error) throw notificationResult.error;
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        ...assigned,
+        assigned_name: userResult.data?.name || '',
+        idempotentReplay: true,
+        lineNotification: publicNotification(notificationResult.data)
+      }
+    });
+  }
+
   if (req.method === 'DELETE') {
     const codes = Array.isArray(body.codes) ? body.codes : [body.code || req.query.code];
     const cleanCodes = codes.map(code => String(code || '').trim()).filter(Boolean).slice(0, 100);

@@ -18,7 +18,7 @@
       const style = global.document.createElement('style');
       style.id = 'systemBootStyles';
       style.textContent = `
-        #systemBootOverlay{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(145deg,rgba(240,253,250,.98),rgba(239,246,255,.98));color:#0f172a;font-family:"Noto Sans Thai","Kanit",system-ui,sans-serif;transition:opacity .22s ease}
+        #systemBootOverlay{box-sizing:border-box;position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(145deg,rgba(240,253,250,.98),rgba(239,246,255,.98));color:#0f172a;font-family:"Noto Sans Thai","Kanit",system-ui,sans-serif;transition:opacity .22s ease}
         #systemBootOverlay.is-leaving{opacity:0;pointer-events:none}
         #systemBootOverlay .system-boot-card{box-sizing:border-box;width:min(100%,420px);padding:28px 24px;text-align:center;background:rgba(255,255,255,.94);border:1px solid rgba(148,163,184,.24);border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.12)}
         #systemBootOverlay .system-boot-spinner{width:52px;height:52px;margin:0 auto 18px;border:5px solid #dbeafe;border-top-color:#0ea5e9;border-radius:50%;animation:systemBootSpin .85s linear infinite}

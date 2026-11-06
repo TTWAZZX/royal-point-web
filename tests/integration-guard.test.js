@@ -118,6 +118,29 @@ test('personal coupons are connected across database, admin, user, audit, and LI
   assert.match(read('admin.js'), /assignCouponToUser/)
   assert.match(read('app.js'), /handleCouponDeepLink/)
   assert.match(read('app.js'), /couponTicket/)
+  assert.match(read('api/admin-coupons.js'), /assignmentRequestId/)
+  assert.match(read('admin.js'), /submitCouponAssignment/)
+  assert.match(read('admin.js'), /findCouponAssignment/)
+  assert.match(read('admin.js'), /COUPON_ASSIGNMENT_TIMEOUT/)
+  assert.match(read('admin.js'), /void loadCoupons\(\)/)
+  assert.doesNotMatch(read('admin.js'), /await loadCoupons\(\);\s*const sent/)
+  assert.match(read('app.js'), /hasCouponDeepLink/)
+  assert.match(read('index.html'), /window\.__LIFF_INITED = true/)
+  assert.match(read('index.html'), /LIFF_INIT_TIMEOUT/)
+  assert.match(read('index.html'), /bootFetch/)
+  assert.match(read('index.html'), /const hasCouponTicket/)
+  assert.ok(
+    read('index.html').indexOf('const hasCouponTicket') < read('index.html').indexOf('const resp = await bootFetch'),
+    'personal coupon must open before dashboard score preflight'
+  )
+  assert.match(read('app.js'), /redeemAssignedCoupon/)
+  assert.match(read('app.js'), /COUPON_CONFIRMATION_TIMEOUT/)
+  assert.match(read('api/redeem.js'), /state: redeemed \? 'redeemed'/)
+  assert.doesNotMatch(read('app.js'), /redeemAssignedCoupon[\s\S]{0,2200}method: 'POST'[\s\S]{0,1200}method: 'POST'/)
+  assert.ok(
+    read('app.js').indexOf('await handleCouponDeepLink()') < read('app.js').indexOf('await Promise.allSettled([', read('app.js').indexOf('async function initApp(ctx')),
+    'coupon deep links must open before optional dashboard requests'
+  )
 })
 
 test('transaction notifications and reward pickup are connected end to end', () => {

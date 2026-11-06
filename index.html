@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Royal Point</title>
+  <style>#systemBootOverlay{box-sizing:border-box}</style>
   <style id="systemBootCriticalStyles">#systemBootOverlay{position:fixed;inset:0;z-index:12000;display:flex;align-items:center;justify-content:center;padding:20px;background:#f0fdfa;color:#0f172a;font-family:system-ui,sans-serif}#systemBootOverlay .system-boot-card{box-sizing:border-box;width:min(100%,420px);padding:28px 24px;text-align:center;background:#fff;border:1px solid #dbeafe;border-radius:24px;box-shadow:0 24px 60px rgba(15,23,42,.12)}#systemBootOverlay .system-boot-spinner{width:52px;height:52px;margin:0 auto 18px;border:5px solid #dbeafe;border-top-color:#0ea5e9;border-radius:50%;animation:systemBootSpin .85s linear infinite}#systemBootOverlay .system-boot-title{font-size:1.18rem;font-weight:800;margin:0 0 6px}#systemBootOverlay .system-boot-message{min-height:48px;margin:0;color:#475569;line-height:1.55}#systemBootOverlay .system-boot-track{height:6px;margin-top:18px;border-radius:999px;background:#e2e8f0;overflow:hidden}#systemBootOverlay .system-boot-bar{width:42%;height:100%;background:#0ea5e9;animation:systemBootProgress 1.35s ease-in-out infinite}#systemBootOverlay .system-boot-hint{display:block;margin-top:12px;color:#64748b;font-size:.78rem}#systemBootOverlay .system-boot-retry{display:none}@keyframes systemBootSpin{to{transform:rotate(360deg)}}@keyframes systemBootProgress{from{transform:translateX(-110%)}to{transform:translateX(240%)}}</style>
 
   <link rel="icon"
@@ -434,7 +435,7 @@
 <script src="/loader.js?v=line-token-v1"></script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
-<script src="/app.js" defer></script>
+<script src="/app.js?v=personal-coupon-open-v3" defer></script>
 
 <!-- ===== Auto-register flow (single gate) ===== -->
 <script>
@@ -445,6 +446,30 @@
   const LIFF_ID  = "2007053300-QoEvbXyn";
   const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
   const REG_URL   = "/api/register";
+
+  function withBootTimeout(promise, timeoutMs, code) {
+    let timer;
+    return Promise.race([
+      Promise.resolve(promise).finally(() => clearTimeout(timer)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error(code);
+          error.code = code;
+          reject(error);
+        }, timeoutMs);
+      })
+    ]);
+  }
+
+  async function bootFetch(input, init = {}, timeoutMs = 12000) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   const apiFetch = (input, init, opts) =>
     (window.Loading?.apiFetch
@@ -457,7 +482,7 @@
     let keepBootVisible = false;
     try {
       window.SystemBoot?.update?.("กำลังตรวจสอบบัญชี LINE และเตรียมข้อมูลผู้ใช้");
-      await (window.RoyalAuth?.ready || Promise.resolve());
+      await withBootTimeout(window.RoyalAuth?.ready || Promise.resolve(), 10000, 'AUTH_BRIDGE_TIMEOUT');
       const recoveryMode = Boolean(window.RoyalAuth?.isRecoveryMode?.());
       let prof = null;
       let uid = '';
@@ -469,24 +494,42 @@
           throw new Error('recovery_uid_not_found');
         }
       } else {
-        await liff.init({ liffId: LIFF_ID });
+        await withBootTimeout(liff.init({ liffId: LIFF_ID }), 10000, 'LIFF_INIT_TIMEOUT');
+        // initApp uses this marker to avoid initializing LIFF for a second time.
+        window.__LIFF_INITED = true;
         if (!liff.isLoggedIn()) {
           keepBootVisible = true;
           window.SystemBoot?.update?.("กำลังเปิดหน้าต่างยืนยันบัญชี LINE");
           liff.login({ redirectUri: window.location.href });
           return;
         }
-        prof = await liff.getProfile();
+        prof = await withBootTimeout(liff.getProfile(), 8000, 'LIFF_PROFILE_TIMEOUT');
         uid = String(prof?.userId || '').trim();
       }
 
       window.__UID = uid;
       sessionStorage.setItem('uid', uid);
 
+      // A personal coupon can only be issued to an existing member. Open this
+      // flow immediately after LINE identity is ready; dashboard preloading must
+      // never block the button opened from a Flex Message.
+      const hasCouponTicket = Boolean(new URLSearchParams(window.location.search).get('coupon_ticket'));
+      if (hasCouponTicket && typeof initApp === "function") {
+        window.SystemBoot?.update?.("กำลังเปิดคูปองของคุณ");
+        await initApp({
+          profile: prof,
+          uid,
+          force: true,
+          recovery: recoveryMode,
+          scorePayload: { status: 'success', data: { score: 0 } }
+        });
+        return;
+      }
+
       // เช็คว่ามีผู้ใช้แล้วหรือยัง โดยดู status 404 ตรงๆ
       let needRegister = false;
       try {
-        const resp = await fetch(GET_SCORE(uid), { method: "GET" });
+        const resp = await bootFetch(GET_SCORE(uid), { method: "GET", cache: "no-store" });
         if (resp.status === 404) {
           needRegister = true;
         } else if (!resp.ok) {
@@ -494,8 +537,9 @@
         } else {
           // ผู้ใช้เก่า → บูตแอปต่อเลย
           if (typeof initApp === "function") {
+            const scorePayload = await resp.json();
             window.SystemBoot?.update?.("กำลังโหลดคะแนน ของรางวัล และข้อมูลล่าสุด");
-            await initApp({ profile: prof, uid, force: true, recovery: recoveryMode });
+            await initApp({ profile: prof, uid, force: true, recovery: recoveryMode, scorePayload });
           }
         }
       } catch (err) {
@@ -513,9 +557,14 @@
       }
     } catch (err) {
       console.error(err);
+      const isTimeout = /TIMEOUT|AbortError/i.test(String(err?.code || err?.name || err?.message || ''));
       window.Swal
-        ? Swal.fire("ผิดพลาด", "ไม่สามารถเริ่มระบบ LIFF ได้", "error")
-        : alert("ไม่สามารถเริ่มระบบ LIFF ได้");
+        ? Swal.fire(
+            isTimeout ? "เชื่อมต่อระบบช้าเกินไป" : "ผิดพลาด",
+            isTimeout ? "กรุณากดโหลดระบบใหม่ หรือกลับไปกดปุ่มเปิดคูปองใน LINE อีกครั้ง" : "ไม่สามารถเริ่มระบบ LIFF ได้",
+            isTimeout ? "warning" : "error"
+          )
+        : alert(isTimeout ? "เชื่อมต่อระบบช้าเกินไป กรุณาลองใหม่" : "ไม่สามารถเริ่มระบบ LIFF ได้");
     } finally {
       if (!keepBootVisible) window.SystemBoot?.hide?.();
     }

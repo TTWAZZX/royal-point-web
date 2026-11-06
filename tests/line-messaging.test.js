@@ -87,6 +87,7 @@ test('builds secure personal coupon messages and links', () => {
   }
   const couponUrl = userCouponUrl(req, 'coupon-one-time-ticket')
   assert.equal(new URL(couponUrl).searchParams.get('coupon_ticket'), 'coupon-one-time-ticket')
+  assert.equal(new URL(couponUrl).hostname, 'liff.line.me')
   assert.equal(couponUrl.includes(helpCase.target_uid), false)
   assert.equal(couponUrl.includes(coupon.code), false)
   assertFlex(buildCouponIssuedMessage({ coupon, user:{ name:'ผู้ใช้ทดสอบ' }, url:couponUrl }))

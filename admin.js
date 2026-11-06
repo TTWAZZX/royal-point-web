@@ -245,7 +245,7 @@ async function loadCoupons() {
 
   try {
     // เรียก API
-    const res = await fetch(`${API_COUPON_LIST}?adminUid=${ADMIN_UID}&t=${Date.now()}`);
+    const res = await fetchCouponAssignment(`${API_COUPON_LIST}?adminUid=${ADMIN_UID}&t=${Date.now()}`, {}, 12000);
     if (!res.ok) throw new Error('Network response was not ok');
     
     const json = await res.json();
@@ -383,6 +383,55 @@ function newCouponRequestId() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function fetchCouponAssignment(input, init = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function findCouponAssignment(requestId) {
+  const url = `${API_COUPON_LIST}?adminUid=${encodeURIComponent(ADMIN_UID || '')}&assignmentRequestId=${encodeURIComponent(requestId)}&t=${Date.now()}`;
+  try {
+    const response = await fetchCouponAssignment(url, { cache: 'no-store' }, 8000);
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 404) return null;
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'ตรวจสอบผลการมอบคูปองไม่สำเร็จ');
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') return null;
+    throw error;
+  }
+}
+
+async function submitCouponAssignment(body) {
+  try {
+    const response = await fetchCouponAssignment(`${API_COUPON_LIST}?action=assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'มอบคูปองไม่สำเร็จ');
+    return payload;
+  } catch (error) {
+    if (error?.name !== 'AbortError') throw error;
+    // The server may have completed after the browser stopped waiting. Reconcile
+    // with the same idempotency key so a slow response can never create a duplicate.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 600 + attempt * 500));
+      const recovered = await findCouponAssignment(body.requestId);
+      if (recovered) return recovered;
+    }
+    const timeout = new Error('ระบบใช้เวลายืนยันนานกว่าปกติ กรุณาเปิดแท็บคูปองเพื่อตรวจสอบรายการ ก่อนกดมอบซ้ำ');
+    timeout.code = 'COUPON_ASSIGNMENT_TIMEOUT';
+    throw timeout;
+  }
 }
 
 // ============ HOMEPAGE AD BANNERS ============
@@ -657,16 +706,18 @@ async function assignCouponToUser() {
   sysOverlay.show('กำลังสร้างและส่งคูปอง...');
   try {
     if (!COUPON_ASSIGN_REQUEST_ID) COUPON_ASSIGN_REQUEST_ID = newCouponRequestId();
-    const response = await fetch(`${API_COUPON_LIST}?action=assign`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminUid: ADMIN_UID, targetUid, points, reason, requestId: COUPON_ASSIGN_REQUEST_ID })
+    const payload = await submitCouponAssignment({
+      adminUid: ADMIN_UID,
+      targetUid,
+      points,
+      reason,
+      requestId: COUPON_ASSIGN_REQUEST_ID
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'มอบคูปองไม่สำเร็จ');
     bootstrap.Modal.getInstance($id('couponAssignModal'))?.hide();
-    await loadCoupons();
     const sent = payload.data?.lineNotification?.status === 'sent';
+    // The coupon is already committed at this point. Never keep the success
+    // screen blocked by the optional full-list refresh.
+    sysOverlay.hide();
     await Swal.fire({
       icon: sent ? 'success' : 'warning',
       title: 'สร้างคูปองแล้ว',
@@ -677,6 +728,7 @@ async function assignCouponToUser() {
     $id('couponAssignReason').value = '';
     $id('couponRecipientSelected').classList.add('d-none');
     COUPON_ASSIGN_REQUEST_ID = '';
+    void loadCoupons();
   } catch (error) {
     toastErr(error.message || 'มอบคูปองไม่สำเร็จ');
   } finally {

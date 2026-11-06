@@ -362,17 +362,19 @@ async function initApp(ctx = {}) {
 
     // 3) preflight check
     const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
-    const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
-    if (resp.status === 404) {
-      document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
-        .forEach(el => el.classList.add('d-none'));
-      if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
-      console.warn('showRegisterModal() not found');
-      return;
+    let payload = ctx.scorePayload || null;
+    if (!payload) {
+      const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
+      if (resp.status === 404) {
+        document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
+          .forEach(el => el.classList.add('d-none'));
+        if (typeof window.showRegisterModal === 'function') return window.showRegisterModal(prof || null);
+        console.warn('showRegisterModal() not found');
+        return;
+      }
+      if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
+      payload = await resp.json(); // { status, data:{ user, score, updated_at } }
     }
-    if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
-
-    const payload = await resp.json(); // { status, data:{ user, score, updated_at } }
 
     // 4) seed UI with profile
     if (prof) {
@@ -382,10 +384,26 @@ async function initApp(ctx = {}) {
       if (picEl && prof.pictureUrl) picEl.src = prof.pictureUrl;
     }
 
-    // 5) โหลดข้อมูลหลัก
-    if (typeof refreshUserScore === 'function') await refreshUserScore({ bust: true });
-    if (typeof refreshDailyCheckinStatus === 'function') await refreshDailyCheckinStatus();
-    if (typeof loadRewards === 'function') await loadRewards();
+    // 5) one-time binds
+    if (!window.__MAIN_BOUND) {
+      // เรียก bindUI() แค่ตัวเดียวพอครับ มันจัดการทุกปุ่มให้แล้ว
+      if (typeof bindUI === 'function') { try { bindUI(); } catch(e) { console.warn('bindUI failed', e); } }
+      window.__MAIN_BOUND = true;
+    }
+
+    // A coupon opened from LINE is the user's primary action. Show its confirmation
+    // before optional dashboard requests so a slow endpoint cannot leave the boot
+    // screen covering the coupon on either mobile or desktop.
+    const hasCouponDeepLink = Boolean(new URLSearchParams(window.location.search).get('coupon_ticket'));
+    if (hasCouponDeepLink) window.SystemBoot?.hide?.();
+    await handleCouponDeepLink();
+
+    // 6) โหลดข้อมูลหลักแบบแยกกัน เพื่อไม่ให้บริการหนึ่งที่ช้าบล็อกทั้งหน้า
+    await Promise.allSettled([
+      (typeof refreshUserScore === 'function' ? refreshUserScore({ bust: true }) : Promise.resolve()),
+      (typeof refreshDailyCheckinStatus === 'function' ? refreshDailyCheckinStatus() : Promise.resolve()),
+      (typeof loadRewards === 'function' ? loadRewards() : Promise.resolve())
+    ]);
     if (typeof renderRewards === 'function') {
       const s = (typeof window.prevScore === 'number')
         ? window.prevScore
@@ -393,14 +411,6 @@ async function initApp(ctx = {}) {
       renderRewards(s);
     }
 
-    // 6) one-time binds
-    if (!window.__MAIN_BOUND) {
-      // เรียก bindUI() แค่ตัวเดียวพอครับ มันจัดการทุกปุ่มให้แล้ว
-      if (typeof bindUI === 'function') { try { bindUI(); } catch(e) { console.warn('bindUI failed', e); } }
-      window.__MAIN_BOUND = true;
-    }
-
-    await handleCouponDeepLink();
     await handleTransactionDeepLinks();
 
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
@@ -1985,6 +1995,59 @@ async function redeemReward(reward, btn){
   }
 }
 
+async function fetchWithActionTimeout(input, init = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function redeemAssignedCoupon(payload) {
+  try {
+    const response = await fetchWithActionTimeout(
+      (typeof API_REDEEM !== 'undefined' ? API_REDEEM : '/api/redeem'),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        cache: 'no-store'
+      },
+      15000
+    );
+    return { response, payload: await safeJson(response) };
+  } catch (error) {
+    if (error?.name !== 'AbortError') throw error;
+
+    // The score may already be committed while the server is finishing the LINE
+    // confirmation. Read status only; never repeat the redemption POST.
+    const statusUrl = `${typeof API_REDEEM !== 'undefined' ? API_REDEEM : '/api/redeem'}?uid=${encodeURIComponent(payload.uid)}&couponTicket=${encodeURIComponent(payload.couponTicket)}&action=status`;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 700 + attempt * 350));
+      try {
+        const statusResponse = await fetchWithActionTimeout(statusUrl, { cache: 'no-store' }, 6000);
+        const statusPayload = await safeJson(statusResponse);
+        if (!statusResponse.ok || statusPayload?.status !== 'success') continue;
+        if (statusPayload.data?.state === 'redeemed') {
+          return {
+            response: { ok: true, status: 200 },
+            payload: { status: 'success', added: Number(statusPayload.data.added || 0), reconciled: true }
+          };
+        }
+        if (statusPayload.data?.state === 'cancelled') {
+          return { response: { ok: false, status: 410 }, payload: { status: 'error', message: 'coupon_cancelled' } };
+        }
+      } catch (_) {}
+    }
+
+    const timeout = new Error('coupon_confirmation_timeout');
+    timeout.code = 'COUPON_CONFIRMATION_TIMEOUT';
+    throw timeout;
+  }
+}
+
 // ===== Redeem code (unified) — overlay เฉพาะ SCAN + optimistic + poll baseline ที่ถูกต้อง =====
 async function redeemCode(input, source = 'manual') {
   const sourceType = String(source || '').toUpperCase();
@@ -2005,7 +2068,9 @@ async function redeemCode(input, source = 'manual') {
   if (usingScan || isAssignedLink) UiOverlay.show('กำลังยืนยันคูปอง…');
 
   // เก็บยอดก่อนหน้าไว้เทียบ หาก backend ไม่ส่ง amount
-  try { await refreshUserScore({ bust: true }); } catch {}
+  if (!isAssignedLink) {
+    try { await refreshUserScore({ bust: true }); } catch {}
+  }
   const before = Number(window.__userBalance || 0);
 
   const payload = isAssignedLink
@@ -2014,17 +2079,25 @@ async function redeemCode(input, source = 'manual') {
 
   let res, json;
   try {
-    res  = await fetch((typeof API_REDEEM !== 'undefined' ? API_REDEEM : '/api/redeem'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      cache: 'no-store',
-    });
-    json = await safeJson(res);
+    if (isAssignedLink) {
+      const result = await redeemAssignedCoupon(payload);
+      res = result.response;
+      json = result.payload;
+    } else {
+      res = await fetch((typeof API_REDEEM !== 'undefined' ? API_REDEEM : '/api/redeem'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        cache: 'no-store',
+      });
+      json = await safeJson(res);
+    }
   } catch (e) {
     if (usingScan || isAssignedLink) UiOverlay.hide();
     console.error('[redeem] network error', e);
-    toastErr('เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
+    toastErr(e?.code === 'COUPON_CONFIRMATION_TIMEOUT'
+      ? 'ระบบยังยืนยันผลรับคะแนนไม่ได้ กรุณาตรวจยอดคะแนนก่อนกดรับซ้ำ'
+      : 'เครือข่ายผิดพลาด ลองใหม่อีกครั้ง');
     resumeScanIfNeeded(source);
     return;
   }
@@ -2037,6 +2110,11 @@ async function redeemCode(input, source = 'manual') {
     resumeScanIfNeeded(source);
     return;
   }
+
+  // The personal coupon API has completed. Remove the action overlay before
+  // optional score synchronization so a slow refresh cannot look like a failed
+  // redemption on LINE's in-app browser.
+  if (isAssignedLink) UiOverlay.hide();
 
   // ===== สำเร็จ: คำนวณแต้มที่ได้ (fallback เป็นส่วนต่าง before/after) =====
   const pickAmount = (o) => {
@@ -2056,7 +2134,7 @@ async function redeemCode(input, source = 'manual') {
   let added = pickAmount(json);
 
   // รีเฟรชอีกครั้งแบบ bust เพื่อดึงยอด “จริงล่าสุดจากเซิร์ฟเวอร์”
-  try { await refreshUserScore({ bust: true }); } catch {}
+  try { await withTimeout(refreshUserScore({ bust: true }), 5000, null); } catch {}
   const after = Number(window.__userBalance || before);
   if (added === null) added = after - before;
 
