@@ -174,6 +174,22 @@ test('transaction notifications and reward pickup are connected end to end', () 
   assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
 })
 
+test('LINE deep-link dialogs release the startup overlay before waiting for user input', () => {
+  const app = read('app.js')
+  const couponHandler = app.slice(
+    app.indexOf('async function handleCouponDeepLink()'),
+    app.indexOf('async function handleTransactionDeepLinks()')
+  )
+  const transactionHandler = app.slice(
+    app.indexOf('async function handleTransactionDeepLinks()'),
+    app.indexOf('// แปลง res/json')
+  )
+
+  assert.match(couponHandler, /SystemBoot\?\.hide\?\.\(\);[\s\S]*await Swal\.fire/)
+  assert.match(transactionHandler, /SystemBoot\?\.hide\?\.\(\);[\s\S]*await openHistory\(\)/)
+  assert.match(transactionHandler, /SystemBoot\?\.hide\?\.\(\);[\s\S]*await Swal\.fire/)
+})
+
 test('admin-managed advertisement carousel keeps legacy fallback and full workflow', () => {
   const migration = read('supabase_ad_banners_migration.sql')
   const adminApi = read('api/admin-actions.js')

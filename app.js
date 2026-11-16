@@ -2182,6 +2182,10 @@ async function handleCouponDeepLink() {
 
   let confirmed = true;
   if (window.Swal) {
+    // The startup overlay must stop intercepting taps before an interactive
+    // deep-link dialog is shown. Otherwise boot waits for Swal to close while
+    // the user cannot reach the dialog underneath the overlay.
+    window.SystemBoot?.hide?.();
     const result = await Swal.fire({
       icon: 'info',
       title: 'คุณได้รับคูปอง',
@@ -2205,7 +2209,10 @@ async function handleTransactionDeepLinks() {
   const params = new URLSearchParams(window.location.search);
   if (params.get('view') === 'score-history') {
     window.__TRANSACTION_DEEP_LINK_HANDLED = true;
-    if (typeof openHistory === 'function') await openHistory();
+    if (typeof openHistory === 'function') {
+      window.SystemBoot?.hide?.();
+      await openHistory();
+    }
     return;
   }
 
@@ -2225,6 +2232,7 @@ async function handleTransactionDeepLinks() {
     cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info', detail: item.cancelReason || 'ผู้ดูแลยกเลิกรายการและคืนคะแนนแล้ว' }
   }[item.redemptionStatus] || { label: item.redemptionStatus || '-', tone: 'secondary', detail: '' };
   if (window.Swal) {
+    window.SystemBoot?.hide?.();
     await Swal.fire({
       title: 'หลักฐานรายการแลก',
       imageUrl: item.rewardImage || undefined,
