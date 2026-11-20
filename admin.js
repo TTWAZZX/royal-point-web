@@ -21,6 +21,8 @@ let COUPON_FILTER = 'all';
 let COUPON_SEARCH = '';
 let COUPON_USERS = [];
 let COUPON_USERS_LOADED = false;
+let COUPON_RECIPIENT_VISIBLE = 30;
+const COUPON_RECIPIENT_PAGE_SIZE = 30;
 let COUPON_ASSIGN_REQUEST_ID = '';
 let AUDIT_ROWS = [];
 let SAFETY_PULSE = null;
@@ -638,8 +640,8 @@ document.addEventListener('DOMContentLoaded', () => {
   $id('adBannerForm')?.addEventListener('submit', saveAdBanner);
 });
 
-async function loadCouponUsers() {
-  if (COUPON_USERS_LOADED) return COUPON_USERS;
+async function loadCouponUsers(force = false) {
+  if (COUPON_USERS_LOADED && !force) return COUPON_USERS;
   const response = await fetch(`/api/all-scores?adminUid=${encodeURIComponent(ADMIN_UID || '')}&ts=${Date.now()}`, { cache: 'no-store' });
   const payload = await response.json();
   if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ');
@@ -652,35 +654,102 @@ function renderCouponRecipientResults() {
   const host = $id('couponRecipientResults');
   if (!host) return;
   const query = String($id('couponRecipientSearch')?.value || '').trim().toLocaleLowerCase('th-TH');
-  if (!query) {
-    host.innerHTML = '<div class="small text-muted px-2 py-1">พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหา</div>';
-    return;
-  }
   const matches = COUPON_USERS.filter(user => [user.name, user.uid, user.room, user.tel]
     .some(value => String(value || '').toLocaleLowerCase('th-TH').includes(query)))
-    .slice(0, 12);
-  host.innerHTML = matches.length ? matches.map(user => {
-    const uidArg = escapeAuditHtml(JSON.stringify(String(user.uid || '')));
-    return `<button type="button" class="list-group-item list-group-item-action" onclick="selectCouponRecipient(${uidArg})">
-      <div class="fw-semibold">${escapeAuditHtml(user.name || 'ไม่ระบุชื่อ')}</div>
-      <div class="small text-muted">${escapeAuditHtml(user.room || user.tel || user.uid)}</div>
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'th', { sensitivity: 'base' })
+      || String(a.room || '').localeCompare(String(b.room || ''), 'th', { numeric: true })
+      || String(a.uid || '').localeCompare(String(b.uid || '')));
+  const visible = matches.slice(0, COUPON_RECIPIENT_VISIBLE);
+  const selectedUid = String($id('couponRecipientUid')?.value || '');
+  const summary = $id('couponRecipientSummary');
+  if (summary) {
+    summary.textContent = query
+      ? `พบ ${matches.length.toLocaleString('th-TH')} คน จากทั้งหมด ${COUPON_USERS.length.toLocaleString('th-TH')} คน`
+      : `รายชื่อทั้งหมด ${COUPON_USERS.length.toLocaleString('th-TH')} คน`;
+  }
+  host.innerHTML = visible.length ? visible.map(user => {
+    const uid = escapeAuditHtml(String(user.uid || ''));
+    const name = String(user.name || 'ไม่ระบุชื่อ');
+    const initial = escapeAuditHtml(Array.from(name.trim())[0] || '?');
+    const details = [user.room ? `ห้อง ${user.room}` : '', user.tel || '', user.uid || ''].filter(Boolean).join(' · ');
+    const selected = String(user.uid || '') === selectedUid;
+    return `<button type="button" class="coupon-recipient-item${selected ? ' is-selected' : ''}" data-coupon-recipient-uid="${uid}" role="option" aria-selected="${selected}">
+      <span class="coupon-recipient-avatar" aria-hidden="true">${initial}</span>
+      <span class="coupon-recipient-main">
+        <span class="coupon-recipient-name d-block">${escapeAuditHtml(name)}</span>
+        <span class="coupon-recipient-meta d-block">${escapeAuditHtml(details || 'ไม่มีข้อมูลเพิ่มเติม')}</span>
+      </span>
+      <span class="coupon-recipient-score">${Number(user.score || 0).toLocaleString('th-TH')} แต้ม<br><i class="fa-solid ${selected ? 'fa-circle-check' : 'fa-chevron-right'}"></i></span>
     </button>`;
-  }).join('') : '<div class="small text-muted px-2 py-2">ไม่พบผู้ใช้</div>';
+  }).join('') : '<div class="text-center text-muted px-3 py-4"><i class="fa-solid fa-user-slash d-block fs-4 mb-2 opacity-50"></i>ไม่พบผู้ใช้ที่ตรงกับคำค้น</div>';
+
+  const loadMore = $id('couponRecipientLoadMore');
+  if (loadMore) {
+    const remaining = Math.max(0, matches.length - visible.length);
+    loadMore.classList.toggle('d-none', remaining === 0);
+    loadMore.textContent = remaining > 0 ? `แสดงเพิ่มเติม (${remaining.toLocaleString('th-TH')} คน)` : '';
+  }
+}
+
+function updateCouponAssignReadiness() {
+  const targetUid = String($id('couponRecipientUid')?.value || '').trim();
+  const points = Number($id('couponAssignPoints')?.value || 0);
+  const reason = String($id('couponAssignReason')?.value || '').trim();
+  const reasonCount = $id('couponAssignReasonCount');
+  const button = $id('btnAssignCoupon');
+  const pointsValid = Number.isFinite(points) && points >= 1 && points <= 1000000;
+  const reasonValid = reason.length >= 3;
+  if (reasonCount) reasonCount.textContent = `${String($id('couponAssignReason')?.value || '').length}/300`;
+  $id('couponAssignPoints')?.classList.toggle('is-invalid', Boolean($id('couponAssignPoints')?.value) && !pointsValid);
+  $id('couponAssignReason')?.classList.toggle('is-invalid', Boolean(reason) && !reasonValid);
+  if (button && !button.classList.contains('btn-loading')) {
+    button.disabled = !(targetUid && pointsValid && reasonValid);
+    button.title = !targetUid ? 'กรุณาเลือกผู้รับก่อน'
+      : !pointsValid ? 'กรุณาระบุจำนวนคะแนนให้ถูกต้อง'
+        : !reasonValid ? 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร' : '';
+  }
 }
 
 window.selectCouponRecipient = (uid) => {
   const user = COUPON_USERS.find(item => item.uid === uid);
   if (!user) return;
   $id('couponRecipientUid').value = user.uid;
-  $id('couponRecipientSearch').value = user.name || user.uid;
-  $id('couponRecipientResults').innerHTML = '';
   const selected = $id('couponRecipientSelected');
   selected.classList.remove('d-none');
-  selected.innerHTML = `<i class="fa-solid fa-user-check me-1"></i><b>${escapeAuditHtml(user.name || 'ไม่ระบุชื่อ')}</b><br><span class="small">UID: ${escapeAuditHtml(user.uid)}</span>`;
+  selected.innerHTML = `<div class="d-flex align-items-center justify-content-between gap-2">
+    <div><i class="fa-solid fa-user-check me-1"></i><b>เลือก ${escapeAuditHtml(user.name || 'ไม่ระบุชื่อ')}</b><br><span class="small">${escapeAuditHtml(user.room ? `ห้อง ${user.room}` : '')}${user.room && user.uid ? ' · ' : ''}UID: ${escapeAuditHtml(user.uid)}</span></div>
+    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill" data-clear-coupon-recipient>เปลี่ยนผู้รับ</button>
+  </div>`;
+  renderCouponRecipientResults();
+  updateCouponAssignReadiness();
 };
+
+function clearCouponRecipientSelection({ focusSearch = true } = {}) {
+  const uid = $id('couponRecipientUid');
+  const selected = $id('couponRecipientSelected');
+  if (uid) uid.value = '';
+  selected?.classList.add('d-none');
+  if (selected) selected.innerHTML = '';
+  renderCouponRecipientResults();
+  updateCouponAssignReadiness();
+  if (focusSearch) $id('couponRecipientSearch')?.focus();
+}
+
+function resetCouponRecipientPicker() {
+  COUPON_RECIPIENT_VISIBLE = COUPON_RECIPIENT_PAGE_SIZE;
+  const search = $id('couponRecipientSearch');
+  if (search) search.value = '';
+  const points = $id('couponAssignPoints');
+  const reason = $id('couponAssignReason');
+  if (points) points.value = '100';
+  if (reason) reason.value = '';
+  clearCouponRecipientSelection({ focusSearch: false });
+  updateCouponAssignReadiness();
+}
 
 async function openCouponAssignModal() {
   COUPON_ASSIGN_REQUEST_ID = newCouponRequestId();
+  resetCouponRecipientPicker();
   const modal = bootstrap.Modal.getOrCreateInstance($id('couponAssignModal'));
   modal.show();
   const host = $id('couponRecipientResults');
@@ -699,10 +768,13 @@ async function assignCouponToUser() {
   const reason = String($id('couponAssignReason')?.value || '').trim();
   if (!targetUid) return toastErr('กรุณาค้นหาและเลือกผู้รับ');
   if (!Number.isFinite(points) || points < 1 || points > 1000000) return toastErr('กรุณาระบุคะแนนตั้งแต่ 1 ถึง 1,000,000');
-  if (!reason) return toastErr('กรุณาระบุเหตุผลที่มอบคูปอง');
+  if (reason.length < 3) return toastErr('กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร');
 
   const button = $id('btnAssignCoupon');
-  if (button) button.disabled = true;
+  if (button) {
+    button.disabled = true;
+    button.classList.add('btn-loading');
+  }
   sysOverlay.show('กำลังสร้างและส่งคูปอง...');
   try {
     if (!COUPON_ASSIGN_REQUEST_ID) COUPON_ASSIGN_REQUEST_ID = newCouponRequestId();
@@ -732,7 +804,8 @@ async function assignCouponToUser() {
   } catch (error) {
     toastErr(error.message || 'มอบคูปองไม่สำเร็จ');
   } finally {
-    if (button) button.disabled = false;
+    if (button) button.classList.remove('btn-loading');
+    updateCouponAssignReadiness();
     sysOverlay.hide();
   }
 }
@@ -880,9 +953,47 @@ function bindGlobalEvents() {
   $id('btnOpenCouponAssign')?.addEventListener('click', openCouponAssignModal);
   $id('btnAssignCoupon')?.addEventListener('click', assignCouponToUser);
   $id('couponRecipientSearch')?.addEventListener('input', () => {
-    $id('couponRecipientUid').value = '';
-    $id('couponRecipientSelected')?.classList.add('d-none');
+    COUPON_RECIPIENT_VISIBLE = COUPON_RECIPIENT_PAGE_SIZE;
     renderCouponRecipientResults();
+  });
+  $id('couponAssignPoints')?.addEventListener('input', updateCouponAssignReadiness);
+  $id('couponAssignReason')?.addEventListener('input', updateCouponAssignReadiness);
+  $id('couponAssignModal')?.addEventListener('shown.bs.modal', () => {
+    $id('couponRecipientSearch')?.focus({ preventScroll: true });
+    updateCouponAssignReadiness();
+  });
+  $id('couponRecipientResults')?.addEventListener('click', event => {
+    const item = event.target.closest('[data-coupon-recipient-uid]');
+    if (item) window.selectCouponRecipient(item.dataset.couponRecipientUid || '');
+  });
+  $id('couponRecipientSelected')?.addEventListener('click', event => {
+    if (event.target.closest('[data-clear-coupon-recipient]')) clearCouponRecipientSelection();
+  });
+  $id('couponRecipientSearchClear')?.addEventListener('click', () => {
+    const input = $id('couponRecipientSearch');
+    if (input) input.value = '';
+    COUPON_RECIPIENT_VISIBLE = COUPON_RECIPIENT_PAGE_SIZE;
+    renderCouponRecipientResults();
+    input?.focus();
+  });
+  $id('couponRecipientLoadMore')?.addEventListener('click', () => {
+    COUPON_RECIPIENT_VISIBLE += COUPON_RECIPIENT_PAGE_SIZE;
+    renderCouponRecipientResults();
+  });
+  $id('couponRecipientRefresh')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    const host = $id('couponRecipientResults');
+    if (host) host.innerHTML = '<div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm me-1"></span>กำลังโหลดรายชื่อใหม่...</div>';
+    try {
+      await loadCouponUsers(true);
+      COUPON_RECIPIENT_VISIBLE = COUPON_RECIPIENT_PAGE_SIZE;
+      renderCouponRecipientResults();
+    } catch (error) {
+      if (host) host.innerHTML = `<div class="text-danger small px-3 py-3">${escapeAuditHtml(error.message || 'โหลดรายชื่อไม่สำเร็จ')}</div>`;
+    } finally {
+      button.disabled = false;
+    }
   });
   $id('couponSearch')?.addEventListener('input', (event) => {
     COUPON_SEARCH = event.target.value || '';

@@ -136,6 +136,77 @@
       .ad-admin-thumb { width:100%; margin-bottom:10px; }
       .ad-admin-actions { justify-content:flex-start; margin-top:10px; }
     }
+
+    .coupon-recipient-list {
+      max-height: min(42vh, 420px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      background: #fff;
+    }
+    .coupon-recipient-item {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      min-height: 68px;
+      padding: 10px 12px;
+      border: 0;
+      border-bottom: 1px solid #eef2f7;
+      text-align: left;
+      background: #fff;
+    }
+    .coupon-recipient-item:last-child { border-bottom: 0; }
+    .coupon-recipient-item:hover,
+    .coupon-recipient-item:focus-visible { background: #f0f9ff; }
+    .coupon-recipient-item.is-selected {
+      background: #e0f2fe;
+      box-shadow: inset 4px 0 0 #0ea5e9;
+    }
+    .coupon-recipient-avatar {
+      width: 42px;
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      color: #0369a1;
+      background: #e0f2fe;
+      font-weight: 700;
+    }
+    .coupon-recipient-main { min-width: 0; }
+    .coupon-recipient-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #0f172a;
+      font-weight: 600;
+    }
+    .coupon-recipient-meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #64748b;
+      font-size: .78rem;
+    }
+    .coupon-recipient-score {
+      min-width: 58px;
+      color: #0369a1;
+      text-align: right;
+      font-size: .78rem;
+      font-weight: 600;
+    }
+    #couponRecipientSelected { border-radius: 14px; }
+    #couponRecipientSelected .d-flex > div { min-width: 0; overflow-wrap: anywhere; }
+    #couponRecipientSelected [data-clear-coupon-recipient] { flex-shrink: 0; }
+    @media (max-width: 575.98px) {
+      #couponAssignModal .modal-dialog { margin: .5rem; }
+      #couponAssignModal .modal-content { max-height: calc(100dvh - 1rem); }
+      #couponAssignModal .modal-body { padding: 12px 16px; }
+      .coupon-recipient-list { max-height: 34vh; }
+      .coupon-recipient-item { min-height: 64px; padding: 9px 10px; }
+    }
   </style>
 </head>
 <body>
@@ -795,7 +866,7 @@
     </div>
 
     <div class="modal fade" id="couponAssignModal" tabindex="-1" aria-labelledby="couponAssignTitle" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content rounded-4 border-0">
           <div class="modal-header border-0 pb-0">
             <div>
@@ -805,20 +876,37 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="ปิด"></button>
           </div>
           <div class="modal-body">
-            <label for="couponRecipientSearch" class="form-label fw-semibold">ค้นหาผู้รับ</label>
-            <input type="search" id="couponRecipientSearch" class="form-control" placeholder="พิมพ์ชื่อ ห้อง เบอร์ หรือ UID" autocomplete="off">
+            <label for="couponRecipientSearch" class="form-label fw-semibold mb-1">เลือกผู้รับ</label>
+            <div class="input-group">
+              <span class="input-group-text bg-white border-end-0"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+              <input type="search" id="couponRecipientSearch" class="form-control border-start-0" placeholder="ค้นหาชื่อ ห้อง เบอร์ หรือ UID" autocomplete="off" aria-describedby="couponRecipientSummary">
+              <button type="button" id="couponRecipientSearchClear" class="btn btn-outline-secondary" aria-label="ล้างคำค้น" title="ล้างคำค้น">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
             <input type="hidden" id="couponRecipientUid">
-            <div id="couponRecipientResults" class="list-group mt-2" style="max-height:180px; overflow:auto;"></div>
-            <div id="couponRecipientSelected" class="alert alert-primary py-2 px-3 mt-2 d-none"></div>
+            <div class="d-flex align-items-center justify-content-between gap-2 mt-2 mb-1">
+              <div id="couponRecipientSummary" class="small text-muted" aria-live="polite">กำลังโหลดรายชื่อ...</div>
+              <button type="button" id="couponRecipientRefresh" class="btn btn-sm btn-light rounded-pill text-primary" title="โหลดรายชื่อใหม่">
+                <i class="fa-solid fa-rotate me-1"></i>รีเฟรช
+              </button>
+            </div>
+            <div id="couponRecipientResults" class="coupon-recipient-list" role="listbox" aria-label="รายชื่อผู้ใช้ทั้งหมด"></div>
+            <button type="button" id="couponRecipientLoadMore" class="btn btn-light border w-100 rounded-pill mt-2 d-none">แสดงรายชื่อเพิ่มเติม</button>
+            <div id="couponRecipientSelected" class="alert alert-primary py-2 px-3 mt-2 d-none" aria-live="polite"></div>
 
             <div class="row g-3 mt-1">
               <div class="col-12">
                 <label for="couponAssignPoints" class="form-label fw-semibold">จำนวนคะแนน</label>
-                <input type="number" id="couponAssignPoints" class="form-control" min="1" max="1000000" value="100" inputmode="numeric">
+                <input type="number" id="couponAssignPoints" class="form-control" min="1" max="1000000" value="100" inputmode="numeric" aria-describedby="couponAssignPointsHelp">
+                <div id="couponAssignPointsHelp" class="form-text">กำหนดได้ตั้งแต่ 1 ถึง 1,000,000 คะแนน</div>
               </div>
               <div class="col-12">
                 <label for="couponAssignReason" class="form-label fw-semibold">เหตุผลที่มอบ <span class="text-danger">*</span></label>
-                <textarea id="couponAssignReason" class="form-control" rows="3" maxlength="300" placeholder="เช่น รางวัลจากกิจกรรมประจำเดือน"></textarea>
+                <textarea id="couponAssignReason" class="form-control" rows="3" minlength="3" maxlength="300" placeholder="เช่น รางวัลจากกิจกรรมประจำเดือน" aria-describedby="couponAssignReasonHelp"></textarea>
+                <div id="couponAssignReasonHelp" class="form-text d-flex justify-content-between gap-2">
+                  <span>ระบุอย่างน้อย 3 ตัวอักษร</span><span id="couponAssignReasonCount">0/300</span>
+                </div>
               </div>
             </div>
 
@@ -828,7 +916,7 @@
           </div>
           <div class="modal-footer border-0 pt-0">
             <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">ยกเลิก</button>
-            <button type="button" id="btnAssignCoupon" class="btn btn-primary rounded-pill px-4">ยืนยันและส่ง LINE</button>
+            <button type="button" id="btnAssignCoupon" class="btn btn-primary rounded-pill px-4" disabled>ยืนยันและส่ง LINE</button>
           </div>
         </div>
       </div>
@@ -899,7 +987,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="loader.js?v=line-token-v1"></script>
-  <script src="admin.js?v=personal-coupon-recovery-v2"></script>
+  <script src="admin.js?v=coupon-recipient-list-v1"></script>
   <script src="admin.page.js"></script>
 
   <script>
