@@ -1,12 +1,18 @@
 {
   "scripts": {
-    "test": "node tests/line-auth.test.js && node tests/line-messaging.test.js && node tests/loader-auth.test.js && node tests/safety-question-rotation.test.js && node tests/integration-guard.test.js",
-    "check": "node --check app.js && node --check admin.js && node --check admin.page.js && node --check loader.js && node --check lib/line-auth.js && node --check lib/line-messaging.js && node --check lib/safety-question-rotation.js && node --check api/liff-guard.js && node --check api/admin-actions.js && node --check api/admin-coupons.js && node --check api/rewards.js && node --check api/redeem.js && node --check api/spend.js && node --check api/daily-checkin.js && node --check scripts/validate-line-flex.js && node --check scripts/send-line-auth-test.js",
+    "test": "node tests/line-auth.test.js && node tests/line-messaging.test.js && node tests/loader-auth.test.js && node tests/safety-question-rotation.test.js && node tests/audit.test.js && node tests/integration-guard.test.js",
+    "check": "node --check app.js && node --check admin.js && node --check admin.page.js && node --check loader.js && node --check lib/line-auth.js && node --check lib/line-messaging.js && node --check lib/reward-image.js && node --check lib/safety-question-rotation.js && node --check api/liff-guard.js && node --check api/admin-actions.js && node --check api/admin-coupons.js && node --check api/rewards.js && node --check api/redeem.js && node --check api/spend.js && node --check api/daily-checkin.js && node --check scripts/validate-line-flex.js && node --check scripts/send-line-auth-test.js",
     "validate:line-flex": "node scripts/validate-line-flex.js",
-    "test:line-delivery": "node scripts/send-line-auth-test.js"
+    "test:line-delivery": "node scripts/send-line-auth-test.js",
+    "test:browser": "node tests/browser-responsive.test.js",
+    "test:database": "node tests/database-integrity.test.js",
+    "test:full": "npm test && npm run test:browser && npm run test:database"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "@upstash/redis": "^1.35.4"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
   }
 }

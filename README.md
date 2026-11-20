@@ -42,6 +42,7 @@ Royal Point Web เป็นเว็บแอปสำหรับสะสม�
 ├─ vercel.json                        # Vercel rewrites + cron
 ├─ supabase_daily_checkins_migration.sql
 ├─ supabase_audit_logs_migration.sql
+├─ supabase_points_integrity_migration.sql # atomic coupon + idempotent giveaway
 ├─ lib/
 │  ├─ supabase.js                     # Supabase admin client + Redis helper
 │  └─ audit.js                        # audit log helper
@@ -75,6 +76,7 @@ LINE_CHANNEL_ACCESS_TOKEN=
 APP_BASE_URL=https://your-production-domain.example
 LINE_LIFF_URL=https://liff.line.me/your-liff-id
 LINE_ADMIN_URL=https://your-production-domain.example/admin.html
+REWARD_IMAGE_ALLOWED_HOSTS=your-image-cdn.example
 ```
 
 Safety / AI:
@@ -109,7 +111,17 @@ Notes:
 
 1. `supabase_audit_logs_migration.sql`
 2. `supabase_daily_checkins_migration.sql`
-3. `supabase_user_auth_migration.sql`
+3. `supabase_safety_questions_pagination_migration.sql`
+4. `supabase_safety_question_rotation_migration.sql`
+5. `supabase_user_auth_migration.sql`
+6. `supabase_coupon_assignment_migration.sql`
+7. `supabase_transaction_notifications_migration.sql`
+8. `supabase_points_integrity_migration.sql`
+9. `supabase_ad_banners_migration.sql`
+
+`supabase_points_integrity_migration.sql` ต้องรันหลังข้อ 6 และ 7 และก่อน deploy API
+เวอร์ชันที่เรียก `admin_giveaway_to_all_v2` หรือ `redeem_coupon_atomic` เสมอ migration นี้เพิ่ม
+workflow แบบ atomic/idempotent โดยไม่เปลี่ยน `users.id`, `users.uid`, คะแนน หรือประวัติเดิม
 
 ตารางสำคัญจาก safety migration:
 
@@ -125,6 +137,10 @@ Notes:
 - `safety_settings.streak_reset_date` ใช้เริ่มนับ Safety Streak ใหม่โดยไม่ลบประวัติ
 
 หลังเพิ่ม migration ใหม่ ให้ deploy API หลังจากรัน SQL แล้วเสมอ เพื่อเลี่ยง schema cache error
+
+หากต้อง rollback ชุด point integrity ให้ rollback application code ก่อน แล้วจึงใช้คำสั่ง rollback
+ที่เขียนกำกับไว้ท้าย `supabase_points_integrity_migration.sql` ตาราง `admin_giveaways` เป็นข้อมูล
+audit/idempotency ใหม่ จึงควรสำรองข้อมูลก่อน drop ใน production
 
 ## API Routes
 
@@ -342,7 +358,12 @@ Safety actions ที่ audit แล้ว:
 - `safety_settings_update`
 - `safety_streak_reset`
 
-หมายเหตุ: `audit_logs` เป็น optional table ถ้า insert audit fail จะไม่ทำให้ user/admin flow พัง
+`audit_logs` ใช้ `correlation_id` ป้องกันการบันทึกซ้ำ ส่วนรายการที่บันทึกไม่สำเร็จจะถูกพักใน
+`audit_failure_outbox` และแสดงบนหน้า Audit ของแอดมินเพื่อให้ตรวจสอบและกดบันทึกใหม่ได้
+โดยธุรกรรมหลักยังไม่ถูกย้อนหรือยิงซ้ำ ต้องรัน `supabase_audit_logs_migration.sql` ก่อน deploy โค้ดนี้
+
+URL รูปรางวัลรับเฉพาะ `https:` จาก `placehold.co`, `lh3.googleusercontent.com`, Supabase Storage
+หรือโดเมนที่ระบุแบบคั่นด้วย comma ใน `REWARD_IMAGE_ALLOWED_HOSTS` เท่านั้น
 
 ### Audit Log UI (Thai labels + User names)
 
@@ -505,12 +526,40 @@ Backend ตรวจ token, Channel ID, วันหมดอายุ และ
 - Backend ตรวจ LINE token, UID เจ้าของคูปอง, สถานะการมอบ และสถานะการใช้ก่อนเพิ่มคะแนน
 - คำขอสร้างมี idempotency key ป้องกันคูปองซ้ำเมื่อเครือข่ายตอบกลับไม่ชัดเจน
 - การส่ง LINE ใช้ `line_notification_outbox` และ dedupe key สำหรับการมอบ การใช้ และการยกเลิก
-- หากเพิ่มคะแนนไม่สำเร็จ สถานะคูปองจะถูกคืนเป็น `unused`
+- การ claim คูปอง เพิ่มคะแนน และบันทึก transaction อยู่ใน `redeem_coupon_atomic` เดียวกัน ถ้าขั้นตอนไหนล้มเหลว PostgreSQL จะ rollback ทั้งรายการ
 - แอดมินดูสถานะการส่ง LINE กดส่งใหม่ และยกเลิกคูปองที่ยังไม่ใช้พร้อมเหตุผลได้
 
 ก่อน deploy โค้ดส่วนนี้ ต้องรัน `supabase_coupon_assignment_migration.sql` ใน Supabase Production ก่อนเสมอ เพื่อให้คูปองเดิมถูก backfill เป็น `general` โดยไม่แก้คะแนนหรือประวัติเดิม
 
 ## Development Notes
+
+คำสั่งตรวจสอบก่อนส่งมอบ:
+
+```bash
+npm run check
+npm test
+npm run test:browser
+npm audit
+git diff --check
+```
+
+`test:browser` ใช้ Chrome/Edge ในเครื่อง ทดสอบหน้า rewards จริงที่ desktop 1440×900 และ mobile
+390×844 รวม responsive layout, touch target และ URL รูปที่พยายามทำ XSS กำหนดตำแหน่ง browser
+เพิ่มได้ด้วย `CHROME_PATH`
+
+Integration test ฐานข้อมูลต้องรันกับ Supabase สำหรับทดสอบที่ทิ้งได้เท่านั้น และจะปฏิเสธทันทีถ้า URL
+ตรงกับ `SUPABASE_URL` ของ production:
+
+```bash
+SUPABASE_TEST_URL=... \
+SUPABASE_TEST_SERVICE_ROLE_KEY=... \
+DATABASE_TEST_USER_UID=... \
+ROYAL_POINT_TEST_CONFIRM=DISPOSABLE_TEST_DATABASE \
+npm run test:database
+```
+
+ชุดนี้สร้างคูปองทดสอบ เพิ่มคะแนนแอดมิน 3 คะแนน และแจก 1 คะแนนให้ผู้ใช้ทุกคนในฐานทดสอบ
+เพื่อตรวจ atomic transaction/idempotent retry จริง จึงห้ามใช้กับ production
 
 - ระวังอย่าแก้ `.env.local` ลง git
 - ถ้าเพิ่ม API ใหม่ ต้องเช็ก Vercel function limit ด้วย เพราะโปรเจกต์เคย consolidate routes ผ่าน `admin-actions.js`
@@ -524,4 +573,4 @@ Backend ตรวจ token, Channel ID, วันหมดอายุ และ
 - เพิ่ม notification/escalation ไป LINE, Slack หรือ email
 - เพิ่ม duplicate detection ก่อนบันทึก AI question pack
 - เพิ่ม `safety_case_events` สำหรับ note/action history แบบถาวร
-- เพิ่ม automated tests สำหรับ `daily-checkin` และ `admin-actions`
+- เพิ่ม disposable database fixture สำหรับขยาย integration test ของ `daily-checkin` และ admin actions อื่น ๆ

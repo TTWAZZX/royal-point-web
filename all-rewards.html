@@ -69,6 +69,7 @@
     }
 
     .reward-footer { padding: 6px 10px 10px; }
+    .reward-footer button { min-height: 44px; touch-action: manipulation; }
 
     .reward-card.soldout { opacity: 0.6; pointer-events: none; filter: grayscale(1); }
     .reward-card.soldout::after {
@@ -208,10 +209,18 @@ function safeImageUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return 'https://placehold.co/300x300?text=No+Image';
   try {
-    const url = new URL(raw, window.location.origin);
-    if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
+    const url = new URL(raw);
+    if (url.protocol === 'https:' && !url.username && !url.password) return url.href;
   } catch {}
   return 'https://placehold.co/300x300?text=No+Image';
+}
+
+function bindRewardImageFallbacks(root = document) {
+  root.querySelectorAll('img[data-reward-image]').forEach(image => {
+    image.addEventListener('error', () => {
+      image.src = 'https://placehold.co/300x300?text=No+Image';
+    }, { once: true });
+  });
 }
 
 function friendlySpendError(err) {
@@ -378,7 +387,7 @@ function renderGrid(list) {
 
     return `
     <div class="${cls}" id="card-${id}" data-reward-id="${id}" data-cost="${cost}" data-stock="${stock}" data-stock-max="${stockMax}">
-      <img src="${img}" alt="${name}" loading="lazy" onerror="this.src='https://placehold.co/300x300?text=No+Image'">
+      <img src="${img}" alt="${name}" loading="lazy" data-reward-image>
       <div class="reward-cost">${cost} pt</div>
       
       <div class="reward-stock" id="stock-${id}"
@@ -398,6 +407,7 @@ function renderGrid(list) {
       </div>
     </div>
   `}).join('');
+  bindRewardImageFallbacks(wrap);
 }
 
 document.getElementById('rewardGrid')?.addEventListener('click', (event) => {

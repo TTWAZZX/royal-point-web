@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
-const { auditEvent } = require('../lib/audit')
+const { auditEvent, retryAuditFailure } = require('../lib/audit')
+const { safeRewardImageUrl } = require('../lib/reward-image')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
 const {
   buildPointAdjustmentMessage,
@@ -80,6 +81,11 @@ function adminErrorMessage(error) {
   const labels = {
     ADJUSTMENT_REASON_REQUIRED: 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร',
     INVALID_ADJUSTMENT_AMOUNT: 'จำนวนคะแนนไม่ถูกต้อง',
+    REQUEST_ID_REQUIRED: 'ข้อมูลป้องกันรายการซ้ำไม่ครบ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง',
+    REQUEST_ID_CONFLICT: 'รหัสรายการนี้ถูกใช้กับข้อมูลอื่นแล้ว กรุณาโหลดหน้าใหม่',
+    INVALID_GIVEAWAY_AMOUNT: 'จำนวนคะแนนสำหรับแจกไม่ถูกต้อง',
+    GIVEAWAY_REASON_REQUIRED: 'กรุณาระบุเหตุผลการแจกอย่างน้อย 3 ตัวอักษร',
+    INVALID_REWARD_IMAGE_URL: 'URL รูปรางวัลไม่ปลอดภัย กรุณาใช้ HTTPS และโดเมนรูปที่ระบบอนุญาต',
     INSUFFICIENT_POINTS: 'คะแนนของผู้ใช้ไม่เพียงพอสำหรับการตัดคะแนน',
     REDEMPTION_NOT_FOUND: 'ไม่พบรายการแลกของรางวัล',
     REDEMPTION_NOT_RECEIVABLE: 'รายการนี้ไม่สามารถยืนยันการรับของได้',
@@ -176,9 +182,31 @@ function getSafeRewardData(rewardData = {}) {
 
   if ('active' in safeData) safeData.active = !!safeData.active
   if ('name' in safeData) safeData.name = String(safeData.name || '').trim()
-  if ('img_url' in safeData) safeData.img_url = String(safeData.img_url || '').trim()
+  if ('img_url' in safeData) {
+    const safeImage = safeRewardImageUrl(safeData.img_url)
+    if (safeImage === null) throw new Error('INVALID_REWARD_IMAGE_URL')
+    safeData.img_url = safeImage
+  }
 
   return safeData
+}
+
+async function clearAllScoreCaches() {
+  if (!redis) return
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('uid')
+      .order('uid', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    const rows = data || []
+    for (let index = 0; index < rows.length; index += 50) {
+      await Promise.all(rows.slice(index, index + 50).map(row => clearScoreCache(redis, row.uid)))
+    }
+    if (rows.length < pageSize) break
+  }
 }
 
 function bangkokDate(offsetDays = 0) {
@@ -868,7 +896,7 @@ module.exports = async (req, res) => {
 
         let query = supabaseAdmin
           .from('audit_logs')
-          .select('id,event_type,actor_uid,target_uid,entity_type,entity_id,status,detail,created_at')
+          .select('id,correlation_id,event_type,actor_uid,target_uid,entity_type,entity_id,status,detail,created_at')
           .order('created_at', { ascending: false })
           .limit(limit)
 
@@ -898,7 +926,21 @@ module.exports = async (req, res) => {
           target_name: (r.target_uid && nameMap[r.target_uid]) || null,
         }))
 
-        return res.status(200).json({ status: 'success', data: enriched })
+        let auditFailures = []
+        let auditFailureWarning = ''
+        const { data: failureRows, error: failureError } = await supabaseAdmin
+          .from('audit_failure_outbox')
+          .select('id,correlation_id,event_payload,original_error,last_error,attempts,created_at,updated_at')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: false })
+          .limit(50)
+        if (failureError) {
+          auditFailureWarning = 'audit_failure_outbox table not found'
+        } else {
+          auditFailures = failureRows || []
+        }
+
+        return res.status(200).json({ status: 'success', data: enriched, auditFailures, auditFailureWarning })
       } catch (e) {
         const message = String(e?.message || e)
         if (/audit_logs|relation .* does not exist/i.test(message)) {
@@ -1068,6 +1110,17 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'audit_failure_retry') {
+      const outboxId = String(id || '').trim()
+      if (!UUID_RE.test(outboxId)) return res.status(400).json({ status: 'error', message: 'audit_failure_id_invalid' })
+      const result = await retryAuditFailure(supabaseAdmin, outboxId, adminUid)
+      await auditEvent(supabaseAdmin, {
+        type: 'audit_failure_recovered', actorUid: adminUid, entityType: 'audit_failure_outbox', entityId: outboxId,
+        status: 'success', detail: { correlationId: result.correlationId, duplicate: result.duplicate }
+      })
+      return res.status(200).json({ status: 'success', data: result })
+    }
 
     if (action === 'ad_banner_save') {
       const payload = bannerData && typeof bannerData === 'object' ? bannerData : {}
@@ -1826,15 +1879,48 @@ module.exports = async (req, res) => {
     // 🟢 CASE C: แจกทุกคน (ของเดิม ห้ามลบ)
     // ==================================================
     else if (action === 'giveaway') {
-      if (!amount || amount <= 0) return res.status(400).json({ status: 'error', message: 'Invalid amount' })
-      if (String(note || '').trim().length < 3) return res.status(400).json({ status: 'error', message: 'giveaway_reason_required' })
-
-      rpcName = 'admin_giveaway_to_all'
-      rpcParams = {
-        p_amount: amount,
-        p_note: String(note).trim().slice(0, 300),
-        p_admin_uid: adminUid
+      const numericAmount = Number(amount)
+      const cleanReason = String(note || '').trim().slice(0, 300)
+      const cleanRequestId = String(requestId || '').trim()
+      if (!Number.isInteger(numericAmount) || numericAmount <= 0 || numericAmount > 1000000) {
+        return res.status(400).json({ status: 'error', message: 'invalid_giveaway_amount' })
       }
+      if (cleanReason.length < 3) return res.status(400).json({ status: 'error', message: 'giveaway_reason_required' })
+      if (!UUID_RE.test(cleanRequestId)) return res.status(400).json({ status: 'error', message: 'request_id_required' })
+
+      const { data: giveawayRows, error: giveawayError } = await supabaseAdmin.rpc('admin_giveaway_to_all_v2', {
+        p_amount: numericAmount,
+        p_reason: cleanReason,
+        p_admin_uid: adminUid,
+        p_request_id: cleanRequestId
+      })
+      if (giveawayError) {
+        if (/admin_giveaway_to_all_v2|schema cache|function .* does not exist/i.test(String(giveawayError?.message || giveawayError))) {
+          return res.status(503).json({ status: 'error', message: 'giveaway_migration_not_ready' })
+        }
+        throw giveawayError
+      }
+      const giveaway = Array.isArray(giveawayRows) ? giveawayRows[0] : giveawayRows
+      if (!giveaway?.giveaway_id) throw new Error('giveaway_result_missing')
+      try {
+        await clearAllScoreCaches()
+      } catch (cacheError) {
+        console.error('[admin-actions] giveaway cache cleanup failed:', cacheError?.message || cacheError)
+      }
+      await auditEvent(supabaseAdmin, {
+        correlationId: cleanRequestId,
+        type: 'admin_giveaway_completed', actorUid: adminUid,
+        entityType: 'admin_giveaway', entityId: giveaway.giveaway_id, status: 'success',
+        detail: {
+          amount: numericAmount,
+          reason: cleanReason,
+          creditedUsers: Number(giveaway.credited_users || 0),
+          creditedPoints: Number(giveaway.credited_points || 0),
+          requestId: cleanRequestId,
+          duplicate: Boolean(giveaway.was_duplicate)
+        }
+      })
+      return res.status(200).json({ status: 'success', data: giveaway })
     } 
     
     // ==================================================
@@ -1865,11 +1951,23 @@ module.exports = async (req, res) => {
         .single()
 
       if (error) throw error
+      await auditEvent(supabaseAdmin, {
+        type: 'reward_created', actorUid: adminUid, entityType: 'reward', entityId: data.id,
+        status: 'success', detail: { after: data }
+      })
       return res.status(200).json({ status: 'success', data })
     }
 
     else if (action === 'reward_update') {
       if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
+
+      const { data: before, error: beforeError } = await supabaseAdmin
+        .from('rewards')
+        .select('*')
+        .eq('id', rewardId)
+        .maybeSingle()
+      if (beforeError) throw beforeError
+      if (!before) return res.status(404).json({ status: 'error', message: 'Reward not found' })
 
       const safeData = getSafeRewardData(rewardData)
       if (Object.keys(safeData).length === 0) {
@@ -1887,27 +1985,41 @@ module.exports = async (req, res) => {
         .update(safeData)
         .eq('id', rewardId)
         .select()
+        .single()
       
       if (error) throw error
       
       // ไม่ต้องเรียก RPC จบการทำงานแล้วส่งผลลัพธ์กลับเลย
+      await auditEvent(supabaseAdmin, {
+        type: 'reward_updated', actorUid: adminUid, entityType: 'reward', entityId: rewardId,
+        status: 'success', detail: { before, after: data }
+      })
       return res.status(200).json({ status: 'success', data })
     }
 
     else if (action === 'reward_delete') {
       if (!rewardId) return res.status(400).json({ status: 'error', message: 'Missing rewardId' })
 
+      const { data: before, error: beforeError } = await supabaseAdmin
+        .from('rewards')
+        .select('*')
+        .eq('id', rewardId)
+        .maybeSingle()
+      if (beforeError) throw beforeError
+      if (!before) return res.status(404).json({ status: 'error', message: 'Reward not found' })
+
       const { data, error } = await supabaseAdmin
         .from('rewards')
-        .delete()
+        .update({ active: false, updated_at: new Date().toISOString() })
         .eq('id', rewardId)
-        .select('id')
+        .select('*')
+        .single()
 
       if (error) throw error
-      if (!data || data.length === 0) {
-        return res.status(404).json({ status: 'error', message: 'Reward not found' })
-      }
-
+      await auditEvent(supabaseAdmin, {
+        type: 'reward_archived', actorUid: adminUid, entityType: 'reward', entityId: rewardId,
+        status: 'success', detail: { before, after: data }
+      })
       return res.status(200).json({ status: 'success', data })
     }
 

@@ -182,6 +182,46 @@ test('transaction notifications and reward pickup are connected end to end', () 
   assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
 })
 
+test('critical point mutations are atomic, idempotent and auditable', () => {
+  const migration = read('supabase_points_integrity_migration.sql')
+  const adminApi = read('api/admin-actions.js')
+  const redeemApi = read('api/redeem.js')
+  const adminUi = read('admin.js')
+  const adminHtml = read('admin.html')
+
+  assert.match(migration, /create table if not exists public\.admin_giveaways/)
+  assert.match(migration, /request_id uuid not null unique/)
+  assert.match(migration, /admin_giveaway_to_all_v2/)
+  assert.match(migration, /on conflict \(request_id\) do nothing/)
+  assert.match(migration, /redeem_coupon_atomic/)
+  assert.match(migration, /for update/)
+  assert.match(migration, /perform public\.apply_points/)
+  assert.match(migration, /grant execute on function public\.redeem_coupon_atomic/)
+
+  assert.match(adminApi, /admin_giveaway_to_all_v2/)
+  assert.match(adminApi, /request_id_required/)
+  assert.match(adminApi, /admin_giveaway_completed/)
+  assert.match(adminUi, /GIVEAWAY_PENDING_KEY/)
+  assert.match(adminUi, /requestId: newCouponRequestId\(\)/)
+  assert.match(adminUi, /submitGiveaway\(pending\)/)
+
+  assert.match(redeemApi, /redeem_coupon_atomic/)
+  assert.doesNotMatch(redeemApi, /rpc\('apply_points'/)
+  assert.doesNotMatch(redeemApi, /status: 'unused', claimer: null/)
+
+  const rewardCrud = adminApi.slice(
+    adminApi.indexOf("if (action === 'reward_create')"),
+    adminApi.indexOf("else if (action === 'get_history')")
+  )
+  assert.match(rewardCrud, /reward_created/)
+  assert.match(rewardCrud, /reward_updated/)
+  assert.match(rewardCrud, /reward_archived/)
+  assert.match(rewardCrud, /update\(\{ active: false/)
+  assert.doesNotMatch(rewardCrud, /\.delete\(\)/)
+  assert.match(adminHtml, /เก็บและปิดของรางวัลนี้/)
+  assert.doesNotMatch(adminHtml, /title: 'ลบของรางวัลนี้\?'/)
+})
+
 test('LINE deep-link dialogs release the startup overlay before waiting for user input', () => {
   const app = read('app.js')
   const couponHandler = app.slice(
@@ -317,6 +357,38 @@ test('internal desk numbers are never exposed as clickable telephone links', () 
   for (const file of ['lib/line-messaging.js', 'app.js', 'all-rewards.html']) {
     assert.doesNotMatch(read(file), /tel:1199/i, `${file} must describe internal extensions as text only`)
   }
+})
+
+test('reward images reject stored XSS and avoid inline image handlers', () => {
+  const adminApi = read('api/admin-actions.js')
+  const publicApi = read('api/rewards.js')
+  const rewardImage = read('lib/reward-image.js')
+  assert.match(adminApi, /safeRewardImageUrl/)
+  assert.match(publicApi, /safeRewardImageUrl\(r\.img_url\)/)
+  assert.match(rewardImage, /url\.protocol !== 'https:'/)
+  assert.match(rewardImage, /REWARD_IMAGE_ALLOWED_HOSTS/)
+  for (const file of ['app.js', 'all-rewards.html', 'admin.html', 'admin.js']) {
+    const source = read(file)
+    assert.doesNotMatch(source, /<img[^>]+onerror=/i, `${file} must not use inline image error handlers`)
+  }
+  assert.match(read('app.js'), /safeRewardImageUrl/)
+  assert.match(read('all-rewards.html'), /data-reward-image/)
+})
+
+test('audit failures have correlation IDs, durable outbox and administrator recovery', () => {
+  const audit = read('lib/audit.js')
+  const migration = read('supabase_audit_logs_migration.sql')
+  const adminApi = read('api/admin-actions.js')
+  const adminJs = read('admin.js')
+  assert.match(audit, /correlation_id/)
+  assert.match(audit, /audit_failure_outbox/)
+  assert.match(audit, /console\.error/)
+  assert.match(audit, /retryAuditFailure/)
+  assert.match(migration, /create table if not exists public\.audit_failure_outbox/)
+  assert.match(migration, /correlation_id uuid not null unique/)
+  assert.match(adminApi, /action === 'audit_failure_retry'/)
+  assert.match(adminJs, /function renderAuditFailures/)
+  assert.match(adminJs, /function retryAuditFailure/)
 })
 
 test('user-facing source files contain no common UTF-8 mojibake sequences', () => {

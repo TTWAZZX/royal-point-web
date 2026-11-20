@@ -13,6 +13,16 @@ function hashToken(value) {
   return createHash('sha256').update(String(value || '')).digest('hex');
 }
 
+function couponRpcReason(error) {
+  const text = String(error?.message || error || '').toUpperCase();
+  const codes = [
+    'USER_NOT_FOUND', 'INVALID_CODE', 'COUPON_IDENTIFIER_INVALID',
+    'COUPON_CANCELLED', 'COUPON_NOT_OWNER', 'ALREADY_USED', 'INVALID_COUPON_POINTS'
+  ];
+  const code = codes.find(item => text.includes(item));
+  return code ? code.toLowerCase() : 'redeem_failed';
+}
+
 module.exports = async (req, res) => {
   try {
     if (!['GET', 'POST'].includes(req.method)) {
@@ -57,124 +67,69 @@ module.exports = async (req, res) => {
       });
     }
 
-    // หา user
-    const { data: user, error: e1 } = await supabaseAdmin
-      .from('users')
-      .select('id,uid')
-      .eq('uid', cleanUid)
-      .single();
-    if (e1 || !user) {
-      await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: cleanCode, status: 'error', detail: { reason: 'user_not_found' } });
-      return res.status(404).json({ status: 'error', message: 'user_not_found' });
+    const { data: rpcRows, error: redeemError } = await supabaseAdmin.rpc('redeem_coupon_atomic', {
+      p_uid: cleanUid,
+      p_code: cleanCode || null,
+      p_ticket_hash: cleanTicket ? hashToken(cleanTicket) : null
+    });
+    if (redeemError) {
+      if (/redeem_coupon_atomic|schema cache|function .* does not exist/i.test(String(redeemError?.message || redeemError))) {
+        return res.status(503).json({ status: 'error', message: 'coupon_atomic_not_ready' });
+      }
+      const reason = couponRpcReason(redeemError);
+      await auditEvent(supabaseAdmin, {
+        type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: cleanCode || null,
+        status: 'error', detail: { reason, source: cleanTicket ? 'personal_link' : 'code' }
+      });
+      const httpStatus = reason === 'user_not_found' || reason === 'invalid_code' ? 404
+        : reason === 'coupon_not_owner' ? 403
+          : reason === 'coupon_cancelled' ? 410
+            : reason === 'already_used' ? 409
+              : reason === 'coupon_identifier_invalid' ? 400 : 500;
+      return res.status(httpStatus).json({ status: 'error', message: reason });
     }
 
-    let add = 0;
-    let redeemedCode = cleanCode;
+    const result = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows;
+    if (!result?.coupon_code) throw new Error('coupon_result_missing');
+    const add = Number(result.added_points || 0);
+    const redeemedCode = String(result.coupon_code);
+    const coupon = {
+      code: redeemedCode,
+      point: add,
+      coupon_type: result.coupon_type || 'general',
+      assigned_uid: result.assigned_uid || null,
+      assignment_reason: result.assignment_reason || null,
+      assigned_at: result.assigned_at || null,
+      used_at: result.used_at || null
+    };
 
-    if (cleanCode || cleanTicket) {
-      // อ่านคูปอง
-      let couponQuery = supabaseAdmin
-        .from('coupons')
-        .select('code, point, status, coupon_type, assigned_uid, assignment_reason, assignment_state, assigned_at, used_at');
-      couponQuery = cleanTicket
-        ? couponQuery.eq('assignment_token_hash', hashToken(cleanTicket))
-        : couponQuery.eq('code', cleanCode);
-      const { data: coupon, error: ec1 } = await couponQuery.single();
-
-      if (ec1 || !coupon) {
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: cleanCode || null, status: 'error', detail: { reason: cleanTicket ? 'invalid_ticket' : 'invalid_code' } });
-        return res.status(404).json({ status: 'error', message: 'invalid_code' });
+    if (coupon.coupon_type === 'personal') {
+      try {
+        await queueLineNotification({
+          dedupeKey: `coupon-used:${redeemedCode}`,
+          caseId: null,
+          recipientUid: cleanUid,
+          messageKind: 'coupon_redeemed',
+          payload: buildCouponRedeemedMessage({
+            coupon,
+            balance: Number(result.balance || 0),
+            url: userCouponUrl(req, '')
+          })
+        });
+      } catch (notifyError) {
+        console.error('[redeem] coupon LINE confirmation failed:', notifyError?.message || notifyError);
       }
-      redeemedCode = coupon.code;
-
-      const isPersonal = String(coupon.coupon_type || 'general') === 'personal';
-      if (isPersonal && coupon.assignment_state !== 'active') {
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: coupon.code, status: 'error', detail: { reason: 'coupon_cancelled' } });
-        return res.status(410).json({ status: 'error', message: 'coupon_cancelled' });
-      }
-      if (isPersonal && coupon.assigned_uid !== cleanUid) {
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, targetUid: coupon.assigned_uid, entityType: 'coupon', entityId: coupon.code, status: 'error', detail: { reason: 'coupon_not_owner' } });
-        return res.status(403).json({ status: 'error', message: 'coupon_not_owner' });
-      }
-
-      const status = String(coupon.status || '').toLowerCase();
-      if (status !== 'unused') {
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: coupon.code, status: 'error', detail: { reason: 'already_used', couponStatus: status } });
-        // เคยใช้ไปแล้ว หรือสถานะไม่ถูกต้อง
-        return res.status(400).json({ status: 'error', message: 'already_used' });
-      }
-
-      // อัปเดตสถานะเป็น used แบบอะตอมมิก (กันแข่งกันกด)
-      const { data: updated, error: e3 } = await supabaseAdmin
-        .from('coupons')
-        .update({ status: 'used', claimer: cleanUid, used_at: new Date().toISOString() })
-        .eq('code', coupon.code)
-        .eq('status', 'unused')
-        .eq('assignment_state', 'active')
-        .select('code, point, status, coupon_type, assigned_uid, assignment_reason, assigned_at, used_at')
-        .single();
-
-      if (e3 || !updated) {
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: coupon.code, status: 'error', detail: { reason: 'coupon_conflict' } });
-        // หากอัปเดตไม่ได้ แปลว่าอีกคำขอแย่งใช้ไปแล้ว
-        return res.status(409).json({ status: 'error', message: 'coupon_conflict' });
-      }
-
-      add = Number(updated.point || coupon.point || 0) || 0;
-
-      // ให้แต้ม
-      const { error: e4 } = await supabaseAdmin.rpc('apply_points', {
-        p_user: user.id,
-        p_amount: add,
-        p_code: coupon.code,
-        p_type: 'COUPON_REDEEM',
-        p_actor: cleanUid
-      });
-      if (e4) {
-        await supabaseAdmin
-          .from('coupons')
-          .update({ status: 'unused', claimer: null, used_at: null })
-          .eq('code', coupon.code)
-          .eq('claimer', cleanUid);
-
-        await auditEvent(supabaseAdmin, { type: 'redeem_failed', actorUid: cleanUid, entityType: 'coupon', entityId: coupon.code, status: 'error', detail: { reason: 'apply_points_failed', message: e4.message } });
-        return res.status(500).json({ status: 'error', message: 'apply_points_failed' });
-      }
-
-      if (isPersonal) {
-        const { data: balanceRow } = await supabaseAdmin
-          .from('user_points')
-          .select('balance')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        try {
-          await queueLineNotification({
-            dedupeKey: `coupon-used:${coupon.code}`,
-            caseId: null,
-            recipientUid: cleanUid,
-            messageKind: 'coupon_redeemed',
-            payload: buildCouponRedeemedMessage({
-              coupon: updated,
-              balance: balanceRow?.balance ?? 0,
-              url: userCouponUrl(req, '')
-            })
-          });
-        } catch (notifyError) {
-          console.error('[redeem] coupon LINE confirmation failed:', notifyError?.message || notifyError);
-        }
-      }
-
     }
 
     // ล้าง cache คะแนนของผู้ใช้
     await clearScoreCache(redis, cleanUid);
-    await auditEvent(supabaseAdmin, { type: 'redeem_success', actorUid: cleanUid, entityType: 'coupon', entityId: redeemedCode, status: 'success', detail: { added: add, source: cleanTicket ? 'personal_link' : 'code' } });
+    await auditEvent(supabaseAdmin, { type: 'redeem_success', actorUid: cleanUid, entityType: 'coupon', entityId: redeemedCode, status: 'success', detail: { added: add, source: cleanTicket ? 'personal_link' : 'code', duplicate: Boolean(result.was_duplicate) } });
 
-    return res.status(200).json({ status: 'success', added: add });
+    return res.status(200).json({ status: 'success', added: add, duplicate: Boolean(result.was_duplicate) });
 
   } catch (e) {
     if (e instanceof AuthError) return sendAuthError(res, e);
-    if (/coupon_type|assigned_uid|assignment_token_hash|schema cache|column .* does not exist/i.test(String(e?.message || e))) {
+    if (/redeem_coupon_atomic|coupon_type|assigned_uid|assignment_token_hash|schema cache|column .* does not exist/i.test(String(e?.message || e))) {
       return res.status(503).json({ status: 'error', message: 'coupon_assignment_not_ready' });
     }
     return res.status(500).json({ status: 'error', message: String(e) });

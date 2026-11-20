@@ -714,6 +714,7 @@
           </div>
         </div>
 
+        <div id="auditFailureArea"></div>
         <div id="auditListArea" class="pb-5">
           <div class="text-center py-5 text-muted">
             <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
@@ -767,8 +768,8 @@
                 <label class="form-check-label small text-muted" for="editActive">เปิดให้แลกของรางวัลนี้</label>
               </div>
               <div class="d-flex gap-2">
-                <button type="button" class="btn btn-outline-danger rounded-pill fw-bold d-none" id="btnDeleteReward">
-                  <i class="fa-solid fa-trash-can"></i>
+                <button type="button" class="btn btn-outline-warning rounded-pill fw-bold d-none" id="btnDeleteReward" title="เก็บรายการและปิดการแลก">
+                  <i class="fa-solid fa-box-archive"></i>
                 </button>
                 <button type="button" class="btn btn-outline-secondary rounded-pill fw-bold d-none" id="btnDuplicateReward" title="ทำสำเนา">
                   <i class="fa-solid fa-copy"></i>
@@ -987,7 +988,7 @@
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="loader.js?v=line-token-v1"></script>
-  <script src="admin.js?v=coupon-recipient-list-v1"></script>
+  <script src="admin.js?v=integrity-audit-v2"></script>
   <script src="admin.page.js"></script>
 
   <script>
@@ -1001,6 +1002,16 @@
     const rewardText = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
     }[ch]));
+    const safeRewardImage = (value) => {
+        try {
+            const url = new URL(String(value || '').trim());
+            if (url.protocol === 'https:' && !url.username && !url.password) return url.href;
+        } catch (_) {}
+        return 'https://placehold.co/100?text=No+Image';
+    };
+    const bindAdminRewardImages = (root) => root.querySelectorAll('img[data-reward-image]').forEach(image => {
+        image.addEventListener('error', () => { image.src = 'https://placehold.co/100?text=No+Image'; }, { once: true });
+    });
     const rewardNumber = (value, fallback = 0) => {
         const number = Number(value);
         return Number.isFinite(number) ? number : fallback;
@@ -1057,7 +1068,7 @@
             const stock = parseInt(r.stock || 0);
             const stockMax = parseInt(r.stock_max || 0);
             const isZero = stock <= 0;
-            const img = rewardText(r.img || 'https://placehold.co/100');
+            const img = rewardText(safeRewardImage(r.img));
             const name = rewardText(r.name || 'ไม่ระบุชื่อ');
             const pct = (stockMax > 0) ? Math.min(100, Math.round((stock / stockMax) * 100)) : 0;
             const barColor = pct > 50 ? '#16a34a' : pct > 20 ? '#f59e0b' : '#dc2626';
@@ -1075,7 +1086,7 @@
             <div class="m-card ${!isActive ? 'opacity-50' : ''}" id="card-${r.id}">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                    <div class="stock-row">
-                      <img src="${img}" class="stock-img" onclick="openEditModal('${r.id}')" onerror="this.src='https://placehold.co/100?text=No+Image'">
+                      <img src="${img}" class="stock-img" onclick="openEditModal('${r.id}')" data-reward-image>
                       <div>
                          <div class="fw-bold text-dark text-truncate" style="max-width: 140px;">${name}</div>
                          <div class="d-flex align-items-center gap-2">
@@ -1103,6 +1114,7 @@
                 ${stockBar}
             </div>`;
         }).join('');
+        bindAdminRewardImages(listArea);
     }
 
     // Update Stock (มี Effect แจ้งเตือน)
@@ -1342,11 +1354,11 @@
         if (!id || !item) return;
 
         const confirm = await Swal.fire({
-            title: 'ลบของรางวัลนี้?',
-            text: item.name || 'รายการนี้จะถูกลบออกจากระบบ',
+            title: 'เก็บและปิดของรางวัลนี้?',
+            text: `${item.name || 'รายการนี้'} จะปิดการแลก แต่ข้อมูลและประวัติเดิมจะยังอยู่`,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'ลบ',
+            confirmButtonText: 'เก็บและปิดการแลก',
             cancelButtonText: 'ยกเลิก',
             confirmButtonColor: '#dc2626'
         });
@@ -1359,11 +1371,11 @@
                 body: JSON.stringify({ action: 'reward_delete', adminUid: getMyUid(), rewardId: id })
             });
             if (result?.status !== 'success') throw new Error(result?.message || 'delete_failed');
-            Swal.fire('ลบแล้ว', 'ลบของรางวัลเรียบร้อย', 'success');
+            Swal.fire('เก็บรายการแล้ว', 'ปิดการแลกของรางวัลเรียบร้อย และสามารถเปิดคืนได้ภายหลัง', 'success');
             loadRewardsData();
         } catch (err) {
             editModalEl.show();
-            Swal.fire('ลบไม่สำเร็จ', err.message || 'อาจมีประวัติการแลกที่อ้างถึงของรางวัลนี้อยู่', 'error');
+            Swal.fire('เก็บรายการไม่สำเร็จ', err.message || 'กรุณาลองใหม่อีกครั้ง', 'error');
         }
     });
 

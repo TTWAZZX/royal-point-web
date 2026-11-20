@@ -1558,9 +1558,24 @@ const COST_ORDER = [
   600,700,800,900,1000
 ];
 
-// ใช้รูปจาก API เป็นหลัก ถ้าไม่มีให้ใช้ placeholder
+const REWARD_IMAGE_PLACEHOLDER = 'https://placehold.co/640x480?text=No+Image';
+
+function safeRewardImageUrl(value, fallback = REWARD_IMAGE_PLACEHOLDER) {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password) return fallback;
+    return url.href;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+// ใช้รูปจาก API เป็นหลัก ถ้าไม่มีหรือไม่ปลอดภัยให้ใช้ placeholder
 function pickRewardImage(r, slotIndex){
-  return r?.img || `https://placehold.co/640x480?text=${encodeURIComponent(r?.name || `Gift ${slotIndex+1}`)}`;
+  const fallback = `https://placehold.co/640x480?text=${encodeURIComponent(r?.name || `Gift ${slotIndex+1}`)}`;
+  return safeRewardImageUrl(r?.img, fallback);
 }
 
 // fallback เวลา API ไม่มีข้อมูล (ไม่อ้างอิง IMAGE_BY_INDEX อีกต่อไป)
@@ -1681,7 +1696,7 @@ function preloadTopRewardImages(rewards, count = 2) {
     const link = document.createElement('link');
     link.rel = 'preload';
     link.as = 'image';
-    link.href = r.img;
+    link.href = safeRewardImageUrl(r.img);
     // บางเบราว์เซอร์รองรับ fetchpriority ใน <link>
     link.fetchPriority = 'high';
     document.head.appendChild(link);
@@ -1721,7 +1736,7 @@ function renderRewards(currentScore){
 
     const id   = escapeHtml(r.id || `R${i+1}`);
     const name = escapeHtml(r.name || id);
-    const img  = pickRewardImage(r, i);
+    const img  = escapeHtml(pickRewardImage(r, i));
 
     const eager = i < 2 ? 'eager' : 'lazy';
     const prio  = i < 2 ? 'high'  : 'low';
@@ -1751,8 +1766,7 @@ function renderRewards(currentScore){
             decoding="async"
             fetchpriority="${prio}"
             width="300" height="425"
-            onload="this.classList.add('is-ready')"
-            onerror="this.onerror=null;this.src='https://placehold.co/600x850?text=${encodeURIComponent(name)}';this.classList.add('is-ready');"
+            data-reward-image
           >
           <div class="rp-reward-cost">${cost} pt</div>
           ${stockLabel}
@@ -1768,6 +1782,15 @@ function renderRewards(currentScore){
       </div>
     `;
   }).join("");
+
+  rail.querySelectorAll('img[data-reward-image]').forEach(image => {
+    image.addEventListener('load', () => image.classList.add('is-ready'), { once: true });
+    image.addEventListener('error', () => {
+      image.src = REWARD_IMAGE_PLACEHOLDER;
+      image.classList.add('is-ready');
+    }, { once: true });
+    if (image.complete) image.classList.add('is-ready');
+  });
 
   // one-time click binding (ใช้ของเดิมได้เลย)
   if (!rewardRailBound) {

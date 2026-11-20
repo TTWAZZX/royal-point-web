@@ -1,5 +1,6 @@
 // /api/rewards.js  — Supabase version (Vercel Serverless Function)
 const { createClient } = require('@supabase/supabase-js');
+const { safeRewardImageUrl } = require('../lib/reward-image');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -59,7 +60,7 @@ module.exports = async (req, res) => {
       id: r.id,
       name: r.name,
       cost: Number(r.cost) || 0,
-      img: r.img_url || '',
+      img: safeRewardImageUrl(r.img_url) || '',
       active: !!r.active,
       updated_at: r.updated_at || null,
       stock: r.stock ?? 0,

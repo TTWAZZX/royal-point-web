@@ -24,7 +24,18 @@ let COUPON_USERS_LOADED = false;
 let COUPON_RECIPIENT_VISIBLE = 30;
 const COUPON_RECIPIENT_PAGE_SIZE = 30;
 let COUPON_ASSIGN_REQUEST_ID = '';
+const GIVEAWAY_PENDING_KEY = 'RP_PENDING_GIVEAWAY_V1';
+let GIVEAWAY_PENDING = readPendingGiveaway();
 let AUDIT_ROWS = [];
+let AUDIT_FAILURE_ROWS = [];
+
+document.addEventListener('error', (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.matches('[data-reward-image]')) return;
+  if (image.dataset.fallbackApplied === '1') return;
+  image.dataset.fallbackApplied = '1';
+  image.src = 'https://placehold.co/100?text=No+Image';
+}, true);
 let SAFETY_PULSE = null;
 let SAFETY_PULSE_TAB = 'action';
 let SAFETY_PULSE_FILTER = { room: 'all', status: 'open', type: 'all' };
@@ -385,6 +396,27 @@ function newCouponRequestId() {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = [...bytes].map(value => value.toString(16).padStart(2, '0')).join('');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function readPendingGiveaway() {
+  try {
+    const pending = JSON.parse(localStorage.getItem(GIVEAWAY_PENDING_KEY) || 'null');
+    if (!pending?.requestId || !pending?.createdAt || Date.now() - Number(pending.createdAt) > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(GIVEAWAY_PENDING_KEY);
+      return null;
+    }
+    return pending;
+  } catch (_) {
+    return null;
+  }
+}
+
+function setPendingGiveaway(value) {
+  GIVEAWAY_PENDING = value || null;
+  try {
+    if (GIVEAWAY_PENDING) localStorage.setItem(GIVEAWAY_PENDING_KEY, JSON.stringify(GIVEAWAY_PENDING));
+    else localStorage.removeItem(GIVEAWAY_PENDING_KEY);
+  } catch (_) {}
 }
 
 async function fetchCouponAssignment(input, init = {}, timeoutMs = 15000) {
@@ -847,57 +879,111 @@ async function generateCoupons() {
 }
 
 // ============ GIVEAWAY LOGIC (แจกทุกคน) ============
+async function submitGiveaway(payload) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetchCouponAssignment(API_ADMIN_ACTIONS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'giveaway', adminUid: ADMIN_UID, ...payload })
+      }, 20000);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.status !== 'success') {
+        const message = String(result.message || '');
+        const errorMessages = {
+          giveaway_migration_not_ready: 'ฐานข้อมูลยังไม่พร้อมสำหรับการแจกคะแนนแบบป้องกันรายการซ้ำ กรุณาติดต่อผู้ดูแลระบบ',
+          request_id_required: 'ข้อมูลป้องกันรายการซ้ำไม่ครบ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง',
+          invalid_giveaway_amount: 'จำนวนคะแนนไม่ถูกต้อง',
+          giveaway_reason_required: 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร'
+        };
+        const error = new Error(errorMessages[message] || message || 'แจกคะแนนไม่สำเร็จ');
+        error.definitive = true;
+        throw error;
+      }
+      return result;
+    } catch (error) {
+      if (error.definitive) throw error;
+      lastError = error;
+      if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 800));
+    }
+  }
+  throw lastError || new Error('ตรวจสอบผลการแจกคะแนนไม่สำเร็จ');
+}
+
 async function giveawayToAll() {
-  // 1. ถามจำนวนแต้ม
-  const { value: amount } = await Swal.fire({
-    title: '🎁 แจกแต้มทุกคน',
-    text: 'สมาชิกทุกคนในระบบจะได้รับแต้มนี้',
-    input: 'number',
-    inputLabel: 'ระบุจำนวนแต้ม',
-    inputPlaceholder: 'เช่น 50',
-    showCancelButton: true,
-    confirmButtonText: 'ถัดไป',
-    confirmButtonColor: '#0ea5e9'
-  });
+  let pending = GIVEAWAY_PENDING;
+  if (pending) {
+    const retry = await Swal.fire({
+      icon: 'warning',
+      title: 'มีรายการที่กำลังตรวจสอบผล',
+      html: `ระบบจะตรวจสอบรายการเดิมเพื่อไม่ให้แจกซ้ำ<br><b>${Number(pending.amount).toLocaleString('th-TH')} คะแนน</b> · ${escapeAuditHtml(pending.note)}`,
+      showCancelButton: true,
+      confirmButtonText: 'ตรวจสอบรายการเดิม',
+      cancelButtonText: 'ไว้ภายหลัง',
+      confirmButtonColor: '#0ea5e9'
+    });
+    if (!retry.isConfirmed) return;
+  } else {
+    const { value: amount } = await Swal.fire({
+      title: '🎁 แจกแต้มทุกคน',
+      text: 'สมาชิกทุกคนในระบบจะได้รับแต้มนี้เพียงครั้งเดียว',
+      input: 'number',
+      inputLabel: 'ระบุจำนวนแต้ม',
+      inputPlaceholder: 'เช่น 50',
+      inputAttributes: { min: 1, max: 1000000, step: 1 },
+      inputValidator: value => (!Number.isInteger(Number(value)) || Number(value) < 1 || Number(value) > 1000000)
+        ? 'กรุณาระบุจำนวนเต็มตั้งแต่ 1 ถึง 1,000,000 คะแนน' : undefined,
+      showCancelButton: true,
+      confirmButtonText: 'ถัดไป',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#0ea5e9'
+    });
+    if (!amount) return;
 
-  if (!amount || amount <= 0) return;
+    const { value: note } = await Swal.fire({
+      title: '📝 ระบุเหตุผล',
+      html: `กำลังแจก <b>${Number(amount).toLocaleString('th-TH')} คะแนน</b> ให้สมาชิกทุกคน`,
+      input: 'text',
+      inputLabel: 'เช่น กิจกรรมพิเศษ หรือชดเชยระบบ',
+      inputPlaceholder: 'กรุณาระบุเหตุผล',
+      inputAttributes: { minlength: 3, maxlength: 300 },
+      inputValidator: value => String(value || '').trim().length < 3 ? 'กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร' : undefined,
+      showCancelButton: true,
+      confirmButtonText: 'ยืนยันการแจก',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#22c55e'
+    });
+    if (!note) return;
+    pending = {
+      requestId: newCouponRequestId(),
+      amount: Number(amount),
+      note: String(note).trim(),
+      createdAt: Date.now()
+    };
+    setPendingGiveaway(pending);
+  }
 
-  // 2. ถามเหตุผล (Note)
-  const { value: note } = await Swal.fire({
-    title: '📝 ระบุเหตุผล',
-    input: 'text',
-    inputLabel: 'เช่น กิจกรรมพิเศษ, ชดเชยระบบ',
-    inputValue: 'แจกคะแนนกิจกรรมพิเศษ',
-    showCancelButton: true,
-    confirmButtonText: 'ยืนยันการแจก',
-    confirmButtonColor: '#22c55e'
-  });
-
-  if (!note) return;
-
-  // 3. ส่ง API
   sysOverlay.show('กำลังแจกแต้มให้ทุกคน...');
   try {
-    const res = await fetch(API_ADMIN_ACTIONS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'giveaway',
-        adminUid: ADMIN_UID,
-        amount: Number(amount),
-        note: note
-      })
+    const result = await submitGiveaway(pending);
+    setPendingGiveaway(null);
+    const creditedUsers = Number(result.data?.credited_users || 0);
+    await Swal.fire({
+      icon: 'success',
+      title: result.data?.was_duplicate ? 'ตรวจสอบรายการเดิมสำเร็จ' : 'แจกคะแนนสำเร็จ',
+      text: `สมาชิก ${creditedUsers.toLocaleString('th-TH')} คนได้รับคนละ ${Number(pending.amount).toLocaleString('th-TH')} คะแนนแล้ว`
     });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.message || 'Failed');
-
-    Swal.fire('สำเร็จ!', 'แจกแต้มให้สมาชิกทุกคนเรียบร้อยแล้ว', 'success');
-    
-    // (Optional) ถ้าอยู่ในหน้า Users อาจจะรีโหลดตารางเพื่อให้เห็นยอดใหม่
     if (window.loadPageUsers) window.loadPageUsers();
-
   } catch (e) {
-    Swal.fire('ผิดพลาด', e.message, 'error');
+    if (e.definitive) setPendingGiveaway(null);
+    Swal.fire({
+      icon: 'error',
+      title: e.definitive ? 'แจกคะแนนไม่สำเร็จ' : 'ยังตรวจสอบผลไม่ได้',
+      text: e.definitive
+        ? (e.message || 'กรุณาตรวจสอบข้อมูลแล้วลองใหม่')
+        : 'ระบบเก็บรหัสรายการเดิมไว้แล้ว กดแจกแต้มทุกคนอีกครั้งเพื่อตรวจสอบโดยไม่ทำให้คะแนนซ้ำ'
+    });
   } finally {
     sysOverlay.hide();
   }
@@ -1172,9 +1258,9 @@ function renderHistoryList(list) {
                 <div class="d-flex align-items-center gap-3">
                     
                     <div class="position-relative">
-                        <img src="${escapeAuditHtml(item.reward_img)}" class="rounded-3 border bg-light"
+                        <img src="${escapeAuditHtml(typeof safeRewardImage === 'function' ? safeRewardImage(item.reward_img) : 'https://placehold.co/100?text=No+Image')}" class="rounded-3 border bg-light"
                              style="width:55px; height:55px; object-fit:contain;"
-                             onerror="this.src='https://placehold.co/100?text=Err'">
+                             data-reward-image>
                     </div>
 
                     <div>
@@ -1472,9 +1558,59 @@ async function loadAuditLogs() {
     if (!res.ok || json.status !== 'success') throw new Error(json.message || 'load_failed');
 
     AUDIT_ROWS = Array.isArray(json.data) ? json.data : [];
+    AUDIT_FAILURE_ROWS = Array.isArray(json.auditFailures) ? json.auditFailures : [];
+    renderAuditFailures(AUDIT_FAILURE_ROWS, json.auditFailureWarning);
     renderAuditLogs(AUDIT_ROWS, json.warning);
   } catch (err) {
     area.innerHTML = `<div class="alert alert-danger m-3">โหลดบันทึกระบบไม่สำเร็จ: ${escapeAuditHtml(err.message)}</div>`;
+  }
+}
+
+function renderAuditFailures(list, warning = '') {
+  const area = document.getElementById('auditFailureArea');
+  if (!area) return;
+  if (!list.length) {
+    area.innerHTML = warning
+      ? `<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-2"></i>ยังไม่ได้ติดตั้งระบบกู้คืน audit กรุณารัน migration ล่าสุดก่อนใช้งานจริง</div>`
+      : '';
+    return;
+  }
+
+  area.innerHTML = `
+    <div class="alert alert-danger shadow-sm">
+      <div class="fw-bold"><i class="fa-solid fa-shield-halved me-2"></i>พบบันทึก audit ที่รอกู้คืน ${list.length.toLocaleString('th-TH')} รายการ</div>
+      <div class="small mt-1">ธุรกรรมหลักอาจสำเร็จแล้ว แต่บันทึกตรวจสอบยังไม่ครบ กรุณาตรวจสอบและกดบันทึกใหม่</div>
+    </div>
+    ${list.map(row => {
+      const payload = row.event_payload || {};
+      const eventType = payload.event_type || 'event';
+      const error = row.last_error || row.original_error || '-';
+      return `
+        <div class="m-card p-3 mb-2 border border-danger-subtle">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div style="min-width:0;">
+              <div class="fw-bold text-danger">${escapeAuditHtml(eventType)}</div>
+              <div class="small text-muted text-break mt-1">Correlation ID: ${escapeAuditHtml(row.correlation_id || '-')}</div>
+              <div class="small text-muted text-break mt-1">${escapeAuditHtml(error)}</div>
+              <div class="small text-muted mt-1">ลองแล้ว ${Number(row.attempts || 0).toLocaleString('th-TH')} ครั้ง · ${escapeAuditHtml(formatAuditDate(row.created_at))}</div>
+            </div>
+            <button class="btn btn-sm btn-outline-danger flex-shrink-0" onclick="retryAuditFailure('${escapeAuditHtml(row.id)}', this)">
+              <i class="fa-solid fa-rotate-right me-1"></i>บันทึกใหม่
+            </button>
+          </div>
+        </div>`;
+    }).join('')}`;
+}
+
+async function retryAuditFailure(id, button) {
+  if (button) button.disabled = true;
+  try {
+    await adminAction({ action: 'audit_failure_retry', id });
+    await Swal.fire({ icon: 'success', title: 'กู้คืน audit สำเร็จ', text: 'ระบบบันทึกรายการตรวจสอบกลับเข้า audit log แล้ว', timer: 1800, showConfirmButton: false });
+    await loadAuditLogs();
+  } catch (error) {
+    await Swal.fire('ยังบันทึกไม่สำเร็จ', escapeAuditHtml(error.message || 'กรุณาตรวจสอบฐานข้อมูลแล้วลองใหม่'), 'error');
+    if (button) button.disabled = false;
   }
 }
 
@@ -1490,6 +1626,10 @@ const AUDIT_EVENT_META = {
   coupon_assignment_cancelled:  { label: 'ยกเลิกคูปองเฉพาะบุคคล',          icon: 'fa-ban',             tone: 'warning' },
   coupon_notification_retry:    { label: 'ส่งข้อความคูปองทาง LINE ใหม่',    icon: 'fa-paper-plane',     tone: 'primary' },
   admin_points_adjusted:        { label: 'เพิ่ม–ตัดคะแนนโดยผู้ดูแล',         icon: 'fa-coins',           tone: 'primary' },
+  admin_giveaway_completed:     { label: 'แจกคะแนนให้สมาชิกทุกคน',          icon: 'fa-gift',            tone: 'success' },
+  reward_created:               { label: 'เพิ่มของรางวัล',                    icon: 'fa-box',             tone: 'success' },
+  reward_updated:               { label: 'แก้ไขของรางวัล',                   icon: 'fa-pen',             tone: 'primary' },
+  reward_archived:              { label: 'เก็บและปิดของรางวัล',              icon: 'fa-box-archive',     tone: 'warning' },
   redemption_received:          { label: 'ยืนยันการรับของรางวัล',            icon: 'fa-box-open',        tone: 'success' },
   redemption_cancelled_refunded:{ label: 'ยกเลิกและคืนคะแนนรายการแลก',      icon: 'fa-rotate-left',     tone: 'info' },
   line_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',              icon: 'fa-paper-plane',     tone: 'primary' },
@@ -1542,6 +1682,14 @@ function formatAuditDetail(eventType, detail) {
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
     case 'admin_points_adjusted':
       return [`${Number(d.delta || 0) > 0 ? '+' : ''}${Number(d.delta || 0).toLocaleString('th-TH')} คะแนน`, `คงเหลือ ${Number(d.balanceAfter || 0).toLocaleString('th-TH')}`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+    case 'admin_giveaway_completed':
+      return [`คนละ ${Number(d.amount || 0).toLocaleString('th-TH')} คะแนน`, `${Number(d.creditedUsers || 0).toLocaleString('th-TH')} คน`, d.reason, d.duplicate ? 'ตรวจสอบรายการเดิม' : 'รายการใหม่'].filter(Boolean).join(' · ');
+    case 'reward_created':
+    case 'reward_updated':
+    case 'reward_archived': {
+      const reward = d.after || d.before || {};
+      return [reward.name, `${Number(reward.cost || 0).toLocaleString('th-TH')} คะแนน`, eventType === 'reward_archived' ? 'ปิดการแลกแล้ว' : ''].filter(Boolean).join(' · ');
+    }
     case 'redemption_received':
       return [d.rewardName, 'รับของแล้ว', `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
     case 'redemption_cancelled_refunded':
@@ -1590,7 +1738,12 @@ function formatAuditDetail(eventType, detail) {
         checkin_time_closed: 'นอกเวลาเช็คอิน',
         apply_points_failed: 'เพิ่มแต้มไม่สำเร็จ',
         invalid_coupon: 'คูปองไม่ถูกต้อง',
+        invalid_code: 'ไม่พบคูปอง',
         coupon_used: 'คูปองถูกใช้แล้ว',
+        already_used: 'คูปองถูกใช้แล้ว',
+        coupon_not_owner: 'คูปองเป็นของบัญชี LINE อื่น',
+        coupon_cancelled: 'คูปองถูกยกเลิกแล้ว',
+        invalid_coupon_points: 'คะแนนในคูปองไม่ถูกต้อง',
       };
       return reasonMap[d.reason] || d.reason || d.message || '';
     }
