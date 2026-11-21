@@ -362,9 +362,9 @@ async function initApp(ctx = {}) {
     }
 
     // 3) preflight check
-    const GET_SCORE = (u) => `/api/get-score?uid=${encodeURIComponent(u)}`;
+    const GET_SCORE = (u) => `${API_GET_SCORE}?uid=${encodeURIComponent(u)}&includeRewards=0`;
     let payload = ctx.scorePayload || null;
-    if (!payload) {
+    if (!payload && !ctx.openCouponFirst) {
       const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
       if (resp.status === 404) {
         document.querySelectorAll('.skeleton-hide-when-loading,.reward-skeleton,.history-skeleton')
@@ -392,25 +392,13 @@ async function initApp(ctx = {}) {
       window.__MAIN_BOUND = true;
     }
 
-    // A coupon opened from LINE is the user's primary action. Show its confirmation
-    // before optional dashboard requests so a slow endpoint cannot leave the boot
-    // screen covering the coupon on either mobile or desktop.
-    const hasCouponDeepLink = Boolean(new URLSearchParams(window.location.search).get('coupon_ticket'));
-    if (hasCouponDeepLink) window.SystemBoot?.hide?.();
+    if (payload) await refreshUserScore({ initialPayload: payload, initialUid: uid });
+    window.SystemBoot?.hide?.();
     await handleCouponDeepLink();
 
-    // 6) โหลดข้อมูลหลักแบบแยกกัน เพื่อไม่ให้บริการหนึ่งที่ช้าบล็อกทั้งหน้า
-    await Promise.allSettled([
-      (typeof refreshUserScore === 'function' ? refreshUserScore({ bust: true }) : Promise.resolve()),
-      (typeof refreshDailyCheckinStatus === 'function' ? refreshDailyCheckinStatus() : Promise.resolve()),
-      (typeof loadRewards === 'function' ? loadRewards() : Promise.resolve())
-    ]);
-    if (typeof renderRewards === 'function') {
-      const s = (typeof window.prevScore === 'number')
-        ? window.prevScore
-        : (typeof payload?.data?.score !== 'undefined' ? Number(payload.data.score || 0) : 0);
-      renderRewards(s);
-    }
+    if (!payload) await refreshUserScore({ initialUid: uid });
+    void refreshDailyCheckinStatus();
+    void loadRewards({ uid });
 
     await handleTransactionDeepLinks();
 
@@ -1305,10 +1293,10 @@ async function performDailyCheckin() {
 
 // ฟังก์ชันโหลดคะแนน (ฉบับแก้ไข: ห้ามรีเซ็ตเป็น 0 ถ้าโหลดพลาด)
 async function refreshUserScore(opts = {}) {
-  const { bust=false, poll=false, pollTries=5, pollInterval=600 } = opts;
+  const { bust=false, poll=false, pollTries=5, initialPayload=null, initialUid='' } = opts;
 
   const uid =
-    (typeof UID !== 'undefined' && UID) ||
+    initialUid || (typeof UID !== 'undefined' && UID) ||
     window.__UID ||
     localStorage.getItem('uid') ||
     '';
@@ -1330,38 +1318,20 @@ async function refreshUserScore(opts = {}) {
     return null;
   };
 
-  let fromCache = false, data = null;
+  let data = initialPayload;
   const bustQS = bust ? `&_=${Date.now()}` : '';
-  const url = `${API_GET_SCORE}?uid=${encodeURIComponent(uid)}${bustQS}`;
+  const url = `${API_GET_SCORE}?uid=${encodeURIComponent(uid)}&includeRewards=0${bustQS}`;
 
-  try {
-    const res  = await fetch(url, {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control':'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
-    });
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json || json?.status === 'error') {
-      // ถ้า Error จาก Server (เช่น 500, 502) ให้ถือว่าโหลดพลาด
-      throw new Error(json?.message || `HTTP ${res.status}`);
-    }
-    data = json;
-  } catch (e) {
-    console.warn('[refreshUserScore] fetch failed, keeping previous score', e);
-    // ⭐ [จุดแก้สำคัญ 1] ถ้าโหลดพลาด อย่าเพิ่งรีเซ็ตเป็น 0 ให้ใช้ค่าเดิมไปก่อน!
-    if (typeof window.__userBalance === 'number') {
-        return window.__userBalance; 
-    }
-    return 0; // ถ้าไม่มีค่าเดิมเลยจริงๆ ค่อยยอมคืนค่า 0
-  }
-
-  // ⭐ [จุดแก้สำคัญ 2] ถ้า data เป็น null (โหลดไม่ได้) ให้ใช้ค่าเดิม ห้ามปรับเป็น 0
   if (!data) {
-    if (typeof window.__userBalance === 'number') return window.__userBalance;
-    return 0;
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
+      data = json;
+    } catch (e) {
+      console.warn('[refreshUserScore] fetch failed, keeping previous score', e);
+      return typeof window.__userBalance === 'number' ? window.__userBalance : 0;
+    }
   }
 
   let newScore = pickScore(data);
@@ -1374,6 +1344,7 @@ async function refreshUserScore(opts = {}) {
 
   // --- commit state ---
   window.__userBalance = newScore;
+  window.prevScore = newScore;
   try { cacheScore?.(uid, newScore); } catch {}
 
   // อัปเดต UI (การ์ด/หลอดเลือด/ตัวเลข)
@@ -1404,7 +1375,7 @@ async function refreshUserScore(opts = {}) {
   const pair = document.getElementById('xpPair');
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
-  try { window.setLastUpdated?.(Date.now(), fromCache); } catch {}
+  try { window.setLastUpdated?.(Date.now(), false); } catch {}
 
   // ถ้าขอ poll เพื่อตามคะแนนจริงหลังทำธุรกรรม
   if (poll) {

@@ -168,7 +168,7 @@ test('personal coupons are connected across database, admin, user, audit, and LI
   assert.match(read('admin.js'), /COUPON_ASSIGNMENT_TIMEOUT/)
   assert.match(read('admin.js'), /void loadCoupons\(\)/)
   assert.doesNotMatch(read('admin.js'), /await loadCoupons\(\);\s*const sent/)
-  assert.match(read('app.js'), /hasCouponDeepLink/)
+  assert.match(read('app.js'), /!payload && !ctx\.openCouponFirst/)
   assert.match(read('index.html'), /window\.__LIFF_INITED = true/)
   assert.match(read('index.html'), /LIFF_INIT_TIMEOUT/)
   assert.match(read('index.html'), /bootFetch/)
@@ -182,7 +182,7 @@ test('personal coupons are connected across database, admin, user, audit, and LI
   assert.match(read('api/redeem.js'), /state: redeemed \? 'redeemed'/)
   assert.doesNotMatch(read('app.js'), /redeemAssignedCoupon[\s\S]{0,2200}method: 'POST'[\s\S]{0,1200}method: 'POST'/)
   assert.ok(
-    read('app.js').indexOf('await handleCouponDeepLink()') < read('app.js').indexOf('await Promise.allSettled([', read('app.js').indexOf('async function initApp(ctx')),
+    read('app.js').indexOf('await handleCouponDeepLink()') < read('app.js').indexOf('void refreshDailyCheckinStatus()', read('app.js').indexOf('async function initApp(ctx')),
     'coupon deep links must open before optional dashboard requests'
   )
 })
@@ -360,7 +360,7 @@ test('admin restores the saved tab only after administrator authentication finis
   assert.ok(auth >= 0 && restoreAndLoad > auth, 'saved admin tab must restore after administrator authentication completes')
 })
 
-test('admin restores and loads the previous tab before hiding the startup screen', () => {
+test('admin opens the shell after authentication without waiting for the selected tab data', () => {
   const admin = read('admin.js')
   const page = read('admin.page.js')
   assert.match(admin, /RoyalAdminInitialTabReady = ensureInitialAdminTab/)
@@ -368,7 +368,8 @@ test('admin restores and loads the previous tab before hiding the startup screen
   assert.match(admin, /scrollIntoView\(\{ behavior:'auto', block:'nearest', inline:'center' \}\)/)
   assert.doesNotMatch(admin, /setTimeout\(\(\) => bootstrap\.Tab/)
   assert.match(page, /await window\.RoyalAdminInitialTabReady\(\)/)
-  assert.ok(page.indexOf('await window.RoyalAdminInitialTabReady()') < page.indexOf('window.SystemBoot?.hide?.()'))
+  assert.ok(page.indexOf('if (!ready) return;') < page.indexOf('window.SystemBoot?.hide?.()'))
+  assert.ok(page.indexOf('window.SystemBoot?.hide?.()') < page.indexOf('await window.RoyalAdminInitialTabReady()'))
 })
 
 test('admin Flex deep links authenticate with LINE and preserve the target URL', () => {

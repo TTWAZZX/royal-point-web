@@ -432,10 +432,10 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-<script src="/loader.js?v=line-token-v1-redemption"></script>
+<script src="/loader.js?v=line-token-v1-progressive-load"></script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
-<script src="/app.js?v=reward-image-redemption-binding" defer></script>
+<script src="/app.js?v=reward-image-progressive-load" defer></script>
 
 <!-- ===== Auto-register flow (single gate) ===== -->
 <script>
@@ -444,7 +444,7 @@
   window.__SKIP_AUTO_INIT__ = true;
 
   const LIFF_ID  = "2007053300-QoEvbXyn";
-  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}`;
+  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}&includeRewards=0`;
   const REG_URL   = "/api/register";
 
   function withBootTimeout(promise, timeoutMs, code) {
@@ -521,7 +521,7 @@
           uid,
           force: true,
           recovery: recoveryMode,
-          scorePayload: { status: 'success', data: { score: 0 } }
+          openCouponFirst: true
         });
         return;
       }

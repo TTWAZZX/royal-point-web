@@ -329,6 +329,80 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.close()
 }
 
+async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
+  for (const scenario of [
+    { path: 'index.html', slow: '/api/daily-checkin' },
+    { path: 'all-rewards.html', slow: '/api/get-score' },
+    { path: 'admin.html', slow: 'safety_pulse' }
+  ]) {
+    const page = await browser.newPage({ viewport })
+    let releaseSlowResponse
+    const slowResponse = new Promise(resolve => { releaseSlowResponse = resolve })
+    const requests = []
+    try {
+      await page.addInitScript(() => {
+        sessionStorage.setItem('RP_ADMIN_ACTIVE_TAB', '#pills-safety')
+        window.bootstrap = { Tab: { getOrCreateInstance: button => ({ show: () => button.dispatchEvent(new Event('shown.bs.tab')) }) } }
+      })
+      await page.route('https://static.line-scdn.net/**', route => route.fulfill({
+        contentType: 'text/javascript',
+        body: `window.liff={init:async()=>{},isLoggedIn:()=>true,getProfile:async()=>({userId:'U_STARTUP_TEST',displayName:'Startup Test'}),getAccessToken:()=> 'test-token'};`
+      }))
+      for (const domain of ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'unpkg.com']) {
+        await page.route(`https://${domain}/**`, route => route.abort())
+      }
+      await page.route('**/api/**', async route => {
+        const { pathname, searchParams } = new URL(route.request().url())
+        const action = searchParams.get('action')
+        const key = action || pathname
+        requests.push(key)
+        if (key === scenario.slow) await slowResponse
+        if (pathname === '/api/get-score') {
+          assert.equal(searchParams.get('includeRewards'), '0')
+          return route.fulfill({ json: { status: 'success', data: { score: 100 } } })
+        }
+        if (pathname === '/api/admin-actions' && !action) {
+          return route.fulfill({ json: { isAdmin: true, role: 'super_admin' } })
+        }
+        if (pathname === '/api/rewards' && !action) {
+          return route.fulfill({ json: { status: 'success', items: [{ id: 'startup-reward', cost: 20, stock: 1, name: 'รางวัลทดสอบ' }] } })
+        }
+        return route.fulfill({ json: { status: 'success', data: [], items: [] } })
+      })
+
+      const requested = page.waitForRequest(request => {
+        const url = new URL(request.url())
+        return (url.searchParams.get('action') || url.pathname) === scenario.slow
+      })
+      const started = performance.now()
+      await page.goto(`${baseUrl}/${scenario.path}`, { waitUntil: 'domcontentloaded' })
+      await requested
+      await page.locator('#systemBootOverlay').waitFor({ state: 'hidden', timeout: 5000 })
+      console.log(`startup ${scenario.path} ${viewport.width}px: ${Math.round(performance.now() - started)} ms while ${scenario.slow} was held`)
+      if (scenario.path === 'index.html') {
+        assert.equal(await page.evaluate(() => window.__userBalance), 100)
+        assert.equal(requests.filter(request => request === '/api/get-score').length, 1)
+      } else if (scenario.path === 'all-rewards.html') {
+        const rewardButton = page.locator('#rewardGrid .reward-card button')
+        await rewardButton.waitFor({ state: 'visible' })
+        assert.ok(await rewardButton.isDisabled())
+        releaseSlowResponse()
+        await page.waitForFunction(() => !document.querySelector('#rewardGrid .reward-card button')?.disabled)
+      } else {
+        assert.ok(await page.locator('#adminContent').evaluate(element => !element.hidden))
+        assert.ok(!requests.includes('safety_questions') && !requests.includes('safety_settings'))
+        await Promise.all([
+          page.waitForRequest(request => new URL(request.url()).searchParams.get('action') === 'safety_questions'),
+          page.locator('#tabSafetyQuestionsSubBtn').dispatchEvent('shown.bs.tab')
+        ])
+      }
+    } finally {
+      releaseSlowResponse()
+      await page.close()
+    }
+  }
+}
+
 ;(async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -341,6 +415,7 @@ async function runAdminViewport(browser, baseUrl, viewport) {
       await runRedemptionReplay(browser, baseUrl, viewport, 'index.html')
       await runRedemptionReplay(browser, baseUrl, viewport, 'all-rewards.html')
       await runAdminViewport(browser, baseUrl, viewport)
+      await runProgressiveStartupViewport(browser, baseUrl, viewport)
     }
     console.log('✓ browser responsive/XSS, สิทธิ์ผู้ดูแล และกู้คืนคะแนนเช็กอิน: desktop 1440x900 และ mobile 390x844 ผ่าน')
   } finally {

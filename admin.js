@@ -113,11 +113,12 @@ function loadAdminTabData(target) {
     else if (cleanTarget === '#pills-history') loader = () => HISTORY_DATA.length ? Promise.resolve() : loadRedemptionHistory();
     else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
     else if (cleanTarget === '#pills-audit') loader = () => AUDIT_ROWS.length ? Promise.resolve() : loadAuditLogs();
-    else if (cleanTarget === '#pills-safety') loader = () => Promise.all([
-      SAFETY_PULSE ? Promise.resolve() : loadSafetyPulse(),
-      SAFETY_QUESTIONS.length ? Promise.resolve() : loadSafetyQuestions(),
-      loadSafetySettings()
-    ]);
+    else if (cleanTarget === '#pills-safety') loader = () => loadAdminTabData(
+      document.querySelector('#safetySubTabs .nav-link.active')?.getAttribute('data-bs-target') || '#safety-sub-pulse'
+    );
+    else if (cleanTarget === '#safety-sub-pulse') loader = () => SAFETY_PULSE ? Promise.resolve() : loadSafetyPulse();
+    else if (cleanTarget === '#safety-sub-questions') loader = () => SAFETY_QUESTIONS.length ? Promise.resolve() : loadSafetyQuestions();
+    else if (cleanTarget === '#safety-sub-settings') loader = () => loadSafetySettings();
     const task = Promise.resolve().then(loader).finally(() => ADMIN_TAB_LOADS.delete(cleanTarget));
     ADMIN_TAB_LOADS.set(cleanTarget, task);
     return task;
@@ -126,7 +127,6 @@ function loadAdminTabData(target) {
 function ensureInitialAdminTab() {
     if (ADMIN_INITIAL_TAB_PROMISE) return ADMIN_INITIAL_TAB_PROMISE;
     const target = restorePersistentAdminTab();
-    window.SystemBoot?.update?.('กำลังโหลดข้อมูลของแท็บเดิม');
     ADMIN_INITIAL_TAB_PROMISE = loadAdminTabData(target).then(async () => {
       if (target === '#pills-history') await openRedemptionDeepLink({ loadData:false });
       return target;
@@ -1249,7 +1249,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (safetyPulseSubBtn) {
         safetyPulseSubBtn.addEventListener('shown.bs.tab', () => {
             scrollSafetySubtabIntoView();
-            if (!SAFETY_PULSE) loadSafetyPulse();
+            void loadAdminTabData('#safety-sub-pulse');
         });
     }
 
@@ -1257,7 +1257,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (safetyQuestionsSubBtn) {
         safetyQuestionsSubBtn.addEventListener('shown.bs.tab', () => {
             scrollSafetySubtabIntoView();
-            if (!SAFETY_QUESTIONS.length) loadSafetyQuestions();
+            void loadAdminTabData('#safety-sub-questions');
         });
     }
 
@@ -1265,7 +1265,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (safetySettingsSubBtn) {
         safetySettingsSubBtn.addEventListener('shown.bs.tab', () => {
             scrollSafetySubtabIntoView();
-            loadSafetySettings();
+            void loadAdminTabData('#safety-sub-settings');
         });
     }
 

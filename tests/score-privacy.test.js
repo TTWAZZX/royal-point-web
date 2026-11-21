@@ -45,14 +45,14 @@ test('score responses and cache writes omit member data and skip caches from the
     async authenticateRequest(_req, options) { authCalls.push(options); return { mode: 'legacy', uid } }
   })
   const handler = require('../api/get-score')
-  async function readScore() {
+  async function readScore(query = {}) {
     const result = { headers: {} }
     const res = {
       setHeader(key, value) { result.headers[key] = value },
       status(code) { result.statusCode = code; return this },
       json(body) { result.body = body; return this }
     }
-    await handler({ method: 'GET', query: { uid } }, res)
+    await handler({ method: 'GET', query: { uid, ...query } }, res)
     return result
   }
 
@@ -70,6 +70,13 @@ test('score responses and cache writes omit member data and skip caches from the
   assert.deepEqual(fromCache, fromDatabase)
   assert.deepEqual(authCalls, [{ claimedUid: uid }, { claimedUid: uid }])
 
+  selections.length = 0
+  const scoreOnly = await readScore({ includeRewards: '0' })
+  assert.equal(scoreOnly.body.data.score, 75)
+  assert.deepEqual(scoreOnly.body.data.rewards, [])
+  assert.deepEqual(selections.map(([table]) => table), ['users', 'user_points'])
+  assert.ok(cached.has(scoreCacheKey(uid, false)))
+
   cached.delete(scoreCacheKey(uid))
   userResult = { data: null }
   assert.equal((await readScore()).statusCode, 404)
@@ -81,5 +88,5 @@ test('point changes invalidate both score cache versions even when an individual
     deleted.push(key)
     if (key === 'score_v3:U-test') throw new Error('temporary cache error')
   } }, 'U-test')
-  assert.deepEqual(deleted.sort(), ['score:U-test', 'score_v2:U-test', 'score_v3:U-test'].sort())
+  assert.deepEqual(deleted.sort(), ['score:U-test', 'score_v2:U-test', 'score_v3:U-test', 'score_only_v3:U-test'].sort())
 })

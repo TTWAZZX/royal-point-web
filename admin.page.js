@@ -633,11 +633,10 @@ async function boot() {
         MY_UID_PAGE = window.CURRENT_ADMIN_UID || sessionStorage.getItem('uid');
         if (!MY_UID_PAGE) return;
         bindEvents();
-        window.SystemBoot?.update?.('กำลังเตรียมแท็บที่เปิดล่าสุด');
+        window.SystemBoot?.hide?.();
         if (typeof window.RoyalAdminInitialTabReady === 'function') {
           await window.RoyalAdminInitialTabReady();
         }
-        window.SystemBoot?.hide?.();
 
     } catch (e) { 
         console.error("Boot Error:", e);

@@ -23,7 +23,8 @@ module.exports = async (req, res) => {
     }
     await authenticateRequest(req, { claimedUid: uid });
 
-    const cacheKey = scoreCacheKey(uid);
+    const includeRewards = req.query.includeRewards !== '0';
+    const cacheKey = scoreCacheKey(uid, includeRewards);
 
     // ---- Try cache first
     if (redis) {
@@ -61,25 +62,23 @@ module.exports = async (req, res) => {
     const balance = Number(point?.balance ?? 0);
     const updated_at = point?.updated_at ?? null;
 
-    // ---- Load rewards (active only)
-    // ปรับชื่อคอลัมน์ตามตารางจริงของคุณได้เลย
-    const { data: rewardsRows, error: e3 } = await supabase
-      .from('rewards')
-      .select('id, name, cost, img_url, active')
-      .eq('active', true)
-      .order('cost', { ascending: true })
-      .order('id',   { ascending: true });
-
-    if (e3) throw e3;
-
-    // แปลงเป็นรูปที่ frontend ใช้
-    const rewards = (rewardsRows || []).map(r => ({
-      id    : r.id,
-      name  : r.name || '',
-      cost  : Number(r.cost || 0),
-      img   : r.img_url || '',
-      active: !!r.active
-    }));
+    let rewards = [];
+    if (includeRewards) {
+      const { data: rewardsRows, error: e3 } = await supabase
+        .from('rewards')
+        .select('id, name, cost, img_url, active')
+        .eq('active', true)
+        .order('cost', { ascending: true })
+        .order('id', { ascending: true });
+      if (e3) throw e3;
+      rewards = (rewardsRows || []).map(r => ({
+        id: r.id,
+        name: r.name || '',
+        cost: Number(r.cost || 0),
+        img: r.img_url || '',
+        active: !!r.active
+      }));
+    }
 
     // ---- Cache 30s (Upstash)
     if (redis) {

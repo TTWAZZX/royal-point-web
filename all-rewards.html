@@ -137,6 +137,11 @@
     </a>
   </div>
 
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <span id="rewardsLoadStatus" class="small text-muted" role="status"></span>
+    <button id="retryRewardsLoad" type="button" class="btn btn-sm btn-outline-secondary d-none">ลองโหลดใหม่</button>
+  </div>
+
   <div id="skeletonGrid" class="reward-grid">
     <script>
       for(let i=0; i<8; i++) {
@@ -177,7 +182,7 @@
 </div>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="loader.js?v=line-token-v1-redemption"></script>
+<script src="loader.js?v=line-token-v1-progressive-load"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 
 <script>
@@ -191,8 +196,10 @@ const LIFF_ID_REWARDS = "2007053300-QoEvbXyn";
 
 // ตัวแปรเก็บคะแนนปัจจุบัน
 let CURRENT_SCORE = 0;
+let REWARDS_SCORE_READY = false;
 let REWARD_LIST = [];
 let INITIAL_REWARDS_LOADING = true;
+let rewardsLoadPromise = null;
 let REDEEMING = false;
 
 function escapeHtml(value) {
@@ -280,84 +287,78 @@ async function resolveUid() {
 /* ===============================
    LOAD DATA (Rewards + Score)
 ================================ */
-async function loadAllRewards() {
+function loadAllRewards() {
+  if (!rewardsLoadPromise) rewardsLoadPromise = refreshRewardsPage().finally(() => { rewardsLoadPromise = null; });
+  return rewardsLoadPromise;
+}
+
+async function refreshRewardsPage() {
   const initialPageLoad = INITIAL_REWARDS_LOADING;
-  let keepBootVisible = false;
-  if (initialPageLoad) window.SystemBoot?.update?.('กำลังโหลดคะแนนและรายการของรางวัลทั้งหมด');
   const grid = document.getElementById('rewardGrid');
   const skel = document.getElementById('skeletonGrid');
+  const status = document.getElementById('rewardsLoadStatus');
+  const retry = document.getElementById('retryRewardsLoad');
+  let auth;
 
   try {
-    const auth = await resolveUid();
-    if (auth.redirecting) {
-      keepBootVisible = true;
-      return;
-    }
-    const uid = auth.uid;
-
-    // ⭐ โหลดทั้งของรางวัล และ คะแนนล่าสุด พร้อมกัน
-    const [rewardsRes, scoreRes] = await Promise.allSettled([
-       Loading.apiFetch('/api/rewards?include=0', {cache:'no-store'}),
-       Loading.apiFetch(`/api/get-score?uid=${encodeURIComponent(uid)}`, {cache:'no-store'})
-    ]);
-
-    // 1) จัดการคะแนน
-    if (scoreRes.status === 'fulfilled' && scoreRes.value?.data) {
-       // พยายามหาฟิลด์คะแนน
-       const d = scoreRes.value.data;
-       CURRENT_SCORE = Number(d.score || d.points || d.point || d.balance || 0);
-       // บันทึกลง LocalStorage เผื่อใช้ที่อื่น
-       if (uid) localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
-    } else {
-       // ถ้าโหลดไม่ได้ ให้ใช้ค่าเดิมจากเครื่อง
-       CURRENT_SCORE = uid ? Number(localStorage.getItem(`RP_SCORE:${uid}`) || 0) : 0;
-    }
-
-    // 2) จัดการของรางวัล
-    let list = [];
-    if (rewardsRes.status === 'fulfilled') {
-        const j = rewardsRes.value;
-        list = (j.items || j.data || []).map(x => ({
-          id: x.id,
-          name: String(x.name || ''),
-          cost: Number(x.cost || 0),
-          img: safeImageUrl(x.img),
-          stock: Number(x.stock ?? 0),
-          stock_max: Number(x.stock_max ?? 0),
-          sort_index: Number(x.sort_index ?? 999),
-        }));
-    }
-
-    // เรียงลำดับ
-    list.sort((a,b)=>{
-      if (a.stock <= 0 && b.stock > 0) return 1;
-      if (b.stock <= 0 && a.stock > 0) return -1;
-      return a.sort_index - b.sort_index;
-    });
-
-    REWARD_LIST = list;
-    renderGrid(REWARD_LIST);
-
-    skel.classList.add('d-none');
-    grid.classList.remove('d-none');
-
+    auth = await resolveUid();
   } catch (err) {
     console.error(err);
-    skel.innerHTML = `<div class="col-12 text-center text-danger mt-5">โหลดข้อมูลไม่สำเร็จ</div>`;
-    await Swal.fire({
-      title: 'ยืนยันตัวตน LINE ไม่สำเร็จ',
-      text: 'กรุณาลองใหม่อีกครั้ง หากยังเข้าไม่ได้ให้กดติดต่อผู้ดูแลจากหน้าต่างช่วยเหลือ',
-      icon: 'error',
-      confirmButtonText: 'ลองใหม่',
-      confirmButtonColor: '#0ea5e9'
-    });
-    window.location.reload();
-  } finally {
-    if (initialPageLoad && !keepBootVisible) {
-      INITIAL_REWARDS_LOADING = false;
-      window.SystemBoot?.hide?.();
-    }
+    REWARDS_SCORE_READY = false;
+    skel.classList.add('d-none');
+    grid.classList.add('d-none');
+    status.textContent = 'ยืนยันตัวตน LINE ไม่สำเร็จ กรุณาลองใหม่';
+    retry.classList.remove('d-none');
+    window.SystemBoot?.hide?.();
+    return;
   }
+  if (auth.redirecting) return;
+
+  if (initialPageLoad) {
+    INITIAL_REWARDS_LOADING = false;
+    window.SystemBoot?.hide?.();
+  }
+  REWARDS_SCORE_READY = false;
+  if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+  status.textContent = 'กำลังตรวจคะแนนเพื่อแลกรางวัล';
+  retry.classList.add('d-none');
+  const uid = auth.uid;
+  const loadScore = Loading.apiFetch(`/api/get-score?uid=${encodeURIComponent(uid)}&includeRewards=0`, { cache:'no-store' })
+    .then(result => {
+      const data = result?.data;
+      const score = Number(data?.score ?? data?.points ?? data?.point ?? data?.balance);
+      if (!Number.isFinite(score)) throw new Error('score_missing');
+      CURRENT_SCORE = score;
+      REWARDS_SCORE_READY = true;
+      try { localStorage.setItem(`RP_SCORE:${uid}`, score); } catch {}
+      if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+      return true;
+    }).catch(() => {
+      REWARDS_SCORE_READY = false;
+      if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+      return false;
+    });
+
+  const loadCatalog = Loading.apiFetch('/api/rewards?include=0', { cache:'no-store' }).then(result => {
+    const list = (result.items || result.data || []).map(item => ({
+      id: item.id,
+      name: String(item.name || ''),
+      cost: Number(item.cost || 0),
+      img: safeImageUrl(item.img),
+      stock: Number(item.stock ?? 0),
+      stock_max: Number(item.stock_max ?? 0),
+      sort_index: Number(item.sort_index ?? 999)
+    }));
+    list.sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0) || a.sort_index - b.sort_index);
+    REWARD_LIST = list;
+    renderGrid(REWARD_LIST);
+    grid.classList.remove('d-none');
+    return true;
+  }).catch(() => false).finally(() => skel.classList.add('d-none'));
+
+  const [scoreLoaded, catalogLoaded] = await Promise.all([loadScore, loadCatalog]);
+  status.textContent = !catalogLoaded ? 'โหลดรายการรางวัลไม่สำเร็จ' : !scoreLoaded ? 'ตรวจคะแนนไม่สำเร็จ กรุณาลองโหลดใหม่ก่อนแลกรางวัล' : '';
+  retry.classList.toggle('d-none', scoreLoaded && catalogLoaded);
 }
 
 /* ===============================
@@ -374,7 +375,7 @@ function renderGrid(list) {
   
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
-    const isLocked  = !isSoldOut && (CURRENT_SCORE < r.cost); // ⭐ เช็คคะแนน
+    const isLocked = !isSoldOut && REWARDS_SCORE_READY && CURRENT_SCORE < r.cost;
     const pending = Boolean(window.RoyalSpend.pending(getUid(), r.id));
 
     // สร้างคลาส
@@ -405,8 +406,8 @@ function renderGrid(list) {
         <button
           type="button"
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          ${!pending && (isSoldOut || isLocked) ? 'disabled' : ''}>
-          ${pending ? 'ตรวจรายการเดิม' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
+          ${!pending && (!REWARDS_SCORE_READY || isSoldOut || isLocked) ? 'disabled' : ''}>
+          ${pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : !REWARDS_SCORE_READY ? 'รอตรวจคะแนน' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
         </button>
       </div>
     </div>
@@ -438,7 +439,7 @@ function openRewardPreview(reward, card) {
   const stock = Number(reward.stock || 0);
   const stockMax = Number(reward.stock_max || 0);
   const isSoldOut = stock <= 0;
-  const isLocked = !isSoldOut && CURRENT_SCORE < cost;
+  const isLocked = !isSoldOut && REWARDS_SCORE_READY && CURRENT_SCORE < cost;
   const pending = Boolean(window.RoyalSpend.pending(getUid(), reward.id));
 
   document.getElementById('rewardPreviewImg').src = reward.img || 'https://placehold.co/300x300?text=No+Image';
@@ -448,8 +449,8 @@ function openRewardPreview(reward, card) {
 
   const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
   if (redeemBtn) {
-    redeemBtn.disabled = !pending && (isSoldOut || isLocked);
-    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.disabled = !pending && (!REWARDS_SCORE_READY || isSoldOut || isLocked);
+    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : !REWARDS_SCORE_READY ? 'รอตรวจคะแนน' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล';
     redeemBtn.onclick = async () => {
       if (redeemBtn.disabled) return;
       bootstrap.Modal.getInstance(modalEl)?.hide();
@@ -475,6 +476,7 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
 
   // 1. เช็คคะแนนฝั่ง Client ก่อนส่ง
   const pending = window.RoyalSpend.pending(uid, rewardId);
+  if (!pending && !REWARDS_SCORE_READY) return;
   if (!pending && CURRENT_SCORE < cost) {
     Swal.fire('คะแนนไม่พอ', `คุณมี ${CURRENT_SCORE} คะแนน แต่รางวัลนี้ใช้ ${cost} คะแนน`, 'error');
     return;
@@ -612,6 +614,7 @@ function goBack(e) {
 }
 
 // เริ่มทำงาน
+document.getElementById('retryRewardsLoad').addEventListener('click', loadAllRewards);
 loadAllRewards();
 
 </script>

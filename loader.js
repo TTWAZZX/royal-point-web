@@ -90,7 +90,7 @@
     clearTimeout(bootTimer);
     clearTimeout(bootSlowTimer);
     const overlay = global.document.getElementById('systemBootOverlay');
-    if (!overlay) return;
+    if (!overlay || overlay.classList.contains('is-leaving')) return;
     overlay.setAttribute('aria-busy', 'false');
     overlay.classList.add('is-leaving');
     setTimeout(() => overlay.remove(), 240);
