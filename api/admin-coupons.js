@@ -1,4 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
+const { supabaseAdmin } = require('../lib/supabase');
 const { createHash, createHmac, randomBytes } = require('crypto');
 const { auditEvent } = require('../lib/audit');
 const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
@@ -9,6 +9,8 @@ const {
   retryLineNotification,
   userCouponUrl
 } = require('../lib/line-messaging');
+
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 function genCode(len = 6) {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -59,40 +61,58 @@ module.exports = async (req, res) => {
     return res.status(403).json({ status: 'error', message: 'บัญชีนี้ไม่มีสิทธิ์จัดการคูปอง' });
   }
 
-  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const supabase = supabaseAdmin;
 
   const action = String(req.query.action || body.action || '').trim();
 
   if (req.method === 'POST' && action === 'generate') {
-    const {
-      amount, count, qty,
-      points, point, value,
-      prefix = ''
-    } = body;
+    const requestId = String(body.requestId || '').trim().toLowerCase();
+    const points = Number(body.points ?? body.point ?? body.value);
+    const count = Number(body.count ?? body.qty ?? body.amount);
+    const prefix = String(body.prefix || '');
+    if (!UUID_V4.test(requestId)) {
+      return res.status(400).json({ status: 'error', code: 'coupon_batch_invalid', message: 'ไม่พบเลขคำขอสร้างคูปอง กรุณาโหลดหน้าใหม่' });
+    }
+    if (!Number.isInteger(points) || points < 1 || points > 2147483647 || !Number.isInteger(count) || count < 1 || count > 500) {
+      return res.status(400).json({ status: 'error', code: 'coupon_batch_invalid', message: 'กรุณาระบุคะแนนเป็นจำนวนเต็มบวก และจำนวนคูปอง 1–500 ใบ' });
+    }
 
-    const n = Math.max(1, Math.min(500, Number(count ?? qty ?? amount) || 1));
-    const p = Math.max(1, Number(points ?? point ?? value) || 1);
-    const nowIso = new Date().toISOString();
-    const rows = Array.from({ length: n }, () => ({
-      code: String(prefix || '') + genCode(6),
-      point: p,
-      status: 'unused',
-      claimer: null,
-      used_at: null,
-      created_at: nowIso
-    }));
+    let result;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      result = await supabase.rpc('generate_coupon_batch_once', {
+        p_request_id: requestId, p_admin_uid: adminUid, p_points: points, p_count: count, p_prefix: prefix,
+        p_codes: Array.from({ length: count }, () => prefix + genCode(6))
+      });
+      if (result.error?.code !== '23505') break;
+    }
+    if (result.error) {
+      const conflict = result.error.message === 'COUPON_BATCH_CONFLICT';
+      const audit = await auditEvent(supabase, {
+        type: 'coupon_batch_failed', actorUid: adminUid, entityType: 'coupon_generation_batch', entityId: requestId,
+        status: 'error', detail: { requestId, reason: conflict ? 'coupon_batch_conflict' : result.error.code }
+      });
+      return res.status(conflict ? 409 : 503).json({
+        status: 'error', code: conflict ? 'coupon_batch_conflict' : 'coupon_batch_unconfirmed', correlationId: audit.correlationId,
+        message: conflict ? 'เลขคำขอนี้ไม่ตรงกับชุดคูปองที่บันทึกไว้' : 'ยังยืนยันผลการสร้างคูปองไม่ได้ กรุณาตรวจหรือส่งคำขอเดิม'
+      });
+    }
+    const batch = result.data;
+    return res.status(200).json({ status: 'success', created: batch.coupon_count, data: { ...batch, inserted: batch.coupon_count } });
+  }
 
-    const { error } = await supabase.from('coupons').insert(rows);
-    if (error) return res.status(500).json({ status: 'error', message: error.message });
-
-    return res.status(200).json({
-      status: 'success',
-      created: rows.length,
-      data: {
-        inserted: rows.length,
-        codes: rows.map(row => row.code)
-      }
-    });
+  if (req.method === 'GET' && action === 'generated_batches') {
+    const requestId = String(req.query.requestId || '').trim().toLowerCase();
+    if (requestId && !UUID_V4.test(requestId)) {
+      return res.status(400).json({ status: 'error', message: 'เลขคำขอไม่ถูกต้อง' });
+    }
+    let query = supabase.from('coupon_generation_batches')
+      .select(requestId ? 'request_id,points,coupon_count,prefix,codes,created_at' : 'request_id,points,coupon_count,prefix,created_at')
+      .eq('admin_uid', adminUid);
+    query = requestId ? query.eq('request_id', requestId).maybeSingle() : query.order('created_at', { ascending: false }).limit(20);
+    const { data, error } = await query;
+    if (error) throw error;
+    if (requestId && !data) return res.status(404).json({ status: 'error', message: 'ยังไม่พบชุดคูปองที่บันทึกด้วยเลขคำขอนี้' });
+    return res.status(200).json({ status: 'success', data });
   }
 
   if (req.method === 'POST' && action === 'assign') {
@@ -104,7 +124,7 @@ module.exports = async (req, res) => {
     if (!targetUid || points < 1 || points > 1000000 || !reason) {
       return res.status(400).json({ status: 'error', message: 'กรุณาเลือกผู้ใช้ ระบุคะแนน และเหตุผลให้ครบ' });
     }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(requestId)) {
+    if (!UUID_V4.test(requestId)) {
       return res.status(400).json({ status: 'error', message: 'ไม่พบรหัสป้องกันการสร้างคูปองซ้ำ กรุณาปิดหน้าต่างแล้วลองใหม่' });
     }
 
@@ -286,7 +306,7 @@ module.exports = async (req, res) => {
 
   const assignmentRequestId = String(req.query.assignmentRequestId || '').trim().toLowerCase();
   if (req.method === 'GET' && assignmentRequestId) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(assignmentRequestId)) {
+    if (!UUID_V4.test(assignmentRequestId)) {
       return res.status(400).json({ status: 'error', message: 'รหัสตรวจสอบรายการไม่ถูกต้อง' });
     }
 
@@ -393,6 +413,9 @@ module.exports = async (req, res) => {
   } catch (error) {
     if (error instanceof AuthError) return sendAuthError(res, error);
     console.error('[admin-coupons] error:', error);
+    if (/coupon_generation_batches|generate_coupon_batch_once/i.test(String(error?.message || error))) {
+      return res.status(503).json({ status: 'error', message: 'ระบบตรวจชุดคูปองยังติดตั้งฐานข้อมูลไม่ครบ กรุณาติดต่อผู้ดูแลระบบ' });
+    }
     if (/coupon_type|assigned_uid|assignment_token_hash|schema cache|column .* does not exist/i.test(String(error?.message || error))) {
       return res.status(503).json({ status: 'error', message: 'ระบบมอบคูปองยังติดตั้งฐานข้อมูลไม่ครบ กรุณาติดต่อผู้ดูแลระบบ' });
     }

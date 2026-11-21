@@ -854,39 +854,141 @@ async function assignCouponToUser() {
   }
 }
 
-async function generateCoupons() {
-  const pts = $id('genPoints')?.value || 100;
-  const qty = $id('genCount')?.value || 1;
+let pendingCouponBatch = null;
 
-  if (qty > 50) return Swal.fire('แจ้งเตือน', 'สร้างได้สูงสุดครั้งละ 50 ใบครับ', 'warning');
+function couponBatchStorageKey() {
+  return `RP_PENDING_COUPON_BATCH:${ADMIN_UID}`;
+}
 
-  sysOverlay.show('กำลังสร้างคูปอง...');
+function getPendingCouponBatch() {
+  try { return JSON.parse(localStorage.getItem(couponBatchStorageKey()) || 'null') || pendingCouponBatch; }
+  catch { return pendingCouponBatch; }
+}
+
+function setPendingCouponBatch(batch) {
+  pendingCouponBatch = batch;
   try {
-    const res = await fetch(API_COUPON_GEN, {
+    if (batch) localStorage.setItem(couponBatchStorageKey(), JSON.stringify(batch));
+    else localStorage.removeItem(couponBatchStorageKey());
+  } catch {}
+  renderCouponBatchPending();
+}
+
+function clearPendingCouponBatch(requestId) {
+  if (getPendingCouponBatch()?.requestId === requestId) setPendingCouponBatch(null);
+}
+
+function renderCouponBatchPending() {
+  const batch = getPendingCouponBatch();
+  const points = $id('genPoints');
+  const count = $id('genCount');
+  const button = $id('btnGen');
+  points.readOnly = count.readOnly = Boolean(batch);
+  button.textContent = batch ? 'ส่งคำขอเดิมอีกครั้ง' : 'สร้างคูปอง';
+  if (batch) {
+    points.value = batch.points;
+    count.value = batch.count;
+    $id('couponBatchRequestId').value = batch.requestId;
+  }
+  $id('couponBatchStatus').textContent = batch ? `รอยืนยันผล · เลขคำขอ ${batch.requestId}` : '';
+}
+
+function showCouponBatch(batch) {
+  $id('couponBatchRequestId').value = batch.request_id;
+  const codes = $id('couponBatchCodes');
+  codes.value = batch.codes.join('\n');
+  codes.classList.remove('d-none');
+  $id('couponBatchLookupStatus').textContent =
+    `${batch.coupon_count} ใบ · ใบละ ${batch.points} คะแนน · ${formatAuditDate(batch.created_at)} · ดูสถานะการใช้ในรายการคูปอง`;
+}
+
+function couponBatchUrl(requestId = '') {
+  const query = new URLSearchParams({ action: 'generated_batches', adminUid: ADMIN_UID });
+  if (requestId) query.set('requestId', requestId);
+  return `${API_COUPON_LIST}?${query}`;
+}
+
+async function findCouponBatch() {
+  const requestId = $id('couponBatchRequestId').value.trim().toLowerCase();
+  const status = $id('couponBatchLookupStatus');
+  $id('couponBatchCodes').classList.add('d-none');
+  if (!requestId) {
+    status.textContent = 'กรุณาระบุเลขคำขอ';
+    return;
+  }
+  try {
+    const response = await fetchCouponAssignment(couponBatchUrl(requestId), { cache: 'no-store' });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') throw new Error(result.message);
+    clearPendingCouponBatch(result.data.request_id);
+    showCouponBatch(result.data);
+    void loadCoupons();
+  } catch (error) {
+    status.textContent = error.message || 'ค้นหาชุดคูปองไม่สำเร็จ';
+  }
+}
+
+async function loadRecentCouponBatches() {
+  const select = $id('couponBatchRecent');
+  const status = $id('couponBatchLookupStatus');
+  select.classList.add('d-none');
+  try {
+    const response = await fetchCouponAssignment(couponBatchUrl(), { cache: 'no-store' });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') throw new Error(result.message);
+    select.replaceChildren(new Option('เลือกชุดคูปอง', ''), ...result.data.map(batch =>
+      new Option(`${formatAuditDate(batch.created_at)} · ${batch.coupon_count} ใบ · ใบละ ${batch.points} คะแนน`, batch.request_id)
+    ));
+    select.classList.toggle('d-none', !result.data.length);
+    status.textContent = result.data.length ? '' : 'ยังไม่มีชุดคูปองที่บันทึกไว้';
+  } catch (error) {
+    status.textContent = error.message || 'โหลดชุดคูปองไม่สำเร็จ';
+  }
+}
+
+async function generateCoupons() {
+  const button = $id('btnGen');
+  if (button.disabled) return;
+  let batch = getPendingCouponBatch();
+  if (!batch) {
+    const points = Number($id('genPoints').value);
+    const count = Number($id('genCount').value);
+    if (!Number.isInteger(points) || points < 1 || points > 2147483647 || !Number.isInteger(count) || count < 1 || count > 50) {
+      return Swal.fire('ตรวจข้อมูลคูปอง', 'ระบุคะแนนเป็นจำนวนเต็มบวก และจำนวนคูปอง 1–50 ใบ', 'warning');
+    }
+    batch = { requestId: newCouponRequestId(), points, count };
+    setPendingCouponBatch(batch);
+  }
+
+  button.disabled = true;
+  sysOverlay.show('กำลังตรวจผลการสร้างคูปอง...');
+  try {
+    const response = await fetchCouponAssignment(API_COUPON_GEN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adminUid: ADMIN_UID,
-        points: Number(pts),
-        count: Number(qty)
-      })
+      body: JSON.stringify({ adminUid: ADMIN_UID, ...batch })
     });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.message || 'Error');
-    
-    await Swal.fire({
-        icon: 'success',
-        title: 'สำเร็จ',
-        text: `สร้างคูปอง ${j.created || qty} ใบเรียบร้อยแล้ว`,
-        timer: 2000,
-        showConfirmButton: false
-    });
-    
-    loadCoupons(); // รีโหลดรายการ
-  } catch (e) {
-    Swal.fire('ผิดพลาด', e.message, 'error');
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status !== 'success') {
+      if (['coupon_batch_invalid', 'coupon_batch_conflict'].includes(result.code)) clearPendingCouponBatch(batch.requestId);
+      const error = new Error(result.message || 'ยังยืนยันผลไม่ได้ กรุณาตรวจชุดคูปองหรือส่งคำขอเดิม');
+      error.correlationId = result.correlationId;
+      throw error;
+    }
+
+    clearPendingCouponBatch(batch.requestId);
+    showCouponBatch(result.data);
+    $id('couponBatchStatus').textContent = `บันทึกแล้ว ${result.created} ใบ · เลขคำขอ ${batch.requestId}`;
+    void loadCoupons();
+    void Swal.fire(result.data.repeated ? 'พบชุดคูปองเดิม' : 'สร้างคูปองแล้ว', `${result.created} ใบ`, 'success');
+  } catch (error) {
+    const message = error.name === 'AbortError' || error instanceof TypeError
+      ? 'ยังยืนยันผลไม่ได้ กรุณาตรวจชุดคูปองหรือส่งคำขอเดิม'
+      : error.message;
+    void Swal.fire('ตรวจผลการสร้างคูปอง', [message, `เลขคำขอ ${batch.requestId}`, error.correlationId && `เลขอ้างอิง ${error.correlationId}`].filter(Boolean).join('\n'), 'warning');
   } finally {
     sysOverlay.hide();
+    button.disabled = false;
   }
 }
 
@@ -1046,7 +1148,15 @@ window.openQrModal = (code) => {
 
 function bindGlobalEvents() {
   // ปุ่มส่วนคูปอง
+  renderCouponBatchPending();
   $id('btnGen')?.addEventListener('click', generateCoupons);
+  $id('btnFindCouponBatch')?.addEventListener('click', findCouponBatch);
+  $id('btnLoadCouponBatches')?.addEventListener('click', loadRecentCouponBatches);
+  $id('couponBatchRecent')?.addEventListener('change', event => {
+    if (!event.target.value) return;
+    $id('couponBatchRequestId').value = event.target.value;
+    void findCouponBatch();
+  });
   $id('btnReload')?.addEventListener('click', loadCoupons);
   $id('btnOpenCouponAssign')?.addEventListener('click', openCouponAssignModal);
   $id('btnAssignCoupon')?.addEventListener('click', assignCouponToUser);
@@ -1632,6 +1742,8 @@ async function retryAuditFailure(id, button) {
 }
 
 const AUDIT_EVENT_META = {
+  coupon_batch_generated:       { label: 'สร้างคูปองทั่วไป', icon: 'fa-ticket', tone: 'success' },
+  coupon_batch_failed:          { label: 'ตรวจผลการสร้างคูปองไม่สำเร็จ', icon: 'fa-ticket', tone: 'danger' },
   auth_recovery_open:           { label: 'เปิดโหมดช่วยเหลือการเข้าสู่ระบบ', icon: 'fa-unlock-keyhole', tone: 'warning' },
   auth_recovery_close:          { label: 'ปิดโหมดช่วยเหลือการเข้าสู่ระบบ',  icon: 'fa-lock',           tone: 'primary' },
   auth_help_requested:          { label: 'ผู้ใช้ส่งคำขอช่วยเหลือ',           icon: 'fa-headset',         tone: 'warning' },
@@ -1686,6 +1798,10 @@ function formatAuditDetail(eventType, detail) {
   if (!detail || typeof detail !== 'object') return '';
   const d = detail;
   switch (eventType) {
+    case 'coupon_batch_generated':
+      return [`${d.count} ใบ`, `ใบละ ${d.points} คะแนน`, `เลขคำขอ ${d.requestId}`].join(' · ');
+    case 'coupon_batch_failed':
+      return [d.reason === 'coupon_batch_conflict' ? 'เลขคำขอตรงกับชุดอื่น' : 'กรุณาตรวจชุดคูปองเดิม', d.requestId].filter(Boolean).join(' · ');
     case 'auth_help_requested':
     case 'auth_help_requested_again':
     case 'auth_recovery_link_consumed':

@@ -69,6 +69,17 @@ test('redeeming rewards reuses a request only for the same member and reward', (
   }
 })
 
+test('general coupon batches are issued once and can be checked from the admin page', () => {
+  const api = read('api/admin-coupons.js')
+  const migration = read('supabase_coupon_batch_migration.sql')
+  assert.match(api, /rpc\('generate_coupon_batch_once'/)
+  assert.match(api, /action === 'generated_batches'/)
+  assert.match(migration, /coupon_generation_batches/)
+  assert.match(migration, /coupon_batch_generated/)
+  assert.match(read('admin.js'), /RP_PENDING_COUPON_BATCH/)
+  assert.match(read('admin.html'), /btnFindCouponBatch/)
+})
+
 test('recovery is wired through database, backend, admin UI, user UI, and audit labels', () => {
   assert.match(read('supabase_user_auth_migration.sql'), /recovery_until/)
   assert.match(read('lib/line-auth.js'), /legacy-recovery/)

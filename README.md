@@ -123,6 +123,7 @@ Notes:
 10. `supabase_birthday_rewards_migration.sql`
 11. `supabase_safety_checkin_points_migration.sql`
 12. `supabase_redemption_request_binding_migration.sql`
+13. `supabase_coupon_batch_migration.sql`
 
 `supabase_points_integrity_migration.sql` ต้องรันหลังข้อ 6 และ 7 และก่อน deploy API
 เวอร์ชันที่เรียก `admin_giveaway_to_all_v2` หรือ `redeem_coupon_atomic` เสมอ migration นี้เพิ่ม
@@ -175,6 +176,8 @@ audit/idempotency ใหม่ จึงควรสำรองข้อมู�
 - `GET|POST /api/admin-coupons`
 - `GET /api/admin-audit-logs` -> rewrite ไป `admin-actions?action=audit_logs`
 - `POST /api/admin-coupons-generate` -> rewrite ไป `admin-coupons?action=generate`
+
+ก่อน deploy ระบบสร้างคูปองทั่วไป ให้รัน migration ข้อ 13 หลังข้อ 1 และ 6 โค้ดใหม่ส่ง `requestId` ทุกครั้ง หากหน้าแอดมินเปิดค้างจากเวอร์ชันเดิม ให้โหลดหน้าใหม่ก่อนสร้างคูปอง เมื่อตอบกลับไม่ครบ ให้กด **ส่งคำขอเดิมอีกครั้ง** หรือเปิด **ตรวจชุดคูปองที่สร้างไว้** เพื่อค้นด้วยเลขคำขอหรือเลือกจาก 20 ชุดล่าสุด ประวัติชุดแสดงรหัสที่ออกในเวลานั้น ให้ดูสถานะปัจจุบันของแต่ละใบจากรายการคูปอง
 
 ### Vercel rewrites
 

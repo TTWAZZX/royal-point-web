@@ -203,6 +203,28 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   let role = 'super_admin'
   let birthdayStatus = 'pending'
   let memberScore = 100
+  let couponBatch = null
+  const couponRequests = []
+  await page.route('**/api/admin-coupons?**', async route => {
+    const params = new URL(route.request().url()).searchParams
+    if (params.get('action') !== 'generated_batches') return route.fulfill({ json: { status: 'success', data: [] } })
+    assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
+    const requestId = params.get('requestId')
+    if (requestId) assert.equal(requestId, couponBatch.request_id)
+    return route.fulfill({ json: { status: 'success', data: requestId ? couponBatch : [couponBatch] } })
+  })
+  await page.route('**/api/admin-coupons-generate', async route => {
+    const { requestId, count, points } = route.request().postDataJSON()
+    assert.equal(count, 2)
+    assert.equal(points, 25)
+    couponRequests.push(requestId)
+    if (!couponBatch) {
+      couponBatch = { request_id: requestId, coupon_count: 2, points: 25, codes: ['ABCDEF', 'GHJKLM'], created_at: new Date().toISOString() }
+      return route.fulfill({ status: 503, json: { status: 'error', code: 'coupon_batch_unconfirmed' } })
+    }
+    assert.equal(requestId, couponBatch.request_id)
+    return route.fulfill({ json: { status: 'success', created: 2, data: { ...couponBatch, repeated: true } } })
+  })
   await page.route('**/api/all-scores?**', async route => {
     await route.fulfill({ json: { status: 'success', data: [{ uid: 'U_MEMBER', name: 'สมาชิกทดสอบ', score: memberScore }] } })
   })
@@ -259,6 +281,28 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await recoverPoints.click()
   await page.waitForFunction(() => window.testAdminDialog === 'ตรวจสอบแล้ว')
   assert.equal(memberScore, 115)
+
+  await page.locator('#genPoints').fill('25')
+  await page.locator('#genCount').fill('2')
+  const generate = page.locator('#btnGen')
+  if (viewport.width < 500) await generate.tap()
+  else await generate.click()
+  await page.waitForFunction(() => window.testAdminDialog === 'ตรวจผลการสร้างคูปอง')
+  await page.reload()
+  assert.equal(await page.evaluate(() => window.RoyalAdminReady()), true)
+  await page.waitForFunction(() => document.querySelector('#btnGen').textContent === 'ส่งคำขอเดิมอีกครั้ง')
+  await generate.click()
+  await page.waitForFunction(() => window.testAdminDialog === 'พบชุดคูปองเดิม')
+  assert.equal(couponRequests.length, 2)
+  assert.equal(couponRequests[0], couponRequests[1])
+
+  await page.reload()
+  assert.equal(await page.evaluate(() => window.RoyalAdminReady()), true)
+  await page.locator('#pills-coupons summary').click()
+  await page.locator('#btnLoadCouponBatches').click()
+  await page.locator('#couponBatchRecent').selectOption(couponBatch.request_id)
+  await page.waitForFunction(() => document.querySelector('#couponBatchCodes').value === 'ABCDEF\nGHJKLM')
+  assert.equal(couponRequests.length, 2)
 
   role = 'safety_viewer'
   await page.goto(deepLink)

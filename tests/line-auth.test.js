@@ -204,6 +204,41 @@ test('privileged routes require a LINE token and use the verified role', async (
   assert.equal(blocked.statusCode, 403)
 })
 
+test('coupon generation retries code collisions with the same request ID and returns the database batch', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  process.env.ADMIN_UID = 'U-admin'
+  mockLine({ uid: 'U-admin' })
+  const requestId = '30000000-0000-4000-8000-000000000001'
+  const rpc = t.mock.method(supabaseAdmin, 'rpc', async () => ({ error: { code: '23505' } }))
+  rpc.mock.mockImplementationOnce(async () => ({
+    data: { request_id: requestId, coupon_count: 2, points: 100, codes: ['ABCDEF', 'GHJKLM'], repeated: true }
+  }), 1)
+  const handler = require('../api/admin-coupons')
+  async function submit(id) {
+    const result = { status: 200 }
+    const res = {
+      setHeader() {},
+      status(code) { result.status = code; return this },
+      json(payload) { result.payload = payload; return this }
+    }
+    await handler({ ...request('valid-token'), method: 'POST', query: { action: 'generate' }, body: { requestId: id, count: 2, points: 100 } }, res)
+    return result
+  }
+  assert.equal((await submit('')).status, 400)
+  assert.equal(rpc.mock.callCount(), 0)
+  const replay = await submit(requestId)
+  assert.equal(replay.status, 200)
+  assert.equal(replay.payload.created, 2)
+  assert.equal(replay.payload.data.repeated, true)
+  assert.deepEqual(replay.payload.data.codes, ['ABCDEF', 'GHJKLM'])
+  assert.equal(rpc.mock.callCount(), 2)
+  for (const call of rpc.mock.calls) {
+    assert.equal(call.arguments[0], 'generate_coupon_batch_once')
+    assert.equal(call.arguments[1].p_request_id, requestId)
+    assert.equal(call.arguments[1].p_admin_uid, 'U-admin')
+  }
+})
+
 test('marks a verified UID and rejects later UID-only requests', async () => {
   const verified = await authenticateRequest(request('valid-token'), { claimedUid: 'U-user-1' })
   assert.equal(verified.mode, 'token')
