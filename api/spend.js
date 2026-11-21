@@ -33,8 +33,8 @@ async function getRedemptionEvidence(req, res) {
   const { data, error } = await supabaseAdmin
     .from('redemptions')
     .select(`
-      id,cost,status,created_at,balance_after,received_at,cancelled_at,cancel_reason,refund_balance,
-      users:user_id!inner(uid,name),
+      id,cost,status,created_at,cancel_reason,
+      users:user_id!inner(uid),
       rewards:reward_id(name,img_url)
     `)
     .eq('id', redemptionId)
@@ -49,12 +49,7 @@ async function getRedemptionEvidence(req, res) {
       cost: data.cost,
       redemptionStatus: data.status,
       createdAt: data.created_at,
-      balanceAfter: data.balance_after,
-      receivedAt: data.received_at,
-      cancelledAt: data.cancelled_at,
       cancelReason: data.cancel_reason,
-      refundBalance: data.refund_balance,
-      userName: data.users?.name || '',
       rewardName: data.rewards?.name || 'ของรางวัล',
       rewardImage: data.rewards?.img_url || ''
     }

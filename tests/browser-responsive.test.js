@@ -87,7 +87,7 @@ async function runMemberCheckinViewport(browser, baseUrl, viewport) {
     const { pathname } = new URL(request.url())
     if (pathname === '/api/get-score') {
       if (score > 100) scoreReadsAfterCommit++
-      return route.fulfill({ json: { status: 'success', data: { score, user: { name: 'สมาชิกทดสอบ' }, rewards: [] } } })
+      return route.fulfill({ json: { status: 'success', data: { score, rewards: [] } } })
     }
     if (pathname === '/api/daily-checkin') {
       const data = {
@@ -144,7 +144,7 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
     const request = route.request()
     const { pathname, searchParams } = new URL(request.url())
     if (pathname === '/api/get-score') {
-      return route.fulfill({ json: { status: 'success', data: { score: submittedIds.length ? 80 : 100, user: { name: 'สมาชิกทดสอบ' }, rewards: [] } } })
+      return route.fulfill({ json: { status: 'success', data: { score: submittedIds.length ? 80 : 100, rewards: [] } } })
     }
     if (pathname === '/api/rewards' && !searchParams.has('action')) {
       return route.fulfill({ json: { status: 'success', items: [{
@@ -153,6 +153,12 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
     }
     if (pathname === '/api/spend') {
       assert.equal(request.headers().authorization, 'Bearer test-token')
+      if (request.method() === 'GET') {
+        assert.equal(searchParams.get('redemptionId'), redemptionId)
+        return route.fulfill({ json: { status: 'success', data: {
+          id: redemptionId, cost: 90, redemptionStatus: 'approved', createdAt: new Date().toISOString(), rewardName: 'รางวัลทดสอบ'
+        } } })
+      }
       const payload = request.postDataJSON()
       assert.equal(payload.uid, 'U_REDEEM_TEST')
       assert.equal(payload.rewardId, rewardId)
@@ -180,6 +186,10 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
   assert.equal(submittedIds.length, 2)
   assert.match(submittedIds[0], /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   assert.equal(submittedIds[0], submittedIds[1])
+  if (pathName === 'index.html') {
+    await page.goto(`${baseUrl}/index.html?redemption_id=${redemptionId}`)
+    await page.waitForFunction(() => window.testRedemptionDialog?.[0] === 'หลักฐานรายการแลก')
+  }
   await page.close()
 }
 
@@ -226,7 +236,7 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     return route.fulfill({ json: { status: 'success', created: 2, data: { ...couponBatch, repeated: true } } })
   })
   await page.route('**/api/all-scores?**', async route => {
-    await route.fulfill({ json: { status: 'success', data: [{ uid: 'U_MEMBER', name: 'สมาชิกทดสอบ', score: memberScore }] } })
+    await route.fulfill({ json: { status: 'success', data: [{ uid: 'U_MEMBER', name: 'สมาชิกทดสอบ', tel: '0800000000', score: memberScore }] } })
   })
   await page.route('**/api/admin-actions?**', async route => {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
@@ -281,6 +291,8 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await recoverPoints.click()
   await page.waitForFunction(() => window.testAdminDialog === 'ตรวจสอบแล้ว')
   assert.equal(memberScore, 115)
+  await page.locator('#searchInput').fill('0800000000')
+  await page.locator('#adminTableBody').getByText('0800000000').waitFor()
 
   await page.locator('#genPoints').fill('25')
   await page.locator('#genCount').fill('2')

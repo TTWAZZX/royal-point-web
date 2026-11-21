@@ -1,22 +1,17 @@
-// /api/get-score.js  (Supabase + Rewards; response shape compatible with frontend)
-const { createClient } = require('@supabase/supabase-js');
+const { supabaseAdmin: supabase, getRedis, scoreCacheKey } = require('../lib/supabase');
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
 
-let redis = null;
-try {
-  const { Redis } = require('@upstash/redis');
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    redis = Redis.fromEnv(); // Upstash client
-  }
-} catch {}
+const redis = getRedis();
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
+function sendScore(res, uid, { balance, updated_at, rewards }) {
+  return res.status(200).json({
+    status: 'success', uid,
+    data: { score: balance ?? 0, updated_at: updated_at ?? null, rewards: Array.isArray(rewards) ? rewards : [] }
+  });
+}
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
     if (req.method !== 'GET') {
       return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
@@ -28,24 +23,13 @@ module.exports = async (req, res) => {
     }
     await authenticateRequest(req, { claimedUid: uid });
 
-    const cacheKey = `score_v2:${uid}`; // v2: รวม rewards ด้วยแล้ว
+    const cacheKey = scoreCacheKey(uid);
 
     // ---- Try cache first
     if (redis) {
       try {
-        const cached = await redis.get(cacheKey); // { user, balance, updated_at, rewards }
-        if (cached) {
-          return res.status(200).json({
-            status: 'success',
-            uid,
-            data: {
-              user: cached.user,
-              score: cached.balance ?? 0,
-              updated_at: cached.updated_at ?? null,
-              rewards: Array.isArray(cached.rewards) ? cached.rewards : []
-            }
-          });
-        }
+        const cached = await redis.get(cacheKey);
+        if (cached) return sendScore(res, uid, cached);
       } catch (e) {
         // ignore cache errors
       }
@@ -54,11 +38,12 @@ module.exports = async (req, res) => {
     // ---- Load user
     const { data: user, error: e1 } = await supabase
       .from('users')
-      .select('id,uid,name,room,dob,passport,tel')
+      .select('id')
       .eq('uid', uid)
-      .single();
+      .maybeSingle();
 
-    if (e1 || !user) {
+    if (e1) throw e1;
+    if (!user) {
       return res.status(404).json({ status: 'error', message: 'user_not_found' });
     }
 
@@ -99,26 +84,15 @@ module.exports = async (req, res) => {
     // ---- Cache 30s (Upstash)
     if (redis) {
       try {
-        await redis.set(cacheKey, { user, balance, updated_at, rewards }, { ex: 30 });
+        await redis.set(cacheKey, { balance, updated_at, rewards }, { ex: 30 });
       } catch {}
     }
 
-    // ---- Response (keep shape + rewards)
-    res.setHeader('Cache-Control', 'private, no-store');
-    return res.status(200).json({
-      status: 'success',
-      uid,
-      data: {
-        user,
-        score: balance,
-        updated_at,
-        rewards
-      }
-    });
+    return sendScore(res, uid, { balance, updated_at, rewards });
 
   } catch (err) {
     if (err instanceof AuthError) return sendAuthError(res, err);
     console.error('[api/get-score] error:', err);
-    return res.status(500).json({ status: 'error', message: String(err?.message || 'Internal Error') });
+    return res.status(500).json({ status: 'error', message: 'โหลดข้อมูลคะแนนไม่สำเร็จ' });
   }
 };

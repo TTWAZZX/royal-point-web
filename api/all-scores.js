@@ -16,7 +16,7 @@ module.exports = async (req, res) => {
     const [usersResult, authResult] = await Promise.all([
       supabaseAdmin
         .from('users')
-        .select('uid,name,room,dob,passport,tel, user_points(balance)')
+        .select('uid,name,room,tel, user_points(balance)')
         .order('uid', { ascending:true }),
       supabaseAdmin
         .from('user_auth_migrations')
@@ -35,8 +35,6 @@ module.exports = async (req, res) => {
         uid: u.uid,
         name: u.name || '',
         room: u.room || '',
-        dob: u.dob || '',
-        passport: u.passport || '',
         tel: u.tel || '',
         score: pointRow?.balance ?? 0,
         auth: auth ? {

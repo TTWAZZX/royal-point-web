@@ -374,7 +374,7 @@ async function initApp(ctx = {}) {
         return;
       }
       if (!resp.ok) throw new Error(`get-score failed: ${resp.status}`);
-      payload = await resp.json(); // { status, data:{ user, score, updated_at } }
+      payload = await resp.json();
     }
 
     // 4) seed UI with profile

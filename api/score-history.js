@@ -9,6 +9,7 @@ const supabase = createClient(
 );
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
     if (req.method !== 'GET') {
       return res.status(405).json({ status: 'error', message: 'Method not allowed' });
@@ -68,7 +69,7 @@ module.exports = async (req, res) => {
 
     const { data, error } = await supabase
       .from('point_transactions')
-      .select('id, amount, code, type, created_by, created_at')
+      .select('id, amount, code, type, created_at')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false }) // = order by t.created_at desc
       .order('id',         { ascending: false }) // = order by t.id desc
