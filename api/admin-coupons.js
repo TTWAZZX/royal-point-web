@@ -1,7 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { createHash, createHmac, randomBytes } = require('crypto');
 const { auditEvent } = require('../lib/audit');
-const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
+const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
 const {
   buildCouponCancelledMessage,
   buildCouponIssuedMessage,
@@ -40,6 +40,7 @@ function publicNotification(row) {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
   if (!['GET', 'DELETE', 'POST'].includes(req.method)) {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' });
@@ -51,11 +52,12 @@ module.exports = async (req, res) => {
   } catch {
     body = {};
   }
-  const adminUid = req.query.adminUid || body.adminUid;
-  if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-    return res.status(403).json({ status: 'error', message: 'Forbidden' });
+  const { uid: adminUid } = await authenticateRequest(req, {
+    claimedUid: req.query.adminUid || body.adminUid, requireToken: true, allowRecovery: false
+  });
+  if (!isAdminUid(adminUid)) {
+    return res.status(403).json({ status: 'error', message: 'บัญชีนี้ไม่มีสิทธิ์จัดการคูปอง' });
   }
-  await authenticateRequest(req, { claimedUid: adminUid, allowRecovery: false });
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 

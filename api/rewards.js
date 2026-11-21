@@ -1,6 +1,7 @@
 // /api/rewards.js  — Supabase version (Vercel Serverless Function)
 const { createClient } = require('@supabase/supabase-js');
 const { safeRewardImageUrl } = require('../lib/reward-image');
+const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -40,6 +41,13 @@ module.exports = async (req, res) => {
     }
 
     const include = String(req.query.include ?? '0') === '1';
+    if (include) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      const { uid } = await authenticateRequest(req, { requireToken: true, allowRecovery: false });
+      if (!isAdminUid(uid)) {
+        return res.status(403).json({ status: 'error', message: 'บัญชีนี้ไม่มีสิทธิ์จัดการของรางวัล' });
+      }
+    }
 
     let query = supabase
       .from('rewards')
@@ -68,10 +76,11 @@ module.exports = async (req, res) => {
       sort_index: r.sort_index ?? 9999   // ← เพิ่มตรงนี้
     }));
 
-    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    if (!include) res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 
     return res.status(200).json({ status: 'success', items });
   } catch (err) {
+    if (err instanceof AuthError) return sendAuthError(res, err);
     console.error('[api/rewards] error:', err);
     return res.status(500).json({ status: 'error', message: String(err || 'Internal Error') });
   }

@@ -266,6 +266,7 @@ const LOCAL_ADMIN_UIDS = [];
 
 // ตัวช่วย: ตรวจสิทธิ์จาก server ถ้ามี endpoint ให้ใช้ (optional)
 async function checkAdminFromServer(uid) {
+  if (!window.RoyalAuth?.hasToken?.() || window.RoyalAuth.isRecoveryMode?.()) return false;
   try {
     const r = await fetch(`/api/admin-actions?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
     if (!r.ok) return false;
@@ -1189,7 +1190,10 @@ async function performDailyCheckin() {
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
   const latestStatus = await refreshDailyCheckinStatus();
-  if (latestStatus?.checkedIn) return toastOk('วันนี้เช็คอินแล้ว');
+  if (latestStatus?.checkedIn) {
+    void refreshUserScore({ bust: true });
+    return toastOk('วันนี้เช็คอินแล้ว');
+  }
   if (latestStatus?.checkinRule?.enabled && !latestStatus.checkinRule.allowed) {
     return toastErr(`Open ${latestStatus.checkinRule.startTime}-${latestStatus.checkinRule.endTime}`);
   }
@@ -1217,14 +1221,19 @@ async function performDailyCheckin() {
         return toastErr('คำถามมีการเปลี่ยนแปลง กรุณากดเช็คอินใหม่อีกครั้ง');
       }
       setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
+      void refreshUserScore({ bust: true });
       return toastOk('วันนี้เช็คอินแล้ว');
     }
 
     if (!res.ok || json?.status === 'error') {
+      if (json?.correlationId) {
+        setDailyCheckinUi({ unavailable: true, disabled: false, meta: 'ลองกดใหม่อีกครั้ง' });
+        return toastErr(`เช็กอินไม่สำเร็จ กรุณาลองใหม่ หากยังพบปัญหาให้แจ้งผู้ดูแลพร้อมเลขอ้างอิง ${json.correlationId}`);
+      }
       throw new Error(json?.message || `HTTP ${res.status}`);
     }
 
-    const points = Number(data.totalAdded || data.points || 5);
+    const points = Number(data.totalAdded ?? data.points ?? 5);
     optimisticAdd(points);
     showScoreDelta(points);
     setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
@@ -1729,10 +1738,11 @@ function renderRewards(currentScore){
 
     const outOfStock    = stock <= 0;
     const lockedByPoint = !outOfStock && score < cost; // ถ้าของหมด ไม่ต้องโชว์ "คะแนนไม่พอ"
+    const pending = Boolean(window.RoyalSpend.pending(resolveCurrentUid(), r.id));
 
     const classes = ['rp-reward-card'];
-    if (lockedByPoint) classes.push('locked');
-    if (outOfStock)    classes.push('soldout');
+    if (lockedByPoint && !pending) classes.push('locked');
+    if (outOfStock && !pending) classes.push('soldout');
 
     const id   = escapeHtml(r.id || `R${i+1}`);
     const name = escapeHtml(r.name || id);
@@ -1775,9 +1785,9 @@ function renderRewards(currentScore){
           <div class="fw-bold text-truncate">${name}</div>
         </div>
         <button class="rp-redeem-btn"
-                aria-label="แลก ${name}"
-                ${outOfStock || lockedByPoint ? 'disabled' : ''}>
-          <i class="fa-solid fa-gift"></i>
+                aria-label="${pending ? 'ตรวจรายการเดิม' : 'แลก'} ${name}"
+                ${!pending && (outOfStock || lockedByPoint) ? 'disabled' : ''}>
+          <i class="fa-solid ${pending ? 'fa-rotate-right' : 'fa-gift'}"></i>
         </button>
       </div>
     `;
@@ -1831,6 +1841,7 @@ function openRewardPreviewFromCard(card) {
   const img = card.querySelector('img')?.src || '';
   const isLocked = card.classList.contains('locked');
   const isSoldOut = card.classList.contains('soldout') || stock <= 0;
+  const pending = Boolean(window.RoyalSpend.pending(resolveCurrentUid(), id));
 
   const imgEl = document.getElementById('rewardPreviewImg');
   const nameEl = document.getElementById('rewardPreviewName');
@@ -1843,8 +1854,8 @@ function openRewardPreviewFromCard(card) {
   if (costEl) costEl.textContent = `${cost} pt`;
   if (stockEl) stockEl.textContent = isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax} ชิ้น` : `เหลือ ${stock} ชิ้น`);
   if (redeemBtn) {
-    redeemBtn.disabled = isLocked || isSoldOut;
-    redeemBtn.textContent = isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.disabled = !pending && (isLocked || isSoldOut);
+    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
     redeemBtn.onclick = async () => {
       if (redeemBtn.disabled) return;
       bootstrap.Modal.getInstance(modalEl)?.hide();
@@ -1899,36 +1910,31 @@ async function redeemReward(reward, btn){
       if (pointEl) scoreNow = Number(pointEl.textContent.replace(/,/g, '')) || 0;
   }
 
-  if (scoreNow < cost) {
+  const pending = window.RoyalSpend.pending(curUid, id);
+  if (!pending && scoreNow < cost) {
       return toastErr(`คะแนนไม่พอ (มี ${scoreNow} ใช้ ${cost})`);
   }
 
   // Popup ยืนยัน
   const confirmed = window.Swal
     ? (await Swal.fire({
-        title: "ยืนยันการแลก?", 
+        title: pending ? 'ส่งคำขอแลกรางวัลเดิมอีกครั้ง?' : 'ยืนยันการแลก?',
         html: `ต้องการแลก <b>${h(name)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
         icon: "question", 
         showCancelButton: true, 
-        confirmButtonText: "แลกเลย",
+        confirmButtonText: pending ? 'ส่งคำขอเดิม' : 'แลกเลย',
         confirmButtonColor: "#3085d6",
         cancelButtonText: "ยกเลิก"
       })).isConfirmed
     : confirm(`ใช้ ${cost} pt แลกรางวัล ${name}?`);
-  if (!confirmed) return;
+  if (!confirmed || REDEEMING) return;
 
   REDEEMING = true;
   setBtnLoading(btn, true, 'กำลังแลก…');
   UiOverlay.show('กำลังบันทึกการแลกของรางวัล…');
 
-  const redeemRequestKey = `RP_REDEEM_REQUEST:${curUid}:${id}`;
-  let redeemRequestId = sessionStorage.getItem(redeemRequestKey) || '';
-  if (!redeemRequestId) {
-    redeemRequestId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    sessionStorage.setItem(redeemRequestKey, redeemRequestId);
-  }
-
   try{
+    const redeemRequestId = window.RoyalSpend.start(curUid, id);
     const res = await fetch(API_SPEND, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1937,12 +1943,23 @@ async function redeemReward(reward, btn){
     });
 
     const payload = await safeJson(res);
-    if (payload?.status !== "success")
-      throw new Error(payload?.message || "spend failed");
+    if (!res.ok || payload?.status !== 'success') {
+      const error = new Error(payload?.message || 'spend_failed');
+      error.correlationId = payload?.correlationId;
+      throw error;
+    }
+
+    window.RoyalSpend.finish(curUid, id);
+    if (payload.duplicate) {
+      UiOverlay.hide();
+      await refreshUserScore({ bust: true });
+      try { await loadRewards({ include: 0, uid: curUid }); } catch {}
+      const status = payload.redemption?.status === 'cancelled_refunded' ? 'รายการเดิมถูกยกเลิกและคืนคะแนนแล้ว' : 'พบรายการแลกเดิมในประวัติ';
+      return toastOk(`${status} · เลขรายการ ${payload.redemption.id}`);
+    }
 
     // 2. คำนวณแต้มใหม่ และอัปเดตตัวแปรทั้งหมดให้ตรงกัน (แก้บั๊กแต้มหาย)
     const nextScore = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Math.max(0, scoreNow - cost);
-    sessionStorage.removeItem(redeemRequestKey);
     window.__userBalance = nextScore;
     window.prevScore = nextScore; // ⭐ สำคัญมาก: ต้องอัปเดตตัวนี้ด้วย ไม่งั้น loadRewards จะเห็นเป็น 0
     if (typeof prevScore !== 'undefined') prevScore = nextScore; // อัปเดตตัวแปร local ถ้ามี
@@ -2011,10 +2028,12 @@ async function redeemReward(reward, btn){
   }catch(err){
     console.error(err);
     UiOverlay.hide();
+    window.RoyalSpend.finish(curUid, id, err?.message || 'spend_failed');
     toastErr(mapSpendError(err));
   }finally{
     setBtnLoading(btn, false);
     REDEEMING = false;
+    if (window.RoyalSpend.pending(curUid, id) && btn) btn.setAttribute('aria-label', `ตรวจรายการเดิม ${name}`);
   }
 }
 
@@ -2283,10 +2302,13 @@ function mapSpendError(err) {
     stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
     reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
     reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
+    request_id_required: 'กรุณาตรวจประวัติการแลก แล้วโหลดหน้าใหม่ก่อนลองอีกครั้ง',
+    request_id_conflict: 'คำขอเดิมไม่ตรงกับรายการนี้ กรุณาตรวจประวัติการแลกก่อนลองอีกครั้ง',
     user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณาเปิดหน้าแรกผ่าน LINE อีกครั้ง',
     'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
   };
-  return map[msg] || 'แลกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง';
+  const message = map[msg] || 'ยังยืนยันผลการแลกไม่ได้ กรุณาตรวจประวัติหรือส่งคำขอเดิมอีกครั้ง';
+  return err?.correlationId ? `${message} · เลขอ้างอิง ${err.correlationId}` : message;
 }
 
 function mapRedeemError(res, json) {

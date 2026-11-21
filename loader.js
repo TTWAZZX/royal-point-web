@@ -330,6 +330,8 @@
     };
   }
 
+  const isAdminPage = /(?:^|\/)admin\.html$/.test(global.location.pathname);
+
   async function showAuthHelp(payload) {
     if (authHelpOpen || !payload?.code || !String(payload.code).startsWith('AUTH_')) return;
     authHelpOpen = true;
@@ -339,6 +341,7 @@
     const uidText = uid ? `<div class="mt-2 small text-muted">UID สำหรับแจ้งผู้ดูแล: <code>${uid.replace(/[&<>"']/g, '')}</code></div>` : '';
 
     try {
+      if (isAdminPage) global.SystemBoot?.hide?.();
       if (!global.Swal) {
         global.alert?.(`${config.title}\n${config.detail}${uid ? `\nUID: ${uid}` : ''}`);
         return;
@@ -351,7 +354,7 @@
         showDenyButton: Boolean(config.denyText),
         confirmButtonText: config.confirmText,
         denyButtonText: config.denyText || '',
-        cancelButtonText: 'ติดต่อผู้ดูแล',
+        cancelButtonText: isAdminPage ? 'ปิด' : 'ติดต่อผู้ดูแล',
         allowOutsideClick: false,
         allowEscapeKey: false
       });
@@ -372,7 +375,7 @@
         }
         return;
       }
-      if (result.isDismissed) await contactAdmin(uid, config.canUseRecovery, code);
+      if (result.isDismissed && !isAdminPage) await contactAdmin(uid, config.canUseRecovery, code);
     } finally {
       authHelpOpen = false;
     }
@@ -472,21 +475,21 @@
     }
   }
 
-  const recoveryReady = consumeRecoveryLink();
+  const recoveryReady = isAdminPage ? Promise.resolve({ consumed: false }) : consumeRecoveryLink();
 
   // Attach the LIFF access token to every same-origin API request. Existing
   // pages without this bridge continue in legacy mode until their next reload.
   global.fetch = async function authenticatedFetch(input, init = {}) {
     if (!isSameOriginApi(input)) return nativeFetch(input, init);
 
-    const token = isRecoveryMode() ? '' : getLineAccessToken();
+    const token = !isAdminPage && isRecoveryMode() ? '' : getLineAccessToken();
     const requestHeaders = typeof Request !== 'undefined' && input instanceof Request
       ? input.headers
       : undefined;
     const headers = new Headers(requestHeaders || {});
     new Headers(init.headers || {}).forEach((value, key) => headers.set(key, value));
     headers.set('X-Royal-Client', 'line-token-v1');
-    const recoveryProof = getRecoveryProof();
+    const recoveryProof = isAdminPage ? '' : getRecoveryProof();
     if (recoveryProof) headers.set('X-Royal-Recovery', recoveryProof);
     if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
 
@@ -518,7 +521,7 @@
     }
 
     if (authPayload) void showAuthHelp(authPayload);
-    else if (response?.ok) {
+    else if (response?.ok && !isAdminPage) {
       try {
         const raw = typeof input === 'string' ? input : input?.url;
         const path = new URL(raw, global.location.href).pathname;
@@ -536,6 +539,39 @@
     enableRecoveryUntil,
     disableRecoveryMode,
     ready: recoveryReady
+  };
+
+  const pendingRedemptions = new Map();
+  const redemptionKey = (uid, rewardId) => `RP_REDEEM_REQUEST:${uid}:${rewardId}`;
+
+  function getPendingRedemption(uid, rewardId) {
+    const key = redemptionKey(uid, rewardId);
+    try { return global.sessionStorage.getItem(key) || pendingRedemptions.get(key) || ''; }
+    catch { return pendingRedemptions.get(key) || ''; }
+  }
+
+  global.RoyalSpend = {
+    pending: getPendingRedemption,
+    start(uid, rewardId) {
+      const pending = getPendingRedemption(uid, rewardId);
+      if (pending) return pending;
+      const bytes = global.crypto.getRandomValues(new Uint8Array(16));
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
+      const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+      const key = redemptionKey(uid, rewardId);
+      pendingRedemptions.set(key, id);
+      try { global.sessionStorage.setItem(key, id); } catch {}
+      return id;
+    },
+    finish(uid, rewardId, errorCode) {
+      const rejected = ['request_id_conflict', 'request_id_required', 'out_of_stock', 'insufficient_points', 'reward_inactive', 'reward_not_found', 'user_not_found'];
+      if (errorCode && !rejected.includes(errorCode)) return;
+      const key = redemptionKey(uid, rewardId);
+      pendingRedemptions.delete(key);
+      try { global.sessionStorage.removeItem(key); } catch {}
+    }
   };
 
   const $ = (sel) => document.querySelector(sel);

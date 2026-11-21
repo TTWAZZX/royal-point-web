@@ -712,6 +712,7 @@ async function getSafetyMonthlySummary(monthText = '') {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store')
   if (!['GET', 'POST'].includes(req.method)) {
     return res.status(405).json({ status: 'error', message: 'Method not allowed' })
   }
@@ -721,8 +722,10 @@ module.exports = async (req, res) => {
       ? (req.query.adminUid || req.query.uid || '')
       : (req.body?.adminUid || '')
   ).trim()
+  let adminUid
   try {
-    await authenticateRequest(req, { claimedUid: claimedAdminUid, allowRecovery: false })
+    const auth = await authenticateRequest(req, { claimedUid: claimedAdminUid, requireToken: true, allowRecovery: false })
+    adminUid = auth.uid
   } catch (error) {
     if (error instanceof AuthError) return sendAuthError(res, error)
     console.error('[admin-actions] auth error:', error)
@@ -733,7 +736,6 @@ module.exports = async (req, res) => {
   if (req.method === 'GET') {
     if (req.query.action === 'ad_banners') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
         const { data, error } = await supabaseAdmin
           .from('ad_banners')
@@ -753,7 +755,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'auth_help_cases') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
 
         const now = new Date().toISOString()
@@ -854,7 +855,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'line_notifications') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
         const parsedLimit = parseInt(req.query.limit || '200', 10)
         const limit = Math.max(1, Math.min(Number.isFinite(parsedLimit) ? parsedLimit : 200, 300))
@@ -887,7 +887,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'audit_logs') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
 
         const parsedLimit = parseInt(req.query.limit || '100', 10)
@@ -952,7 +951,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'safety_pulse') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetyPulse(req.query.date)
@@ -967,7 +965,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'safety_monthly_summary') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetyMonthlySummary(req.query.month)
@@ -982,7 +979,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'safety_questions') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const requestedPage = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
@@ -1055,7 +1051,6 @@ module.exports = async (req, res) => {
 
     if (req.query.action === 'safety_settings') {
       try {
-        const adminUid = String(req.query.adminUid || '').trim()
         if (!hasAdminAccess(adminUid, 'safety_read')) return forbidden(res)
 
         const data = await getSafetySettings()
@@ -1065,15 +1060,13 @@ module.exports = async (req, res) => {
       }
     }
 
-    const { uid } = req.query
-    const role = getAdminRole(uid)
+    const role = getAdminRole(adminUid)
     return res.json({ isAdmin: Boolean(role), role, safetyAdmin: role === 'safety_admin', safetyViewer: role === 'safety_viewer' })
   }
 
   // 2. รับค่า (เพิ่ม rewardId และ rewardData เข้ามาสำหรับฟังก์ชันใหม่)
   const {
     action,
-    adminUid,
     targetUid,
     amount,
     delta,
@@ -1110,6 +1103,37 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'safety_checkin_points_recover') {
+      const memberUid = String(targetUid || '').trim()
+      const date = String(req.body?.checkinDate || '')
+      const parsedDate = new Date(`${date}T00:00:00Z`)
+      if (!memberUid || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsedDate.getTime()) ||
+        parsedDate.toISOString().slice(0, 10) !== date || date > bangkokDate()) {
+        return res.status(400).json({ status: 'error', message: 'กรุณาระบุสมาชิกและวันที่เช็กอินให้ถูกต้อง' })
+      }
+
+      const { data, error } = await supabaseAdmin.rpc('record_safety_checkin_points', {
+        p_uid: memberUid, p_date: date, p_actor: adminUid, p_checkin: null
+      })
+      if (error) {
+        const missing = ['SAFETY_MEMBER_NOT_FOUND', 'SAFETY_CHECKIN_NOT_FOUND'].includes(error.message)
+        const audit = await auditEvent(supabaseAdmin, {
+          type: 'safety_checkin_points_recovery_failed', actorUid: adminUid, targetUid: memberUid,
+          entityType: 'daily_checkin', status: 'error', detail: { today: date, code: error.code, reason: error.message }
+        })
+        return res.status(missing ? 404 : 503).json({
+          status: 'error',
+          message: missing ? 'ไม่พบรายการเช็กอินของสมาชิกในวันที่เลือก' : 'กู้คืนคะแนนเช็กอินไม่สำเร็จ กรุณาตรวจบันทึกระบบ',
+          correlationId: audit.correlationId
+        })
+      }
+
+      if (data.daily_added || data.weekly_added) await clearScoreCache(redis, memberUid)
+      return res.status(200).json({
+        status: 'success', data: { dailyAdded: data.daily_added, weeklyAdded: data.weekly_added }
+      })
+    }
 
     if (action === 'audit_failure_retry') {
       const outboxId = String(id || '').trim()

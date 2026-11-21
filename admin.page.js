@@ -200,6 +200,7 @@ function bindEvents() {
   qs("#btnConfirmAdjust")?.addEventListener("click", submitAdjust);
   qs("#btnOpenAuthRecovery")?.addEventListener("click", openAuthRecovery);
   qs("#btnCloseAuthRecovery")?.addEventListener("click", closeAuthRecovery);
+  qs('#btnRecoverSafetyPoints')?.addEventListener('click', recoverSafetyCheckinPoints);
   qs("#authHelpSearch")?.addEventListener("input", debounce(renderAuthHelpCases, 250));
   qs("#authHelpStatusFilter")?.addEventListener("change", renderAuthHelpCases);
   qs("#btnRefreshAuthHelp")?.addEventListener("click", loadAuthHelpCases);
@@ -420,6 +421,9 @@ window.openActionModal = (uid) => {
     qs("#adjustAmount").value = "";
     qs("#adjustNote").value = "";
     qs("#radioAdd").checked = true;
+    const recoveryDate = qs('#safetyRecoveryDate');
+    recoveryDate.value = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok' }).format(new Date());
+    recoveryDate.max = recoveryDate.value;
     POINT_ADJUST_REQUEST_ID = window.crypto?.randomUUID ? window.crypto.randomUUID() : '';
     new bootstrap.Modal(qs('#actionModal')).show();
 };
@@ -504,6 +508,37 @@ async function closeAuthRecovery() {
       Swal.fire('ปิดแล้ว', 'ผู้ใช้ต้องยืนยันตัวตนผ่าน LINE ตามปกติ', 'success');
     } catch (error) {
       Swal.fire('ปิดสิทธิ์ไม่สำเร็จ', error.message || 'กรุณาลองใหม่', 'error');
+    }
+}
+
+async function recoverSafetyCheckinPoints(event) {
+    const member = TARGET_USER;
+    const checkinDate = qs('#safetyRecoveryDate').value;
+    if (!member?.uid || !checkinDate) {
+      return Swal.fire('กรุณาเลือกวันที่เช็กอิน', '', 'warning');
+    }
+
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const confirmation = await Swal.fire({
+        title: 'ตรวจและเติมคะแนนเช็กอิน',
+        text: `${member.name || member.uid} · ${checkinDate} ระบบจะเติมเฉพาะคะแนนเช็กอินหรือโบนัสสัปดาห์นั้นที่ยังขาด`,
+        icon: 'question', showCancelButton: true, confirmButtonText: 'ตรวจและเติมคะแนน', cancelButtonText: 'ยกเลิก'
+      });
+      if (!confirmation.isConfirmed) return;
+
+      const result = await adminAction({ action: 'safety_checkin_points_recover', targetUid: member.uid, checkinDate });
+      if (!result.dailyAdded && !result.weeklyAdded) {
+        return Swal.fire('ตรวจสอบแล้ว', 'คะแนนที่มีสิทธิ์ได้รับในวันที่เลือกครบแล้ว', 'info');
+      }
+      void loadPageUsers();
+      return Swal.fire('เติมคะแนนเรียบร้อย', `คะแนนเช็กอิน ${result.dailyAdded} คะแนน · โบนัสรายสัปดาห์ ${result.weeklyAdded} คะแนน`, 'success');
+    } catch (error) {
+      const text = [error.message, error.correlationId && `เลขอ้างอิง ${error.correlationId}`].filter(Boolean).join('\n');
+      return Swal.fire('ตรวจคะแนนไม่สำเร็จ', text, 'error');
+    } finally {
+      button.disabled = false;
     }
 }
 

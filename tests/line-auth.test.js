@@ -16,7 +16,9 @@ require.cache[supabasePath] = {
   loaded: true,
   exports: {
     getRedis: () => null,
+    clearScoreCache: async () => {},
     supabaseAdmin: {
+      async rpc() { throw new Error('Unexpected RPC call') },
       from(table) {
         if (table === 'audit_logs') {
           return { async insert() { return { error: null } } }
@@ -118,6 +120,88 @@ test.beforeEach(() => {
 test('allows a legacy user until their first verified visit', async () => {
   const auth = await authenticateRequest(request(), { claimedUid: 'U-user-1' })
   assert.deepEqual(auth, { uid: 'U-user-1', mode: 'legacy', migrated: false })
+})
+
+test('spend rejects invalid or conflicting request IDs and returns a matching replay', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const rpc = t.mock.method(supabaseAdmin, 'rpc', async () => ({
+    error: { message: 'REQUEST_ID_CONFLICT' }
+  }))
+  const spend = require('../api/spend')
+  const rewardId = '20000000-0000-4000-8000-000000000001'
+  const requestId = '30000000-0000-4000-8000-000000000001'
+  async function submit(id) {
+    const result = { statusCode: 200, headers: {} }
+    const res = {
+      setHeader(name, value) { result.headers[name] = value },
+      status(code) { result.statusCode = code; return this },
+      json(payload) { result.payload = payload; return this }
+    }
+    await spend({ method: 'POST', headers: {}, body: { uid: 'U-user-1', rewardId, requestId: id } }, res)
+    return result
+  }
+
+  const invalid = await submit('invalid')
+  assert.equal(invalid.statusCode, 400)
+  assert.equal(rpc.mock.callCount(), 0)
+  const conflict = await submit(requestId)
+  assert.equal(conflict.statusCode, 409)
+  assert.equal(conflict.payload.message, 'request_id_conflict')
+  assert.ok(conflict.payload.correlationId)
+  assert.equal(conflict.payload.redemption, undefined)
+  assert.equal(rpc.mock.calls[0].arguments[1].p_request_id, requestId)
+
+  rpc.mock.mockImplementation(async () => ({ data: [{
+    redemption_id: '40000000-0000-4000-8000-000000000001', spent: 30, balance: 70,
+    redemption_status: 'cancelled_refunded', was_duplicate: true
+  }] }))
+  const replay = await submit(requestId)
+  assert.equal(replay.statusCode, 200)
+  assert.equal(replay.headers['Cache-Control'], 'private, no-store')
+  assert.equal(replay.payload.duplicate, true)
+  assert.equal(replay.payload.redemption.status, 'cancelled_refunded')
+  assert.equal(replay.payload.lineNotification.status, 'not_needed')
+})
+
+test('privileged routes require a LINE token and use the verified role', async () => {
+  process.env.ADMIN_UID = 'U-admin'
+  process.env.SAFETY_VIEWER_UIDS = 'U-safety-viewer'
+  const adminActions = require('../api/admin-actions')
+  const routes = [
+    [adminActions, { adminUid: 'U-admin' }],
+    [require('../api/admin-coupons'), { adminUid: 'U-admin' }],
+    [require('../api/all-scores'), { adminUid: 'U-admin' }],
+    [require('../api/rewards'), { include: '1' }]
+  ]
+  async function call(handler, query, token = '', method = 'GET', body) {
+    const result = { statusCode: 200, headers: {} }
+    const res = {
+      setHeader(name, value) { result.headers[name] = value },
+      status(code) { result.statusCode = code; return this },
+      json(payload) { result.payload = payload; return this }
+    }
+    await handler({ ...request(token), method, query, body }, res)
+    return result
+  }
+
+  for (const [handler, query] of routes) {
+    const result = await call(handler, query)
+    assert.equal(result.statusCode, 401)
+    assert.equal(result.payload.code, 'AUTH_TOKEN_REQUIRED')
+    assert.equal(result.headers['Cache-Control'], 'private, no-store')
+  }
+  const mismatch = await call(adminActions, { uid: 'U-admin' }, 'valid-token')
+  assert.equal(mismatch.payload.code, 'AUTH_UID_MISMATCH')
+
+  mockLine({ uid: 'U-admin' })
+  const admin = await call(adminActions, { uid: 'U-admin' }, 'valid-token')
+  assert.equal(admin.payload.role, 'super_admin')
+
+  mockLine({ uid: 'U-safety-viewer' })
+  const viewer = await call(adminActions, {}, 'valid-token')
+  assert.equal(viewer.payload.role, 'safety_viewer')
+  const blocked = await call(adminActions, {}, 'valid-token', 'POST', { action: 'safety_settings_update' })
+  assert.equal(blocked.statusCode, 403)
 })
 
 test('marks a verified UID and rejects later UID-only requests', async () => {

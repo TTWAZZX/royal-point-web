@@ -73,6 +73,7 @@ SUPABASE_SERVICE_ROLE_KEY=
 ADMIN_UID=
 LINE_LOGIN_CHANNEL_ID=2007053300
 LINE_CHANNEL_ACCESS_TOKEN=
+CRON_SECRET=
 APP_BASE_URL=https://your-production-domain.example
 LINE_LIFF_URL=https://liff.line.me/your-liff-id
 LINE_ADMIN_URL=https://your-production-domain.example/admin.html
@@ -101,6 +102,7 @@ Notes:
 - `SAFETY_VIEWER_UIDS` ดู Safety dashboard/report ได้
 - ห้าม commit `.env.local` หรือ secret ใดๆ
 - `LINE_CHANNEL_ACCESS_TOKEN` ต้องเป็น Messaging API channel access token ของ LINE Official Account ที่ใช้แจ้งเตือน
+- `CRON_SECRET` ใช้ตรวจสิทธิ์งานแจกคะแนนวันเกิดใน Vercel ให้ตั้งค่าใน Production ก่อน deploy
 - `LINE_LIFF_URL` ใช้สร้างปุ่มกลับเข้าสู่ระบบสำหรับผู้ใช้ เช่น `https://liff.line.me/2007053300-QoEvbXyn`
 - `LINE_ADMIN_URL` ใช้เปิดเรื่องช่วยเหลือในหน้าแอดมินโดยตรง
 - ถ้าการส่ง LINE ไม่สำเร็จ เรื่องช่วยเหลือและสิทธิ์ recovery ยังคงถูกบันทึกตามปกติ
@@ -118,6 +120,9 @@ Notes:
 7. `supabase_transaction_notifications_migration.sql`
 8. `supabase_points_integrity_migration.sql`
 9. `supabase_ad_banners_migration.sql`
+10. `supabase_birthday_rewards_migration.sql`
+11. `supabase_safety_checkin_points_migration.sql`
+12. `supabase_redemption_request_binding_migration.sql`
 
 `supabase_points_integrity_migration.sql` ต้องรันหลังข้อ 6 และ 7 และก่อน deploy API
 เวอร์ชันที่เรียก `admin_giveaway_to_all_v2` หรือ `redeem_coupon_atomic` เสมอ migration นี้เพิ่ม
@@ -142,6 +147,14 @@ workflow แบบ atomic/idempotent โดยไม่เปลี่ยน `us
 ที่เขียนกำกับไว้ท้าย `supabase_points_integrity_migration.sql` ตาราง `admin_giveaways` เป็นข้อมูล
 audit/idempotency ใหม่ จึงควรสำรองข้อมูลก่อน drop ใน production
 
+### งานแจกคะแนนวันเกิด
+
+ก่อน deploy ให้ตรวจนิยาม `process_birthday_rewards` ใน Supabase จริงและยืนยันว่าใช้ประวัติเดิมกันแจกซ้ำรายปี จากนั้นตั้ง `CRON_SECRET` ใน Vercel แล้วรัน migration ข้อ 10 หลังข้อ 5 ควรเปลี่ยนเวอร์ชันหลังรอบเดิมจบและก่อนเริ่มวันแจกถัดไป ตารางใหม่จะเริ่มบันทึกตั้งแต่รอบแรกของเวอร์ชันนี้ ส่วนรายการย้อนหลังยังอยู่ในประวัติคะแนนเดิม
+
+ถ้ารอบแจกผิดพลาด ให้ดูเลขอ้างอิงจากเมนู **บันทึกระบบ** และ Vercel Logs ผู้ดูแล deployment เรียก `GET /api/cron-birthday` พร้อม `Authorization: Bearer` ที่ใช้ `CRON_SECRET` ภายในวันเดียวกันตามเวลาไทยได้ ถ้าคะแนนบันทึกสำเร็จแล้ว รอบเดิมจะประมวลผลเฉพาะคิว LINE ที่ค้าง เมื่อข้ามวันให้เทียบประวัติคะแนนกับรอบแจกก่อนใช้เมนูปรับคะแนนสมาชิก
+
+ถ้า LINE ส่งไม่สำเร็จหรือยังรอส่ง ให้ไปที่ **สถานะ LINE → คะแนนวันเกิด** แล้วกดส่งใหม่จากรายการเดิม หากต้องย้อน deployment ให้เก็บตารางรอบแจกและประวัติคะแนนไว้ และตรวจรอบล่าสุดก่อนเปิดงานตามเวลาบนเวอร์ชันก่อนหน้า
+
 ## API Routes
 
 ### User APIs
@@ -153,6 +166,8 @@ audit/idempotency ใหม่ จึงควรสำรองข้อมู�
 - `GET /api/rewards`
 - `GET /api/score-history`
 - `GET|POST /api/daily-checkin`
+
+การส่งคำขอแลกรางวัลต้องใช้ `requestId` แบบ UUID เดิมสำหรับรายการเดิม รัน migration ข้อ 12 หลังข้อ 7 และก่อน deploy เมื่อใช้เลขคำขอเดิมกับสมาชิกและรางวัลเดิม ระบบคืนสถานะและเลขรายการเดิม แม้สต็อกจะหมด หากข้อมูลไม่ตรง ระบบตอบ `409` พร้อมเลขอ้างอิงสำหรับตรวจใน **บันทึกระบบ** ผู้ใช้ตรวจรายการที่บันทึกแล้วได้จากประวัติการแลกหรือหลักฐานใน LINE แม้เปลี่ยนอุปกรณ์
 
 ### Admin APIs
 
@@ -182,7 +197,7 @@ User flow:
    - `ready`
    - `minor_risk`
    - `need_support`
-4. ระบบบันทึก `daily_checkins`
+4. ระบบบันทึก `daily_checkins` พร้อมคะแนนเช็กอินและโบนัสที่ถึงเกณฑ์ใน transaction เดียว
 5. ถ้ามี risk/support จะขึ้นใน Safety Pulse
 
 Admin flow:
@@ -200,6 +215,10 @@ Admin flow:
    - สถานะเคส
    - ประเภทเคส
 5. กดดูรายละเอียดเคสเพื่อดู timeline
+
+ถ้าสมาชิกมีรายการเช็กอินเก่าแต่คะแนนหรือโบนัสยังขาด ให้ Super Admin เปิด **สมาชิก → จัดการสมาชิก** เลือกวันที่ แล้วกด **ตรวจและเติมคะแนนเช็กอินที่ขาด** ระบบตรวจรายการคะแนนเดิมของวันและสัปดาห์นั้นก่อนเติม พร้อมบันทึกผู้ดำเนินการใน **บันทึกระบบ** ควรใช้เฉพาะกับรายการที่ตรวจสอบแล้ว เพราะการปรับคะแนนด้วยมือผ่านเมนูอื่นมีรหัสรายการต่างกัน
+
+รัน migration ข้อ 11 หลังตาราง `daily_checkins`, `audit_logs` และฟังก์ชัน `apply_points` พร้อมใช้งาน และก่อน deploy API เวอร์ชันนี้ Migration จะไม่เติมคะแนนย้อนหลังโดยอัตโนมัติ ให้ทดสอบการเช็กอินและดูประวัติคะแนนบน staging ก่อนเปลี่ยน production หากต้องย้อนเวอร์ชัน ให้เก็บ migration นี้ไว้และตรวจรายการคะแนนกับเช็กอินก่อนเปิดเส้นทางบันทึกของเวอร์ชันเก่าอีกครั้ง
 6. กดรับทราบหรือปิดเคส
 
 ## AI Question Pack

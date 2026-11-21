@@ -19,6 +19,7 @@ async function main() {
   const {
     buildAdminHelpMessage,
     buildAdminRedemptionRequestMessage,
+    buildBirthdayRewardMessage,
     buildCouponCancelledMessage,
     buildCouponIssuedMessage,
     buildCouponRedeemedMessage,
@@ -40,6 +41,7 @@ async function main() {
   }
   const user = { name: 'ผู้ใช้ทดสอบระบบ' }
   const messages = [
+    buildBirthdayRewardMessage({ points:100, name:user.name, url:'https://liff.line.me/1234567890-AbcdEfgh?view=score-history' }),
     buildAdminHelpMessage({ helpCase, user, url:'https://example.com/admin.html?helpCase=7' }),
     buildRecoveryApprovedMessage({ helpCase, user, url:'https://liff.line.me/1234567890-AbcdEfgh?recovery_ticket=test' }),
     buildRecoverySuccessMessage({ helpCase, user, url:'https://liff.line.me/1234567890-AbcdEfgh' }),

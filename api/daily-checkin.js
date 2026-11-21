@@ -347,6 +347,8 @@ async function getWeeklyMission(userId, uid) {
     .select('id,amount,created_at')
     .eq('user_id', userId)
     .eq('code', week.code)
+    .eq('type', 'WEEKLY_SAFETY_MISSION')
+    .gt('amount', 0)
     .limit(1)
 
   if (bonusError) throw bonusError
@@ -365,45 +367,6 @@ async function getWeeklyMission(userId, uid) {
     awardedAt: bonusRows?.[0]?.created_at || null,
     weekDays
   }
-}
-
-async function applyWeeklyMissionBonus(user, uid) {
-  const mission = await getWeeklyMission(user.id, uid)
-  if (!mission.completed || mission.awarded) return { mission, awardedNow: false }
-
-  const { error } = await supabaseAdmin.rpc('apply_points', {
-    p_user: user.id,
-    p_amount: WEEKLY_MISSION_BONUS,
-    p_code: mission.code,
-    p_type: 'WEEKLY_SAFETY_MISSION',
-    p_actor: uid
-  })
-
-  if (error) {
-    await auditEvent(supabaseAdmin, {
-      type: 'weekly_mission_failed',
-      actorUid: uid,
-      targetUid: uid,
-      entityType: 'weekly_mission',
-      entityId: mission.code,
-      status: 'error',
-      detail: { reason: 'apply_points_failed', message: error.message, mission }
-    })
-    return { mission: { ...mission, error: 'apply_points_failed' }, awardedNow: false }
-  }
-
-  const updatedMission = { ...mission, awarded: true, awardedNow: true, remaining: 0 }
-  await auditEvent(supabaseAdmin, {
-    type: 'weekly_mission_success',
-    actorUid: uid,
-    targetUid: uid,
-    entityType: 'weekly_mission',
-    entityId: mission.code,
-    status: 'success',
-    detail: { bonus: WEEKLY_MISSION_BONUS, count: mission.count, target: mission.target }
-  })
-
-  return { mission: updatedMission, awardedNow: true }
 }
 
 function sendStatus(res, statusCode, payload) {
@@ -504,7 +467,7 @@ module.exports = async (req, res) => {
       })
     }
 
-    if (!checkinRule.allowed) {
+    if (!checkinRule.allowed && !existing) {
       await auditEvent(supabaseAdmin, {
         type: 'daily_checkin_blocked',
         actorUid: cleanUid,
@@ -525,146 +488,59 @@ module.exports = async (req, res) => {
       })
     }
 
-    if (existing) {
-      const weeklyMission = await getWeeklyMission(user.id, cleanUid)
-      await auditEvent(supabaseAdmin, {
-        type: 'daily_checkin_duplicate',
-        actorUid: cleanUid,
-        entityType: 'daily_checkin',
-        entityId: existing.id,
-        status: 'warning',
-        detail: { today, streak: existing.streak, points: existing.points }
-      })
-      return sendStatus(res, 409, {
-        error: true,
-        message: 'already_checked_in',
-        data: {
-          checkedIn: true,
-          today,
-          points: Number(existing.points || CHECKIN_POINTS),
-          streak: Number(existing.streak || 1),
-          checkedInAt: existing.created_at || null,
-          safety: toSafetyResponse(existing),
-          safetyQuestion,
-          checkinRule,
-          weeklyMission
-        }
-      })
-    }
-
-    const streak = await nextStreak(cleanUid, safetySettings?.streakResetDate)
     const safety = normalizeSafetyPayload(source)
-    if (safety.safety_question_id && safety.safety_question_id !== safetyQuestion.id) {
+    if (!existing && safety.safety_question_id && safety.safety_question_id !== safetyQuestion.id) {
       return sendStatus(res, 409, {
         error: true,
         message: 'safety_question_expired',
-        data: {
-          checkedIn: false,
-          today,
-          points: CHECKIN_POINTS,
-          safetyQuestion,
-          checkinRule
-        }
+        data: { checkedIn: false, today, points: CHECKIN_POINTS, safetyQuestion, checkinRule }
       })
     }
 
-    const insertPayload = {
-      user_id: user.id,
-      uid: cleanUid,
-      checkin_date: today,
-      points: CHECKIN_POINTS,
-      streak,
-      ...safety,
-      risk_status: safety.risk_flag ? 'new' : 'none'
-    }
-
-    let { data: inserted, error: insertError } = await supabaseAdmin
-      .from('daily_checkins')
-      .insert(insertPayload)
-      .select(CHECKIN_SELECT)
-      .single()
-
-    if (insertError && isMissingSafetyColumns(insertError)) {
-      const { safety_question_id, safety_answer, safety_mood, safety_note, risk_flag, risk_status, ...basePayload } = insertPayload
-      const fallback = await supabaseAdmin
-        .from('daily_checkins')
-        .insert(basePayload)
-        .select(CHECKIN_BASE_SELECT)
-        .single()
-      inserted = fallback.data
-      insertError = fallback.error
-    }
-
-    if (insertError || !inserted) {
-      const isDuplicate = insertError && String(insertError.code || '') === '23505'
-      await auditEvent(supabaseAdmin, {
-        type: isDuplicate ? 'daily_checkin_duplicate' : 'daily_checkin_failed',
-        actorUid: cleanUid,
-        entityType: 'daily_checkin',
-        status: isDuplicate ? 'warning' : 'error',
-        detail: { reason: isDuplicate ? 'duplicate' : 'insert_failed', message: insertError?.message || null, today, safety }
-      })
-      return sendStatus(res, isDuplicate ? 409 : 500, {
-        error: true,
-        message: isDuplicate ? 'already_checked_in' : 'checkin_failed'
-      })
-    }
-
-    const { error: pointError } = await supabaseAdmin.rpc('apply_points', {
-      p_user: user.id,
-      p_amount: CHECKIN_POINTS,
-      p_code: `daily-checkin:${today}`,
-      p_type: 'DAILY_CHECKIN',
-      p_actor: cleanUid
+    const streak = existing?.streak || await nextStreak(cleanUid, safetySettings?.streakResetDate)
+    const { data: result, error } = await supabaseAdmin.rpc('record_safety_checkin_points', {
+      p_uid: cleanUid,
+      p_date: today,
+      p_actor: cleanUid,
+      p_checkin: { ...safety, streak }
     })
-
-    if (pointError) {
-      await supabaseAdmin.from('daily_checkins').delete().eq('id', inserted.id)
-      await auditEvent(supabaseAdmin, {
+    if (error) {
+      const audit = await auditEvent(supabaseAdmin, {
         type: 'daily_checkin_failed',
         actorUid: cleanUid,
+        targetUid: cleanUid,
         entityType: 'daily_checkin',
-        entityId: inserted.id,
         status: 'error',
-        detail: { reason: 'apply_points_failed', message: pointError.message, today }
+        detail: { reason: 'checkin_transaction_failed', code: error.code, today }
       })
-      return sendStatus(res, 500, { error: true, message: 'apply_points_failed' })
+      return sendStatus(res, 503, {
+        error: true, message: 'checkin_failed', correlationId: audit.correlationId
+      })
     }
 
-    const { mission: weeklyMission, awardedNow: weeklyBonusAwarded } = await applyWeeklyMissionBonus(user, cleanUid)
-
-    await clearScoreCache(redis, cleanUid)
-    await auditEvent(supabaseAdmin, {
-      type: 'daily_checkin_success',
-      actorUid: cleanUid,
-      targetUid: cleanUid,
-      entityType: 'daily_checkin',
-      entityId: inserted.id,
-      status: 'success',
-      detail: { today, points: CHECKIN_POINTS, streak, safety, weeklyMission, weeklyBonusAwarded }
-    })
-
+    const { checkin, created, daily_added: dailyAdded, weekly_added: weeklyAdded } = result
+    if (dailyAdded || weeklyAdded) await clearScoreCache(redis, cleanUid)
+    const weeklyMission = await getWeeklyMission(user.id, cleanUid)
+    const data = {
+      checkedIn: true,
+      today,
+      points: checkin.points,
+      streak: checkin.streak,
+      checkedInAt: checkin.created_at || null,
+      safety: toSafetyResponse(checkin),
+      safetyQuestion,
+      checkinRule,
+      weeklyMission
+    }
+    if (!created) {
+      await auditEvent(supabaseAdmin, {
+        type: 'daily_checkin_duplicate', actorUid: cleanUid, entityType: 'daily_checkin',
+        entityId: checkin.id, status: 'warning', detail: { today, streak: checkin.streak, points: checkin.points }
+      })
+      return sendStatus(res, 409, { error: true, message: 'already_checked_in', data })
+    }
     return sendStatus(res, 200, {
-      data: {
-        checkedIn: true,
-        today,
-        points: CHECKIN_POINTS,
-        streak,
-        checkedInAt: inserted.created_at || null,
-        safety: toSafetyResponse(inserted) || {
-          questionId: safety.safety_question_id,
-          answer: safety.safety_answer,
-          mood: safety.safety_mood,
-          note: safety.safety_note,
-          riskFlag: safety.risk_flag,
-          riskStatus: safety.risk_flag ? 'new' : 'none'
-        },
-        safetyQuestion,
-        checkinRule,
-        weeklyMission,
-        weeklyBonusAwarded,
-        totalAdded: CHECKIN_POINTS + (weeklyBonusAwarded ? WEEKLY_MISSION_BONUS : 0)
-      }
+      data: { ...data, weeklyBonusAwarded: weeklyAdded > 0, totalAdded: dailyAdded + weeklyAdded }
     })
   } catch (error) {
     if (error instanceof AuthError) return sendAuthError(res, error)

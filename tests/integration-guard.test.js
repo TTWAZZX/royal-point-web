@@ -44,6 +44,31 @@ test('all private user and admin APIs use the shared authentication guard', () =
   }
 })
 
+test('check-in and administrator recovery use the same atomic points function', () => {
+  const migration = read('supabase_safety_checkin_points_migration.sql')
+  const userApi = read('api/daily-checkin.js')
+  const adminApi = read('api/admin-actions.js')
+  assert.match(userApi, /rpc\('record_safety_checkin_points'/)
+  assert.doesNotMatch(userApi, /rpc\('apply_points'/)
+  assert.match(adminApi, /action === 'safety_checkin_points_recover'[\s\S]*?rpc\('record_safety_checkin_points'/)
+  assert.match(migration, /pg_advisory_xact_lock/)
+  assert.match(migration, /insert into public\.audit_logs/)
+  assert.match(read('admin.page.js'), /action: 'safety_checkin_points_recover'/)
+})
+
+test('redeeming rewards reuses a request only for the same member and reward', () => {
+  const migration = read('supabase_redemption_request_binding_migration.sql')
+  const api = read('api/spend.js')
+  assert.match(migration, /v_existing\.user_id is distinct from v_user_id or v_existing\.reward_id is distinct from p_reward_id/)
+  assert.match(migration, /pg_advisory_xact_lock/)
+  assert.match(api, /request_id_conflict[^\r\n]*409/)
+  assert.doesNotMatch(api, /randomUUID/)
+  for (const file of ['app.js', 'all-rewards.html']) {
+    assert.match(read(file), /RoyalSpend\.start\(/)
+    assert.match(read(file), /RoyalSpend\.finish\(/)
+  }
+})
+
 test('recovery is wired through database, backend, admin UI, user UI, and audit labels', () => {
   assert.match(read('supabase_user_auth_migration.sql'), /recovery_until/)
   assert.match(read('lib/line-auth.js'), /legacy-recovery/)
@@ -179,7 +204,8 @@ test('transaction notifications and reward pickup are connected end to end', () 
   assert.match(read('admin.js'), /hasAdminDeepLink/)
   assert.match(read('admin.js'), /cancelRedemptionAndRefund/)
   assert.match(read('app.js'), /handleTransactionDeepLinks/)
-  assert.match(read('all-rewards.html'), /RP_REDEEM_REQUEST/)
+  assert.match(read('all-rewards.html'), /RoyalSpend\.start\(/)
+  assert.match(read('loader.js'), /RP_REDEEM_REQUEST/)
 })
 
 test('critical point mutations are atomic, idempotent and auditable', () => {

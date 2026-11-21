@@ -227,7 +227,7 @@
     <span id="adminUid" class="d-none"></span>
   </nav>
 
-  <div class="container px-3 py-3">
+  <div class="container px-3 py-3" id="adminContent" hidden>
     
     <ul class="nav nav-pills mb-3" id="adminTabs" role="tablist">
       <li class="nav-item">
@@ -473,6 +473,7 @@
               <select id="lineNotificationKind" class="form-select border-0 bg-light">
                 <option value="all">ทุกประเภท</option>
                 <option value="score_adjusted">เพิ่ม–ตัดคะแนน</option>
+                <option value="birthday_reward">คะแนนวันเกิด</option>
                 <option value="redemption_created">แลกของสำเร็จ</option>
                 <option value="redemption_admin_new">แจ้งแอดมินรายการแลกใหม่</option>
                 <option value="redemption_received">รับของแล้ว</option>
@@ -783,7 +784,7 @@
     </div>
 
     <div class="modal fade" id="actionModal" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-sm">
         <div class="modal-content rounded-4 border-0">
           <div class="modal-body p-4">
             <div class="text-center mb-3">
@@ -818,6 +819,11 @@
             <input type="text" id="adjustNote" class="form-control mb-3 text-center small" placeholder="เหตุผล (จำเป็น)" required minlength="3" maxlength="300">
             
             <button class="btn btn-primary w-100 rounded-pill fw-bold py-2" id="btnConfirmAdjust">ยืนยัน</button>
+            <div class="border-top mt-3 pt-3">
+              <label for="safetyRecoveryDate" class="form-label small fw-bold">วันที่เช็กอินที่ต้องการตรวจคะแนน</label>
+              <input type="date" id="safetyRecoveryDate" class="form-control form-control-sm mb-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary w-100 rounded-pill" id="btnRecoverSafetyPoints">ตรวจและเติมคะแนนเช็กอินที่ขาด</button>
+            </div>
           </div>
         </div>
       </div>
@@ -987,9 +993,9 @@
   </div> <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <script src="loader.js?v=line-token-v1"></script>
-  <script src="admin.js?v=integrity-audit-v2"></script>
-  <script src="admin.page.js"></script>
+  <script src="loader.js?v=line-token-v1-admin-auth"></script>
+  <script src="admin.js?v=admin-safety-checkin-points"></script>
+  <script src="admin.page.js?v=safety-checkin-points"></script>
 
   <script>
     const getMyUid = () => {
@@ -1022,6 +1028,7 @@
         if(!listArea) return;
         try {
             const res = await fetch('/api/rewards?include=1', { cache: 'no-store' });
+            if (!res.ok) throw new Error('โหลดข้อมูลของรางวัลไม่สำเร็จ');
             const json = await res.json();
             ALL_REWARDS_DATA = (json.items || []).sort((a,b) => (a.sort_index || 999) - (b.sort_index || 999));
             renderRewardList(ALL_REWARDS_DATA);

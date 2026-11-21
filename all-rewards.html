@@ -177,7 +177,7 @@
 </div>
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<script src="loader.js?v=line-token-v1"></script>
+<script src="loader.js?v=line-token-v1-redemption"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 
 <script>
@@ -231,10 +231,13 @@ function friendlySpendError(err) {
     stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
     reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
     reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
+    request_id_required: 'กรุณาตรวจประวัติการแลก แล้วโหลดหน้าใหม่ก่อนลองอีกครั้ง',
+    request_id_conflict: 'คำขอเดิมไม่ตรงกับรายการนี้ กรุณาตรวจประวัติการแลกก่อนลองอีกครั้ง',
     user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณากลับไปหน้าแรกเพื่อเข้าสู่ระบบใหม่',
     'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
   };
-  return map[message] || 'ไม่สามารถแลกรางวัลได้ กรุณาลองใหม่อีกครั้ง';
+  const text = map[message] || 'ยังยืนยันผลการแลกไม่ได้ กรุณาตรวจประวัติหรือส่งคำขอเดิมอีกครั้ง';
+  return err?.correlationId ? `${text} · เลขอ้างอิง ${err.correlationId}` : text;
 }
 
 async function resolveUid() {
@@ -372,11 +375,12 @@ function renderGrid(list) {
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
     const isLocked  = !isSoldOut && (CURRENT_SCORE < r.cost); // ⭐ เช็คคะแนน
+    const pending = Boolean(window.RoyalSpend.pending(getUid(), r.id));
 
     // สร้างคลาส
     let cls = 'reward-card';
-    if (isSoldOut) cls += ' soldout';
-    else if (isLocked) cls += ' locked';
+    if (isSoldOut && !pending) cls += ' soldout';
+    else if (isLocked && !pending) cls += ' locked';
 
     const id = escapeHtml(r.id);
     const name = escapeHtml(r.name || 'ของรางวัล');
@@ -401,8 +405,8 @@ function renderGrid(list) {
         <button
           type="button"
           class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          ${isSoldOut || isLocked ? 'disabled' : ''}>
-          ${isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
+          ${!pending && (isSoldOut || isLocked) ? 'disabled' : ''}>
+          ${pending ? 'ตรวจรายการเดิม' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
         </button>
       </div>
     </div>
@@ -435,6 +439,7 @@ function openRewardPreview(reward, card) {
   const stockMax = Number(reward.stock_max || 0);
   const isSoldOut = stock <= 0;
   const isLocked = !isSoldOut && CURRENT_SCORE < cost;
+  const pending = Boolean(window.RoyalSpend.pending(getUid(), reward.id));
 
   document.getElementById('rewardPreviewImg').src = reward.img || 'https://placehold.co/300x300?text=No+Image';
   document.getElementById('rewardPreviewName').textContent = reward.name || 'ของรางวัล';
@@ -443,8 +448,8 @@ function openRewardPreview(reward, card) {
 
   const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
   if (redeemBtn) {
-    redeemBtn.disabled = isSoldOut || isLocked;
-    redeemBtn.textContent = isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.disabled = !pending && (isSoldOut || isLocked);
+    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
     redeemBtn.onclick = async () => {
       if (redeemBtn.disabled) return;
       bootstrap.Modal.getInstance(modalEl)?.hide();
@@ -469,23 +474,24 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
   }
 
   // 1. เช็คคะแนนฝั่ง Client ก่อนส่ง
-  if (CURRENT_SCORE < cost) {
+  const pending = window.RoyalSpend.pending(uid, rewardId);
+  if (!pending && CURRENT_SCORE < cost) {
     Swal.fire('คะแนนไม่พอ', `คุณมี ${CURRENT_SCORE} คะแนน แต่รางวัลนี้ใช้ ${cost} คะแนน`, 'error');
     return;
   }
 
   // 2. Popup ยืนยันสวยๆ (เหมือนหน้าหลัก)
   const confirm = await Swal.fire({
-    title: 'ยืนยันการแลก?',
+    title: pending ? 'ส่งคำขอแลกรางวัลเดิมอีกครั้ง?' : 'ยืนยันการแลก?',
     html: `ต้องการแลก <b>${escapeHtml(rewardName)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
     icon: 'question',
     showCancelButton: true,
-    confirmButtonText: 'แลกเลย',
+    confirmButtonText: pending ? 'ส่งคำขอเดิม' : 'แลกเลย',
     cancelButtonText: 'ยกเลิก',
     confirmButtonColor: '#198754'
   });
 
-  if (!confirm.isConfirmed) return;
+  if (!confirm.isConfirmed || REDEEMING) return;
 
   REDEEMING = true;
   const previousText = button?.textContent;
@@ -494,21 +500,21 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
     button.textContent = 'กำลังแลก...';
   }
 
-  const redeemRequestKey = `RP_REDEEM_REQUEST:${uid}:${rewardId}`;
-  let redeemRequestId = sessionStorage.getItem(redeemRequestKey) || '';
-  if (!redeemRequestId) {
-    redeemRequestId = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    sessionStorage.setItem(redeemRequestKey, redeemRequestId);
-  }
-
   try {
+    const redeemRequestId = window.RoyalSpend.start(uid, rewardId);
     // 3. เรียก API
     const spendResult = await Loading.apiFetch('/api/spend', {
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({ uid, rewardId, cost, requestId: redeemRequestId })
     }, { scope: 'overlay', msg: 'กำลังบันทึกข้อมูล...' });
-    sessionStorage.removeItem(redeemRequestKey);
+    if (spendResult?.status !== 'success') throw spendResult || new Error('spend_failed');
+    window.RoyalSpend.finish(uid, rewardId);
+    if (spendResult.duplicate) {
+      await loadAllRewards();
+      const status = spendResult.redemption?.status === 'cancelled_refunded' ? 'รายการเดิมถูกยกเลิกและคืนคะแนนแล้ว' : 'พบรายการแลกเดิมในประวัติ';
+      return Swal.fire(status, `เลขรายการ ${spendResult.redemption.id}`, 'info');
+    }
 
     // 4. ตัดคะแนนในตัวแปร และ LocalStorage ทันที
     CURRENT_SCORE = Number.isFinite(Number(spendResult?.balance)) ? Number(spendResult.balance) : Math.max(0, CURRENT_SCORE - cost);
@@ -541,12 +547,13 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
 
   } catch (err) {
     console.error(err);
+    window.RoyalSpend.finish(uid, rewardId, err?.message || 'spend_failed');
     Swal.fire('ผิดพลาด', friendlySpendError(err), 'error');
   } finally {
     REDEEMING = false;
     if (button && document.body.contains(button)) {
       button.disabled = false;
-      button.textContent = previousText || 'แลกรางวัล';
+      button.textContent = window.RoyalSpend.pending(uid, rewardId) ? 'ตรวจรายการเดิม' : (previousText || 'แลกรางวัล');
     }
   }
 }

@@ -1,4 +1,3 @@
-const crypto = require('node:crypto')
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
 const { auditEvent } = require('../lib/audit')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
@@ -16,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 function rpcErrorCode(error) {
   const text = String(error?.message || error || '').toUpperCase()
   for (const code of [
-    'REQUEST_ID_REQUIRED', 'USER_NOT_FOUND', 'REWARD_NOT_FOUND', 'REWARD_INACTIVE',
+    'REQUEST_ID_REQUIRED', 'REQUEST_ID_CONFLICT', 'USER_NOT_FOUND', 'REWARD_NOT_FOUND', 'REWARD_INACTIVE',
     'OUT_OF_STOCK', 'INSUFFICIENT_POINTS'
   ]) {
     if (text.includes(code)) return code.toLowerCase()
@@ -63,6 +62,7 @@ async function getRedemptionEvidence(req, res) {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store')
   try {
     if (req.method === 'GET') return await getRedemptionEvidence(req, res)
     if (req.method !== 'POST') {
@@ -72,13 +72,14 @@ module.exports = async (req, res) => {
     const { uid, rewardId, requestId } = req.body || {}
     const cleanUid = String(uid || '').trim()
     const cleanRewardId = String(rewardId || '').trim()
-    const cleanRequestId = UUID_RE.test(String(requestId || '').trim())
-      ? String(requestId).trim()
-      : crypto.randomUUID()
+    const cleanRequestId = String(requestId || '').trim()
     if (!cleanUid || !UUID_RE.test(cleanRewardId)) {
       return res.status(400).json({ status: 'error', message: 'uid & rewardId required' })
     }
     await authenticateRequest(req, { claimedUid: cleanUid })
+    if (!UUID_RE.test(cleanRequestId)) {
+      return res.status(400).json({ status: 'error', message: 'request_id_required' })
+    }
 
     const { data: rpcRows, error: spendError } = await supabaseAdmin.rpc('spend_reward_atomic', {
       p_uid: cleanUid,
@@ -87,13 +88,13 @@ module.exports = async (req, res) => {
     })
     if (spendError) {
       const reason = rpcErrorCode(spendError)
-      await auditEvent(supabaseAdmin, {
+      const audit = await auditEvent(supabaseAdmin, {
         type: 'spend_failed', actorUid: cleanUid, entityType: 'reward', entityId: cleanRewardId,
         status: 'error', detail: { reason, requestId: cleanRequestId }
       })
-      const status = reason === 'out_of_stock' || reason === 'insufficient_points' ? 409
-        : reason.endsWith('not_found') ? 404 : 500
-      return res.status(status).json({ status: 'error', message: reason })
+      const status = ['out_of_stock', 'insufficient_points', 'request_id_conflict'].includes(reason) ? 409
+        : reason.endsWith('not_found') ? 404 : reason === 'request_id_required' ? 400 : 500
+      return res.status(status).json({ status: 'error', message: reason, correlationId: audit.correlationId })
     }
 
     const result = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
@@ -111,33 +112,31 @@ module.exports = async (req, res) => {
       img_url: result.reward_image || ''
     }
 
-    const { data: userProfile } = await supabaseAdmin
-      .from('users')
-      .select('name,room')
-      .eq('uid', cleanUid)
-      .maybeSingle()
-
     let userNotification = null
     let adminNotification = null
-    try {
-      userNotification = await queueLineNotification({
-        dedupeKey: `redemption-created:${redemption.id}`,
-        recipientUid: cleanUid,
-        messageKind: 'redemption_created',
-        payload: buildRedemptionCreatedMessage({
-          redemption,
-          reward,
-          balance: redemption.balance_after,
-          url: userRedemptionUrl(req, redemption.id)
+    const notify = redemption.status === 'approved'
+    if (notify) {
+      try {
+        userNotification = await queueLineNotification({
+          dedupeKey: `redemption-created:${redemption.id}`,
+          recipientUid: cleanUid,
+          messageKind: 'redemption_created',
+          payload: buildRedemptionCreatedMessage({
+            redemption,
+            reward,
+            balance: redemption.balance_after,
+            url: userRedemptionUrl(req, redemption.id)
+          })
         })
-      })
-    } catch (notifyError) {
-      console.error('[spend] user redemption LINE notification failed:', notifyError?.message || notifyError)
+      } catch (notifyError) {
+        console.error('[spend] user redemption LINE notification failed:', notifyError?.message || notifyError)
+      }
     }
 
     const adminUid = String(process.env.ADMIN_UID || '').trim()
-    if (adminUid) {
+    if (adminUid && notify) {
       try {
+        const { data: userProfile } = await supabaseAdmin.from('users').select('name,room').eq('uid', cleanUid).maybeSingle()
         adminNotification = await queueLineNotification({
           dedupeKey: `redemption-admin:${redemption.id}`,
           recipientUid: adminUid,
@@ -154,6 +153,8 @@ module.exports = async (req, res) => {
       }
     }
 
+    const lineStatus = userNotification?.status || (notify ? 'failed' : 'not_needed')
+    const adminLineStatus = adminNotification?.status || (notify ? (adminUid ? 'failed' : 'not_configured') : 'not_needed')
     await auditEvent(supabaseAdmin, {
       type: 'spend_success', actorUid: cleanUid, targetUid: cleanUid,
       entityType: 'redemption', entityId: redemption.id, status: 'success',
@@ -164,8 +165,8 @@ module.exports = async (req, res) => {
         requestId: cleanRequestId,
         duplicate: Boolean(result.was_duplicate),
         balanceAfter: redemption.balance_after,
-        lineStatus: userNotification?.status || 'failed',
-        adminLineStatus: adminNotification?.status || (adminUid ? 'failed' : 'not_configured')
+        lineStatus,
+        adminLineStatus
       }
     })
 
@@ -178,8 +179,8 @@ module.exports = async (req, res) => {
       redemption,
       duplicate: Boolean(result.was_duplicate),
       lineNotification: {
-        status: userNotification?.status || 'failed',
-        adminStatus: adminNotification?.status || (adminUid ? 'failed' : 'not_configured')
+        status: lineStatus,
+        adminStatus: adminLineStatus
       }
     })
   } catch (error) {

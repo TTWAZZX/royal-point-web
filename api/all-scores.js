@@ -1,15 +1,17 @@
 const { supabaseAdmin } = require('../lib/supabase')
-const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
+const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth')
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store')
   try {
     if (req.method !== 'GET') return res.status(405).json({ status:'error', message:'Method not allowed' })
 
-    const { adminUid } = req.query
-    if (!adminUid || adminUid !== process.env.ADMIN_UID) {
-      return res.status(403).json({ status:'error', message:'Forbidden' })
+    const { uid: adminUid } = await authenticateRequest(req, {
+      claimedUid: req.query.adminUid, requireToken: true, allowRecovery: false
+    })
+    if (!isAdminUid(adminUid)) {
+      return res.status(403).json({ status:'error', message:'บัญชีนี้ไม่มีสิทธิ์ดูข้อมูลสมาชิก' })
     }
-    await authenticateRequest(req, { claimedUid: adminUid, allowRecovery: false })
 
     const [usersResult, authResult] = await Promise.all([
       supabaseAdmin

@@ -16,6 +16,7 @@ const API_AUDIT_LOGS    = "/api/admin-audit-logs";
 
 // ============ STATE ============
 let ADMIN_UID = "";
+let ADMIN_ROLE = '';
 let COUPON_ROWS = [];
 let COUPON_FILTER = 'all';
 let COUPON_SEARCH = '';
@@ -81,7 +82,9 @@ function restorePersistentAdminTab() {
     const deepLinkTarget = params.has('helpCase')
       ? '#pills-auth-help'
       : (params.has('redemption_id') ? '#pills-history' : '');
-    const savedTarget = deepLinkTarget || String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '') || '#tab-stock';
+    const savedTarget = ADMIN_ROLE === 'super_admin'
+      ? deepLinkTarget || String(sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY) || '') || '#tab-stock'
+      : '#pills-safety';
     const savedButton = tabButtons.find(button => button.getAttribute('data-bs-target') === savedTarget);
     if (savedButton) {
         bootstrap.Tab.getOrCreateInstance(savedButton).show();
@@ -170,10 +173,10 @@ function startAdminSystem() {
 window.RoyalAdminReady = startAdminSystem;
 
 document.addEventListener("DOMContentLoaded", async () => {
-  setupPersistentAdminTab();
   window.SystemBoot?.update?.('กำลังยืนยันสิทธิ์ผู้ดูแลผ่าน LINE');
   const ready = await startAdminSystem();
   if (!ready) return;
+  setupPersistentAdminTab();
   bindGlobalEvents();
   await ensureInitialAdminTab();
 });
@@ -181,19 +184,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function initAdminSystem() {
   try {
     let liffInitialized = false;
+    let profile;
     // 1. LIFF / Auth Check
     if (typeof liff !== 'undefined') {
       try {
         await liff.init({ liffId: LIFF_ID_ADMIN });
         liffInitialized = true;
         if (liff.isLoggedIn()) {
-          const profile = await liff.getProfile();
-          ADMIN_UID = profile.userId;
-          sessionStorage.removeItem(ADMIN_LOGIN_ATTEMPT_KEY);
-          sessionStorage.setItem('uid', profile.userId);
-          // แสดงชื่อแอดมิน (ถ้ามี Element)
-          const nameEl = $id('adminName');
-          if (nameEl) nameEl.textContent = profile.displayName;
+          profile = await liff.getProfile();
         }
       } catch (e) {
         console.warn('LIFF Init failed:', e);
@@ -221,24 +219,38 @@ async function initAdminSystem() {
       return false;
     }
 
-    // Fallback สำหรับการพัฒนาใน Browser ที่ LIFF SDK เริ่มทำงานไม่ได้เท่านั้น
-    if (!ADMIN_UID) {
-      ADMIN_UID = sessionStorage.getItem('uid') || localStorage.getItem('uid');
-    }
-
-    // แสดง UID ที่ Navbar
-    if (ADMIN_UID) {
-      const uidEl = $id('adminUid');
-      if (uidEl) uidEl.textContent = `UID: ${ADMIN_UID}`;
-      // แชร์ให้ admin.page.js ใช้ด้วย (ถ้าจำเป็น)
-      window.CURRENT_ADMIN_UID = ADMIN_UID; 
-    } else {
-      console.error('Admin UID not found');
+    if (!profile?.userId) {
       window.SystemBoot?.hide?.();
       await Swal.fire('ไม่สามารถยืนยันผู้ดูแลได้', 'กรุณาเปิดหน้านี้ผ่าน LINE แล้วลองใหม่อีกครั้ง', 'error');
       return false;
     }
 
+    const response = await fetch(`${API_ADMIN_ACTIONS}?uid=${encodeURIComponent(profile.userId)}`, { cache: 'no-store' });
+    const access = await response.json();
+    if (!response.ok || !access.isAdmin) {
+      window.SystemBoot?.hide?.();
+      if (!String(access.code || '').startsWith('AUTH_')) {
+        await Swal.fire('เปิดหน้าผู้ดูแลไม่ได้', 'กรุณาใช้บัญชี LINE ที่ได้รับสิทธิ์ผู้ดูแล', 'warning');
+      }
+      return false;
+    }
+
+    ADMIN_UID = profile.userId;
+    ADMIN_ROLE = access.role;
+    sessionStorage.removeItem(ADMIN_LOGIN_ATTEMPT_KEY);
+    sessionStorage.setItem('uid', ADMIN_UID);
+    window.CURRENT_ADMIN_UID = ADMIN_UID;
+    const uidEl = $id('adminUid');
+    if (uidEl) uidEl.textContent = `UID: ${ADMIN_UID}`;
+    const nameEl = $id('adminName');
+    if (nameEl) nameEl.textContent = profile.displayName;
+    if (ADMIN_ROLE !== 'super_admin') {
+      for (const tab of document.querySelectorAll('#adminTabs [data-bs-target]:not([data-bs-target="#pills-safety"])')) {
+        tab.closest('li')?.classList.add('d-none');
+      }
+    }
+    const content = $id('adminContent');
+    if (content) content.hidden = false;
     return true;
 
   } catch (err) {
@@ -1377,6 +1389,7 @@ window.retryTransactionNotification = async (notificationId) => {
 
 const LINE_KIND_LABELS = {
   score_adjusted: 'เพิ่ม–ตัดคะแนน',
+  birthday_reward: 'คะแนนวันเกิด',
   redemption_created: 'แลกของสำเร็จ',
   redemption_admin_new: 'แจ้งแอดมินว่ามีรายการแลกใหม่',
   redemption_received: 'รับของแล้ว',
@@ -1453,7 +1466,7 @@ function renderLineNotifications() {
       ${row.last_error ? `<div class="small text-danger mt-1">${escapeAuditHtml(row.last_error)}</div>` : ''}
       <div class="text-end mt-2 d-flex justify-content-end gap-1">
         <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="openLineNotificationSource(${sourceKeyArg},${sourceKindArg})"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>เปิดรายการต้นทาง</button>
-        ${row.status === 'failed' ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryLineNotificationFromCenter(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>ส่งใหม่</button>` : ''}
+        ${row.status === 'failed' || (row.message_kind === 'birthday_reward' && row.status === 'pending') ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryLineNotificationFromCenter(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>${row.status === 'pending' ? 'ส่งตอนนี้' : 'ส่งใหม่'}</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -1474,6 +1487,10 @@ window.retryLineNotificationFromCenter = async (notificationId) => {
 
 window.openLineNotificationSource = (dedupeKey, messageKind) => {
   const key = String(dedupeKey || '');
+  if (messageKind === 'birthday_reward') {
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#pills-audit"]')).show();
+    return;
+  }
   if (String(messageKind).startsWith('coupon_')) {
     bootstrap.Tab.getOrCreateInstance(document.querySelector('[data-bs-target="#pills-coupons"]')).show();
     const couponCode = key.split(':').slice(1).join(':');
@@ -1633,6 +1650,8 @@ const AUDIT_EVENT_META = {
   redemption_received:          { label: 'ยืนยันการรับของรางวัล',            icon: 'fa-box-open',        tone: 'success' },
   redemption_cancelled_refunded:{ label: 'ยกเลิกและคืนคะแนนรายการแลก',      icon: 'fa-rotate-left',     tone: 'info' },
   line_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',              icon: 'fa-paper-plane',     tone: 'primary' },
+  birthday_reward_run:          { label: 'ประมวลผลคะแนนวันเกิด',             icon: 'fa-cake-candles',   tone: 'info' },
+  birthday_reward_failed:       { label: 'ประมวลผลคะแนนวันเกิดไม่สำเร็จ',    icon: 'fa-cake-candles',   tone: 'danger' },
   ad_banner_created:            { label: 'เพิ่มการ์ดประชาสัมพันธ์',            icon: 'fa-image',           tone: 'success' },
   ad_banner_updated:            { label: 'แก้ไขการ์ดประชาสัมพันธ์',            icon: 'fa-pen',             tone: 'primary' },
   ad_banner_toggled:            { label: 'เปิด–ปิดการ์ดประชาสัมพันธ์',         icon: 'fa-toggle-on',       tone: 'warning' },
@@ -1645,6 +1664,8 @@ const AUDIT_EVENT_META = {
   daily_checkin_failed:         { label: 'เช็คอินไม่สำเร็จ',               icon: 'fa-calendar-xmark',      tone: 'danger' },
   weekly_mission_success:       { label: 'รับโบนัส Weekly Mission',         icon: 'fa-flag-checkered',      tone: 'success' },
   weekly_mission_failed:        { label: 'Weekly Mission ไม่สำเร็จ',        icon: 'fa-flag',                tone: 'danger' },
+  safety_checkin_points_recovered: { label: 'ตรวจและกู้คืนคะแนนเช็กอิน', icon: 'fa-calendar-check', tone: 'success' },
+  safety_checkin_points_recovery_failed: { label: 'กู้คืนคะแนนเช็กอินไม่สำเร็จ', icon: 'fa-calendar-xmark', tone: 'danger' },
   redeem_success:               { label: 'แลกรางวัลสำเร็จ',                icon: 'fa-gift',                tone: 'success' },
   redeem_failed:                { label: 'แลกรางวัลไม่สำเร็จ',             icon: 'fa-gift',                tone: 'danger' },
   redemption_log_failed:        { label: 'บันทึกการแลกรางวัลไม่สำเร็จ',   icon: 'fa-triangle-exclamation', tone: 'danger' },
@@ -1696,6 +1717,10 @@ function formatAuditDetail(eventType, detail) {
       return [d.rewardName, `คืน ${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
     case 'line_notification_retry':
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
+    case 'birthday_reward_run':
+      return [d.runDate, `สมาชิก ${d.processed} คน`, `ส่ง LINE รอบนี้ ${d.sent} ข้อความ`, `รอส่ง ${d.outstanding} ข้อความ`, d.repeated ? 'เรียกงานซ้ำ' : ''].filter(Boolean).join(' · ');
+    case 'birthday_reward_failed':
+      return [d.reason, 'ตรวจการตั้งค่างานตามเวลาและลองเรียกงานอีกครั้งภายในวันเดียวกัน'].filter(Boolean).join(' · ');
     case 'ad_banner_created':
     case 'ad_banner_updated':
     case 'ad_banner_toggled':
@@ -1729,6 +1754,10 @@ function formatAuditDetail(eventType, detail) {
       return d.question ? String(d.question).slice(0, 60) + (d.question.length > 60 ? '…' : '') : '';
     case 'safety_question_batch_create':
       return `บันทึก ${Number(d.insertedCount || 0).toLocaleString('th-TH')} ข้อ${d.skippedCount ? ` • ข้ามซ้ำ ${Number(d.skippedCount).toLocaleString('th-TH')} ข้อ` : ''}`;
+    case 'safety_checkin_points_recovered':
+      return [d.today, `คะแนนเช็กอินที่เติม ${d.dailyAdded}`, `โบนัสรายสัปดาห์ที่เติม ${d.weeklyAdded}`].join(' · ');
+    case 'safety_checkin_points_recovery_failed':
+      return [d.today, d.code].filter(Boolean).join(' · ');
     case 'daily_checkin_failed':
     case 'redeem_failed':
     case 'spend_failed': {
@@ -1743,9 +1772,11 @@ function formatAuditDetail(eventType, detail) {
         already_used: 'คูปองถูกใช้แล้ว',
         coupon_not_owner: 'คูปองเป็นของบัญชี LINE อื่น',
         coupon_cancelled: 'คูปองถูกยกเลิกแล้ว',
+        request_id_conflict: 'เลขคำขอแลกรางวัลไม่ตรงกับสมาชิกหรือรางวัล',
+        request_id_required: 'เลขคำขอแลกรางวัลไม่ถูกต้อง',
         invalid_coupon_points: 'คะแนนในคูปองไม่ถูกต้อง',
       };
-      return reasonMap[d.reason] || d.reason || d.message || '';
+      return [reasonMap[d.reason] || d.reason || d.message, d.requestId && `เลขคำขอ ${d.requestId}`].filter(Boolean).join(' · ');
     }
     default:
       return '';
@@ -1830,7 +1861,11 @@ async function adminAction(body) {
     body: JSON.stringify({ adminUid: ADMIN_UID, ...body })
   });
   const json = await res.json().catch(() => ({}));
-  if (!res.ok || json.status !== 'success') throw new Error(json.message || 'request_failed');
+  if (!res.ok || json.status !== 'success') {
+    const error = new Error(json.message || 'request_failed');
+    error.correlationId = json.correlationId;
+    throw error;
+  }
   return json.data;
 }
 
