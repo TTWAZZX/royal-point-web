@@ -103,24 +103,33 @@ function centerAdminTab(button) {
 
 function loadAdminTabData(target) {
     const cleanTarget = String(target || '#tab-stock');
-    if (ADMIN_TAB_LOADS.has(cleanTarget)) return ADMIN_TAB_LOADS.get(cleanTarget);
+    const filter = {
+      '#pills-auth-help': $id('authHelpStatusFilter')?.value,
+      '#pills-history': $id('historyStatusFilter')?.value,
+      '#pills-line-notifications': [$id('lineNotificationStatus')?.value, $id('lineNotificationKind')?.value].join('/')
+    }[cleanTarget];
+    const current = ADMIN_TAB_LOADS.get(cleanTarget);
+    if (current && current.filter === filter) return current.task;
     let loader = () => Promise.resolve();
-    if (cleanTarget === '#tab-stock') loader = () => window.loadRewardsData?.();
+    if (cleanTarget === '#pills-pending-work') loader = loadPendingWork;
+    else if (cleanTarget === '#tab-stock') loader = () => window.loadRewardsData?.();
     else if (cleanTarget === '#pills-users') loader = () => window.loadPageUsers?.();
     else if (cleanTarget === '#pills-auth-help') loader = () => window.loadAuthHelpCases?.();
     else if (cleanTarget === '#pills-coupons') loader = () => loadCoupons();
     else if (cleanTarget === '#pills-ads') loader = () => loadAdBanners();
-    else if (cleanTarget === '#pills-history') loader = () => HISTORY_DATA.length ? Promise.resolve() : loadRedemptionHistory();
+    else if (cleanTarget === '#pills-history') loader = loadRedemptionHistory;
     else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
-    else if (cleanTarget === '#pills-audit') loader = () => AUDIT_ROWS.length ? Promise.resolve() : loadAuditLogs();
+    else if (cleanTarget === '#pills-audit') loader = loadAuditLogs;
     else if (cleanTarget === '#pills-safety') loader = () => loadAdminTabData(
       document.querySelector('#safetySubTabs .nav-link.active')?.getAttribute('data-bs-target') || '#safety-sub-pulse'
     );
     else if (cleanTarget === '#safety-sub-pulse') loader = () => SAFETY_PULSE ? Promise.resolve() : loadSafetyPulse();
     else if (cleanTarget === '#safety-sub-questions') loader = () => SAFETY_QUESTIONS.length ? Promise.resolve() : loadSafetyQuestions();
     else if (cleanTarget === '#safety-sub-settings') loader = () => loadSafetySettings();
-    const task = Promise.resolve().then(loader).finally(() => ADMIN_TAB_LOADS.delete(cleanTarget));
-    ADMIN_TAB_LOADS.set(cleanTarget, task);
+    const task = Promise.resolve().then(loader).finally(() => {
+      if (ADMIN_TAB_LOADS.get(cleanTarget)?.task === task) ADMIN_TAB_LOADS.delete(cleanTarget);
+    });
+    ADMIN_TAB_LOADS.set(cleanTarget, { filter, task });
     return task;
 }
 
@@ -178,8 +187,62 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (!ready) return;
   setupPersistentAdminTab();
   bindGlobalEvents();
+  $id('pendingWorkRefresh')?.addEventListener('click', () => loadAdminTabData('#pills-pending-work'));
+  $id('pendingWorkGrid')?.addEventListener('click', openPendingWorkQueue);
   await ensureInitialAdminTab();
 });
+
+async function loadPendingWork() {
+  if (ADMIN_ROLE !== 'super_admin') return;
+  const grid = $id('pendingWorkGrid');
+  const status = $id('pendingWorkStatus');
+  const refresh = $id('pendingWorkRefresh');
+  const counters = grid.querySelectorAll('[data-pending-count]');
+  grid.setAttribute('aria-busy', 'true');
+  refresh.disabled = true;
+  status.textContent = 'กำลังตรวจยอดงานค้าง';
+  counters.forEach(counter => { counter.textContent = '—'; });
+
+  try {
+    const query = new URLSearchParams({ action: 'pending_work', adminUid: ADMIN_UID });
+    const response = await fetch(`${API_ADMIN_ACTIONS}?${query}`, { cache: 'no-store' });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success' || !result.data) throw new Error('pending_work_unavailable');
+
+    let unavailable = 0;
+    for (const counter of counters) {
+      const count = result.data[counter.dataset.pendingCount];
+      if (Number.isInteger(count)) counter.textContent = count.toLocaleString('th-TH');
+      else unavailable++;
+    }
+    status.textContent = unavailable === 0 ? 'อัปเดตยอดแล้ว'
+      : unavailable === counters.length ? 'โหลดยอดงานค้างไม่สำเร็จ กรุณาอัปเดตยอดอีกครั้ง'
+      : 'โหลดยอดบางรายการไม่สำเร็จ กรุณาอัปเดตยอดอีกครั้ง';
+  } catch (error) {
+    console.error('Pending work:', error);
+    status.textContent = 'โหลดยอดงานค้างไม่สำเร็จ กรุณาอัปเดตยอดอีกครั้ง';
+  } finally {
+    grid.setAttribute('aria-busy', 'false');
+    refresh.disabled = false;
+  }
+}
+
+function openPendingWorkQueue(event) {
+  const shortcut = event.target.closest('button[data-pending-queue]');
+  if (!shortcut || ADMIN_ROLE !== 'super_admin') return;
+  const queue = {
+    pickup: { tab: '#pills-history', filters: { historySearch: '', historyStatusFilter: 'approved' }, focus: 'historyStatusFilter' },
+    help: { tab: '#pills-auth-help', filters: { authHelpSearch: '', authHelpStatusFilter: 'open' }, focus: 'authHelpStatusFilter' },
+    line: { tab: '#pills-line-notifications', filters: { lineNotificationSearch: '', lineNotificationKind: 'all', lineNotificationStatus: 'failed' }, focus: 'lineNotificationStatus' },
+    audit: { tab: '#pills-audit', filters: { auditSearch: '' }, focus: 'auditFailureArea' }
+  }[shortcut.dataset.pendingQueue];
+  if (!queue) return;
+
+  for (const [id, value] of Object.entries(queue.filters)) $id(id).value = value;
+  const tab = document.querySelector(`#adminTabs [data-bs-target="${queue.tab}"]`);
+  tab.addEventListener('shown.bs.tab', () => $id(queue.focus)?.focus(), { once: true });
+  bootstrap.Tab.getOrCreateInstance(tab).show();
+}
 
 async function initAdminSystem() {
   try {
@@ -326,11 +389,7 @@ function renderCoupons() {
     const safeUsedDate = usedDate && !Number.isNaN(usedDate.getTime())
       ? escapeAuditHtml(usedDate.toLocaleDateString('th-TH'))
       : '-';
-    const badge = isCancelled
-      ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle">ยกเลิกแล้ว</span>`
-      : isUsed
-        ? `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle"><i class="fa-solid fa-check"></i> ใช้แล้ว</span>`
-        : `<span class="badge bg-success-subtle text-success border border-success-subtle">พร้อมใช้</span>`;
+    const badge = RoyalStatus.badge('coupon', isCancelled ? 'cancelled' : c.status);
     
     const usedInfo = isUsed 
       ? `<div class="small text-muted mt-1"><i class="fa-regular fa-user"></i> ${safeClaimer} &bull; ${safeUsedDate}</div>`
@@ -393,11 +452,9 @@ function renderCoupons() {
 }
 
 function couponNotificationBadge(notification, label = 'LINE') {
-  const safeLabel = escapeAuditHtml(label);
-  if (!notification) return `<div class="small text-muted mt-1"><i class="fa-regular fa-paper-plane me-1"></i>${safeLabel}: ยังไม่มีข้อมูล</div>`;
-  if (notification.status === 'sent') return `<div class="small text-success mt-1"><i class="fa-solid fa-circle-check me-1"></i>${safeLabel}: ส่ง LINE แล้ว</div>`;
-  if (notification.status === 'failed') return `<div class="small text-danger mt-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>${safeLabel}: ส่ง LINE ไม่สำเร็จ${notification.lastError ? `: ${escapeAuditHtml(notification.lastError)}` : ''}</div>`;
-  return `<div class="small text-warning mt-1"><i class="fa-solid fa-clock me-1"></i>${safeLabel}: รอส่ง LINE</div>`;
+  const badge = RoyalStatus.badge('delivery', notification?.status ?? 'missing');
+  const error = notification?.status === 'failed' && notification.lastError;
+  return `<div class="small mt-1 text-break">${escapeAuditHtml(label)} ${badge}${error ? `<div class="text-danger mt-1">${escapeAuditHtml(error)}</div>` : ''}</div>`;
 }
 
 function newCouponRequestId() {
@@ -1236,13 +1293,15 @@ function bindGlobalEvents() {
 // ==========================================
 
 let HISTORY_DATA = [];
+let latestHistoryRequest;
 
 // 1. ผูก Event เมื่อกด Tab "ประวัติ" ให้โหลดข้อมูลทันที
 document.addEventListener("DOMContentLoaded", () => {
+    $id('historyStatusFilter')?.addEventListener('change', () => loadAdminTabData('#pills-history'));
     document.getElementById('btnRefreshLineNotifications')?.addEventListener('click', loadLineNotifications);
     document.getElementById('lineNotificationSearch')?.addEventListener('input', renderLineNotifications);
-    document.getElementById('lineNotificationStatus')?.addEventListener('change', loadLineNotifications);
-    document.getElementById('lineNotificationKind')?.addEventListener('change', loadLineNotifications);
+    document.getElementById('lineNotificationStatus')?.addEventListener('change', () => loadAdminTabData('#pills-line-notifications'));
+    document.getElementById('lineNotificationKind')?.addEventListener('change', () => loadAdminTabData('#pills-line-notifications'));
     document.getElementById('lineNotificationDate')?.addEventListener('change', renderLineNotifications);
 
     const safetyPulseSubBtn = document.getElementById('tabSafetyPulseSubBtn');
@@ -1290,6 +1349,8 @@ async function loadRedemptionHistory() {
         return;
     }
 
+    const request = latestHistoryRequest = Symbol();
+    const status = $id('historyStatusFilter')?.value || 'all';
     area.innerHTML = `
       <div class="text-center py-5 text-muted">
         <div class="spinner-border text-primary spinner-border-sm mb-2"></div>
@@ -1302,24 +1363,27 @@ async function loadRedemptionHistory() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: 'get_history',
-                adminUid: ADMIN_UID
+                adminUid: ADMIN_UID,
+                status
             })
         });
 
         const json = await res.json();
+        if (request !== latestHistoryRequest) return;
         
         if (json.status !== 'success') throw new Error(json.message);
 
         // ⭐ ใช้ข้อมูลดิบจาก Server เลย (เพราะเราจัด Format มาดีแล้วจากข้อ 1)
         HISTORY_DATA = json.data || [];
 
-        renderHistoryList(HISTORY_DATA);
+        window.filterHistory();
 
     } catch (err) {
+        if (request !== latestHistoryRequest) return;
         console.error(err);
         area.innerHTML = `<div class="text-center text-danger py-5">
             <i class="fa-solid fa-triangle-exclamation mb-2"></i><br>
-            โหลดข้อมูลไม่สำเร็จ: ${err.message}
+            โหลดประวัติการแลกไม่สำเร็จ กรุณากดโหลดใหม่
         </div>`;
     }
 }
@@ -1333,7 +1397,7 @@ function renderHistoryList(list) {
         area.innerHTML = `
           <div class="text-center py-5 text-muted opacity-50">
             <i class="fa-solid fa-box-open fa-3x mb-2"></i>
-            <div>ไม่พบประวัติการแลก</div>
+            <div>${$id('historyStatusFilter')?.value === 'approved' && !$id('historySearch')?.value.trim() ? 'ไม่มีรายการรอรับรางวัล' : 'ไม่พบประวัติการแลก'}</div>
           </div>`;
         return;
     }
@@ -1348,22 +1412,10 @@ function renderHistoryList(list) {
             }
         } catch(e) {}
 
-        const statusMeta = {
-          legacy: { label: 'ประวัติเก่าก่อนระบบรับของ', tone: 'secondary' },
-          approved: { label: 'รอรับของ', tone: 'success' },
-          received: { label: 'รับของแล้ว', tone: 'primary' },
-          cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info' }
-        }[item.status] || { label: item.status || '-', tone: 'secondary' };
         const lineItems = [item.created_notification, item.admin_notification, item.received_notification, item.cancelled_notification].filter(Boolean);
         const failedNotification = lineItems.find(row => row.status === 'failed');
         const latestNotification = lineItems[lineItems.length - 1] || null;
-        const lineBadge = !latestNotification
-          ? '<span class="badge bg-secondary-subtle text-secondary">ยังไม่มีข้อมูล LINE</span>'
-          : latestNotification.status === 'sent'
-            ? '<span class="badge bg-success-subtle text-success">ส่ง LINE แล้ว</span>'
-            : latestNotification.status === 'failed'
-              ? '<span class="badge bg-danger-subtle text-danger">ส่ง LINE ไม่สำเร็จ</span>'
-              : '<span class="badge bg-warning-subtle text-warning">รอส่ง LINE</span>';
+        const lineBadge = RoyalStatus.badge('delivery', failedNotification?.status ?? latestNotification?.status ?? 'missing');
         const idArg = escapeAuditHtml(JSON.stringify(String(item.id || '')));
         const retryArg = escapeAuditHtml(JSON.stringify(String(failedNotification?.id || '')));
         const actionButtons = item.status === 'approved' ? `
@@ -1396,16 +1448,16 @@ function renderHistoryList(list) {
                 </div>
 
                 <div class="text-end">
-                    <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2">-${item.cost} pt</span>
+                    <span class="badge bg-danger bg-opacity-10 text-danger rounded-pill px-2">−${Number(item.cost).toLocaleString('th-TH')} คะแนน</span>
                     <div class="text-muted mt-1" style="font-size:0.7rem;">${dateStr}</div>
                 </div>
             </div>
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top">
               <div class="d-flex flex-wrap gap-1">
-                <span class="badge bg-${statusMeta.tone}-subtle text-${statusMeta.tone}">${escapeAuditHtml(statusMeta.label)}</span>
+                ${RoyalStatus.badge('redemption', item.status)}
                 ${lineBadge}
               </div>
-              <div class="d-flex flex-wrap gap-1">
+              <div class="d-flex gap-1 rp-status-actions">
                 ${failedNotification ? `<button class="btn btn-sm btn-outline-warning rounded-pill" onclick="retryTransactionNotification(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>ส่ง LINE ใหม่</button>` : ''}
                 ${actionButtons}
               </div>
@@ -1436,7 +1488,7 @@ async function openRedemptionDeepLink({ loadData = true } = {}) {
 // 4. ฟังก์ชันค้นหา (Filter)
 window.filterHistory = () => {
     const term = document.getElementById('historySearch').value.toLowerCase();
-    const filtered = HISTORY_DATA.filter(x => 
+    const filtered = !term ? HISTORY_DATA : HISTORY_DATA.filter(x =>
         (x.user_name && x.user_name.toLowerCase().includes(term)) ||
         (x.reward_name && x.reward_name.toLowerCase().includes(term)) ||
         (x.user_uid && x.user_uid.toLowerCase().includes(term)) ||
@@ -1502,8 +1554,8 @@ const LINE_KIND_LABELS = {
   birthday_reward: 'คะแนนวันเกิด',
   redemption_created: 'แลกของสำเร็จ',
   redemption_admin_new: 'แจ้งแอดมินว่ามีรายการแลกใหม่',
-  redemption_received: 'รับของแล้ว',
-  redemption_cancelled: 'ยกเลิกและคืนคะแนน',
+  redemption_received: RoyalStatus.get('redemption', 'received').label,
+  redemption_cancelled: RoyalStatus.get('redemption', 'cancelled_refunded').label,
   coupon_issued: 'มอบคูปอง',
   coupon_redeemed: 'ใช้คูปอง',
   coupon_cancelled: 'ยกเลิกคูปอง',
@@ -1512,9 +1564,11 @@ const LINE_KIND_LABELS = {
   auth_help_user_resolved: 'แก้ไขการเข้าสู่ระบบแล้ว'
 };
 
+let latestLineNotificationsRequest;
 async function loadLineNotifications() {
   const area = document.getElementById('lineNotificationList');
   if (!area) return;
+  const request = latestLineNotificationsRequest = Symbol();
   area.innerHTML = '<div class="text-center py-5 text-muted"><div class="spinner-border spinner-border-sm text-success"></div><div class="mt-2">กำลังโหลดสถานะ LINE...</div></div>';
   try {
     const status = document.getElementById('lineNotificationStatus')?.value || 'all';
@@ -1522,6 +1576,7 @@ async function loadLineNotifications() {
     const query = new URLSearchParams({ action: 'line_notifications', adminUid: ADMIN_UID || '', status, kind, limit: '300', t: String(Date.now()) });
     const response = await fetch(`${API_ADMIN_ACTIONS}?${query}`, { cache: 'no-store' });
     const payload = await response.json().catch(() => ({}));
+    if (request !== latestLineNotificationsRequest) return;
     if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดสถานะ LINE ไม่สำเร็จ');
     LINE_NOTIFICATION_ROWS = Array.isArray(payload.data) ? payload.data : [];
     const failedCount = LINE_NOTIFICATION_ROWS.filter(row => row.status === 'failed').length;
@@ -1532,6 +1587,7 @@ async function loadLineNotifications() {
     }
     renderLineNotifications();
   } catch (error) {
+    if (request !== latestLineNotificationsRequest) return;
     area.innerHTML = `<div class="alert alert-danger">${escapeAuditHtml(error.message || 'โหลดสถานะ LINE ไม่สำเร็จ')}</div>`;
   }
 }
@@ -1552,29 +1608,24 @@ function renderLineNotifications() {
     return;
   }
   area.innerHTML = rows.map(row => {
-    const statusMeta = row.status === 'sent'
-      ? { label: 'ส่งแล้ว', tone: 'success', icon: 'fa-circle-check' }
-      : row.status === 'failed'
-        ? { label: 'ส่งไม่สำเร็จ', tone: 'danger', icon: 'fa-triangle-exclamation' }
-        : { label: 'รอส่ง', tone: 'warning', icon: 'fa-clock' };
     const retryArg = escapeAuditHtml(JSON.stringify(String(row.id || '')));
     const sourceKeyArg = escapeAuditHtml(JSON.stringify(String(row.dedupe_key || '')));
     const sourceKindArg = escapeAuditHtml(JSON.stringify(String(row.message_kind || '')));
     const uid = String(row.recipient_uid || '');
     const maskedUid = uid.length > 14 ? `${uid.slice(0, 7)}…${uid.slice(-4)}` : uid;
     return `<div class="m-card p-3 mb-2">
-      <div class="d-flex justify-content-between align-items-start gap-2">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
         <div style="min-width:0">
           <div class="fw-bold">${escapeAuditHtml(LINE_KIND_LABELS[row.message_kind] || row.message_kind)}</div>
           <div class="small text-muted text-truncate">${escapeAuditHtml(row.user?.name || maskedUid)}${row.user?.room ? ` · ${escapeAuditHtml(row.user.room)}` : ''}</div>
           <div class="small text-muted mt-1 text-break"><code>${escapeAuditHtml(row.dedupe_key)}</code></div>
         </div>
-        <span class="badge bg-${statusMeta.tone}-subtle text-${statusMeta.tone}"><i class="fa-solid ${statusMeta.icon} me-1"></i>${statusMeta.label}</span>
+        ${RoyalStatus.badge('delivery', row.status)}
       </div>
       <div class="small text-muted mt-2">ลองส่ง ${Number(row.attempt_count || 0)} ครั้ง · ${escapeAuditHtml(formatAuditDate(row.sent_at || row.updated_at || row.created_at))}</div>
-      ${row.line_request_id ? `<div class="small text-muted">LINE Request ID: ${escapeAuditHtml(row.line_request_id)}</div>` : ''}
-      ${row.last_error ? `<div class="small text-danger mt-1">${escapeAuditHtml(row.last_error)}</div>` : ''}
-      <div class="text-end mt-2 d-flex justify-content-end gap-1">
+      ${row.line_request_id ? `<div class="small text-muted text-break">เลขอ้างอิง LINE: ${escapeAuditHtml(row.line_request_id)}</div>` : ''}
+      ${row.last_error ? `<div class="small text-danger mt-1 text-break">${escapeAuditHtml(row.last_error)}</div>` : ''}
+      <div class="text-end mt-2 d-flex justify-content-end gap-1 rp-status-actions">
         <button class="btn btn-sm btn-outline-secondary rounded-pill" onclick="openLineNotificationSource(${sourceKeyArg},${sourceKindArg})"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>เปิดรายการต้นทาง</button>
         ${row.status === 'failed' || (row.message_kind === 'birthday_reward' && row.status === 'pending') ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryLineNotificationFromCenter(${retryArg})"><i class="fa-solid fa-paper-plane me-1"></i>${row.status === 'pending' ? 'ส่งตอนนี้' : 'ส่งใหม่'}</button>` : ''}
       </div>
@@ -1611,11 +1662,11 @@ window.openLineNotificationSource = (dedupeKey, messageKind) => {
     return;
   }
   if (String(messageKind).startsWith('redemption_')) {
-    bootstrap.Tab.getOrCreateInstance(document.getElementById('tabHistoryBtn')).show();
     const redemptionId = key.split(':').slice(1).join(':');
     const input = document.getElementById('historySearch');
     if (input) input.value = redemptionId;
-    if (!HISTORY_DATA.length) loadRedemptionHistory(); else window.filterHistory();
+    $id('historyStatusFilter').value = 'all';
+    bootstrap.Tab.getOrCreateInstance(document.getElementById('tabHistoryBtn')).show();
     return;
   }
   if (String(messageKind).startsWith('auth_')) {
@@ -1686,9 +1737,10 @@ async function loadAuditLogs() {
 
     AUDIT_ROWS = Array.isArray(json.data) ? json.data : [];
     AUDIT_FAILURE_ROWS = Array.isArray(json.auditFailures) ? json.auditFailures : [];
-    renderAuditFailures(AUDIT_FAILURE_ROWS, json.auditFailureWarning);
+    renderAuditFailures(AUDIT_FAILURE_ROWS, json.auditFailureWarning || json.warning);
     renderAuditLogs(AUDIT_ROWS, json.warning);
   } catch (err) {
+    $id('auditFailureArea').innerHTML = '<p class="small text-danger px-1">โหลดบันทึกที่รอกู้คืนไม่สำเร็จ กรุณากดโหลดใหม่</p>';
     area.innerHTML = `<div class="alert alert-danger m-3">โหลดบันทึกระบบไม่สำเร็จ: ${escapeAuditHtml(err.message)}</div>`;
   }
 }
@@ -1699,13 +1751,13 @@ function renderAuditFailures(list, warning = '') {
   if (!list.length) {
     area.innerHTML = warning
       ? `<div class="alert alert-warning small"><i class="fa-solid fa-triangle-exclamation me-2"></i>ยังไม่ได้ติดตั้งระบบกู้คืน audit กรุณารัน migration ล่าสุดก่อนใช้งานจริง</div>`
-      : '';
+      : '<p class="small text-muted px-1">ไม่มีบันทึกระบบที่รอกู้คืน</p>';
     return;
   }
 
   area.innerHTML = `
     <div class="alert alert-danger shadow-sm">
-      <div class="fw-bold"><i class="fa-solid fa-shield-halved me-2"></i>พบบันทึก audit ที่รอกู้คืน ${list.length.toLocaleString('th-TH')} รายการ</div>
+      <div class="fw-bold"><i class="fa-solid fa-shield-halved me-2"></i>บันทึกระบบที่รอกู้คืน</div>
       <div class="small mt-1">ธุรกรรมหลักอาจสำเร็จแล้ว แต่บันทึกตรวจสอบยังไม่ครบ กรุณาตรวจสอบและกดบันทึกใหม่</div>
     </div>
     ${list.map(row => {
@@ -1770,10 +1822,10 @@ const AUDIT_EVENT_META = {
   ad_banner_deleted:            { label: 'ลบการ์ดประชาสัมพันธ์',               icon: 'fa-trash',           tone: 'danger' },
   ad_banner_restored:           { label: 'กู้คืนการ์ดประชาสัมพันธ์',           icon: 'fa-rotate-left',     tone: 'success' },
   ad_banner_reordered:          { label: 'เรียงลำดับการ์ดประชาสัมพันธ์',       icon: 'fa-arrow-down-up-across-line', tone: 'primary' },
-  daily_checkin_success:        { label: 'เช็คอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
-  daily_checkin_duplicate:      { label: 'เช็คอินซ้ำ (วันนี้เช็คอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
-  daily_checkin_blocked:        { label: 'เช็คอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
-  daily_checkin_failed:         { label: 'เช็คอินไม่สำเร็จ',               icon: 'fa-calendar-xmark',      tone: 'danger' },
+  daily_checkin_success:        { label: 'เช็กอินความปลอดภัยสำเร็จ',     icon: 'fa-calendar-check',      tone: 'success' },
+  daily_checkin_duplicate:      { label: 'เช็กอินซ้ำ (วันนี้เช็กอินแล้ว)', icon: 'fa-calendar-check',      tone: 'secondary' },
+  daily_checkin_blocked:        { label: 'เช็กอินไม่ผ่าน (นอกเวลา)',       icon: 'fa-clock',               tone: 'warning' },
+  daily_checkin_failed:         { label: 'เช็กอินไม่สำเร็จ',               icon: 'fa-calendar-xmark',      tone: 'danger' },
   weekly_mission_success:       { label: 'รับโบนัส Weekly Mission',         icon: 'fa-flag-checkered',      tone: 'success' },
   weekly_mission_failed:        { label: 'Weekly Mission ไม่สำเร็จ',        icon: 'fa-flag',                tone: 'danger' },
   safety_checkin_points_recovered: { label: 'ตรวจและกู้คืนคะแนนเช็กอิน', icon: 'fa-calendar-check', tone: 'success' },
@@ -1828,7 +1880,7 @@ function formatAuditDetail(eventType, detail) {
       return [reward.name, `${Number(reward.cost || 0).toLocaleString('th-TH')} คะแนน`, eventType === 'reward_archived' ? 'ปิดการแลกแล้ว' : ''].filter(Boolean).join(' · ');
     }
     case 'redemption_received':
-      return [d.rewardName, 'รับของแล้ว', `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
+      return [d.rewardName, RoyalStatus.get('redemption', 'received').label, RoyalStatus.get('delivery', d.lineStatus || 'missing').label].filter(Boolean).join(' · ');
     case 'redemption_cancelled_refunded':
       return [d.rewardName, `คืน ${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
     case 'line_notification_retry':
@@ -1854,7 +1906,7 @@ function formatAuditDetail(eventType, detail) {
       return parts.join(' · ');
     }
     case 'weekly_mission_success':
-      return `โบนัส +${d.bonus || 10} คะแนน · เช็คอินครบ ${d.count || 5}/${d.target || 5} วัน`;
+      return `โบนัส +${d.bonus || 10} คะแนน · เช็กอินครบ ${d.count || 5}/${d.target || 5} วัน`;
     case 'redeem_success':
       return `เพิ่ม ${d.added != null ? '+' + d.added : ''} คะแนน${d.coupon ? ' · คูปอง ' + d.coupon : ''}`.trim();
     case 'spend_success':
@@ -1879,8 +1931,8 @@ function formatAuditDetail(eventType, detail) {
     case 'spend_failed': {
       const reasonMap = {
         user_not_found: 'ไม่พบผู้ใช้',
-        already_checked_in: 'เช็คอินซ้ำ',
-        checkin_time_closed: 'นอกเวลาเช็คอิน',
+        already_checked_in: 'เช็กอินซ้ำ',
+        checkin_time_closed: 'นอกเวลาเช็กอิน',
         apply_points_failed: 'เพิ่มแต้มไม่สำเร็จ',
         invalid_coupon: 'คูปองไม่ถูกต้อง',
         invalid_code: 'ไม่พบคูปอง',
@@ -2019,7 +2071,7 @@ async function saveSafetySettings() {
       checkinStartTime: document.getElementById('safetyStartTime')?.value || '06:00',
       checkinEndTime: document.getElementById('safetyEndTime')?.value || '18:00'
     });
-    toastOk('บันทึกเวลาเช็คอินแล้ว');
+    toastOk('บันทึกเวลาเช็กอินแล้ว');
   } catch (err) {
     toastErr(err.message || 'save_failed');
   }
@@ -2291,7 +2343,7 @@ async function deleteSafetyQuestion(id) {
   if (!id) return;
   const confirm = await Swal.fire({
     title: 'ลบคำถามนี้ถาวร?',
-    text: 'คำถามจะหายจากรายการแอดมินและจะไม่ถูกใช้ตอนเช็คอินอีก',
+    text: 'คำถามจะหายจากรายการแอดมินและจะไม่ถูกใช้ตอนเช็กอินอีก',
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: 'ลบถาวร',
@@ -2504,13 +2556,6 @@ function renderSafetyPulse(data) {
   const actionItems = visibleRiskItems.filter(item => (item.riskStatus || 'new') !== 'resolved');
   const rawActionCount = riskItems.filter(item => (item.riskStatus || 'new') !== 'resolved').length;
 
-  const statusMeta = (status = 'new') => ({
-    new: { label: 'New', tone: 'danger' },
-    acknowledged: { label: 'Acknowledged', tone: 'primary' },
-    resolved: { label: 'Resolved', tone: 'success' },
-    none: { label: 'Review', tone: 'secondary' }
-  }[status] || { label: status, tone: 'secondary' });
-
   const metric = (label, value, tone = 'primary', icon = 'fa-circle') => `
     <div class="col-6 col-lg-3">
       <div class="border rounded-3 p-2 h-100 bg-white">
@@ -2531,7 +2576,7 @@ function renderSafetyPulse(data) {
         <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
           <div style="min-width:0;">
             <div class="fw-bold text-dark">${escapeAuditHtml(dep.room || 'ไม่ระบุ')}</div>
-            <div class="small text-muted">เช็คอิน ${depCheckins}/${depTotal} คน | ค้าง ${Number(dep.pending || 0)} | เสี่ยง ${Number(dep.risk || 0)}</div>
+            <div class="small text-muted">เช็กอิน ${depCheckins}/${depTotal} คน | ค้าง ${Number(dep.pending || 0)} | เสี่ยง ${Number(dep.risk || 0)}</div>
           </div>
           <span class="badge bg-primary-subtle text-primary rounded-pill">${depRate}%</span>
         </div>
@@ -2545,20 +2590,19 @@ function renderSafetyPulse(data) {
     const isSupport = item.answer === 'need_support' || item.mood === 'support';
     const statusText = isSupport ? 'ต้องติดตาม' : 'พบจุดเสี่ยง';
     const workflowStatus = item.riskStatus || 'new';
-    const meta = statusMeta(workflowStatus);
     return `
       <div class="border rounded-3 p-2 mb-2 bg-white ${isSupport ? 'border-danger' : 'border-warning'}">
-        <div class="d-flex justify-content-between gap-2 align-items-start">
+        <div class="d-flex flex-wrap justify-content-between gap-2 align-items-start">
           <div style="min-width:0;">
             <div class="fw-bold text-dark text-truncate">${escapeAuditHtml(item.name)}</div>
             <div class="small text-muted">${escapeAuditHtml(item.room)} | ${escapeAuditHtml(statusText)} | ${formatAuditDate(item.created_at)}</div>
             ${item.note ? `<div class="small text-muted mt-1">${escapeAuditHtml(item.note)}</div>` : ''}
             ${item.riskAdminNote ? `<div class="small text-primary mt-1">Admin: ${escapeAuditHtml(item.riskAdminNote)}</div>` : ''}
           </div>
-          <div class="d-flex flex-column gap-1 flex-shrink-0 align-items-end">
-            <span class="badge bg-${meta.tone}-subtle text-${meta.tone}">${escapeAuditHtml(meta.label)}</span>
-            <div class="d-flex gap-1">
-              <button class="btn btn-sm btn-outline-secondary" onclick="showSafetyRiskCase('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-eye"></i></button>
+          <div class="d-flex flex-column gap-1 align-items-start">
+            ${RoyalStatus.badge('safety', workflowStatus)}
+            <div class="d-flex gap-1 rp-status-actions">
+              <button class="btn btn-sm btn-outline-secondary" aria-label="ดูรายละเอียดเคส" onclick="showSafetyRiskCase('${escapeAuditHtml(item.id)}')"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
               ${workflowStatus !== 'resolved' ? `<button class="btn btn-sm btn-outline-primary" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','acknowledged')">รับทราบ</button><button class="btn btn-sm btn-outline-success" onclick="updateRiskCase('${escapeAuditHtml(item.id)}','resolved')">ปิดเคส</button>` : ''}
             </div>
           </div>
@@ -2585,7 +2629,7 @@ function renderSafetyPulse(data) {
       </div>
       <div class="small text-muted">${escapeAuditHtml(item.room || 'ไม่ระบุ')}</div>
     </div>
-  `).join('') : '<div class="text-center text-muted py-4">ทุกคนเช็คอินครบแล้ว</div>';
+  `).join('') : '<div class="text-center text-muted py-4">ทุกคนเช็กอินครบแล้ว</div>';
 
   const levels = data.streakLevels || {};
   const levelPills = [
@@ -2598,8 +2642,8 @@ function renderSafetyPulse(data) {
 
   const overviewHtml = `
     <div class="row g-2 mb-3">
-      ${metric('เช็คอินแล้ว', `${checkedIn}/${total}`, 'primary', 'fa-user-check')}
-      ${metric('ยังไม่เช็คอิน', pending, pending > 0 ? 'warning' : 'secondary', 'fa-user-clock')}
+      ${metric('เช็กอินแล้ว', `${checkedIn}/${total}`, 'primary', 'fa-user-check')}
+      ${metric('ยังไม่เช็กอิน', pending, pending > 0 ? 'warning' : 'secondary', 'fa-user-clock')}
       ${metric('พบจุดเสี่ยง', risk, risk > 0 ? 'warning' : 'secondary', 'fa-triangle-exclamation')}
       ${metric('ต้องติดตาม', support, support > 0 ? 'danger' : 'secondary', 'fa-headset')}
     </div>
@@ -2611,7 +2655,7 @@ function renderSafetyPulse(data) {
       <div class="progress" style="height:8px;">
         <div class="progress-bar bg-primary" style="width:${Math.max(0, Math.min(rate, 100))}%"></div>
       </div>
-      <div class="small text-muted mt-2">พร้อมทำงาน ${ready} คน จากผู้เช็คอิน ${checkedIn} คน</div>
+      <div class="small text-muted mt-2">พร้อมทำงาน ${ready} คน จากผู้เช็กอิน ${checkedIn} คน</div>
     </div>
     ${levelPills ? `
     <div class="border rounded-3 p-3 bg-white">
@@ -2638,9 +2682,7 @@ function renderSafetyPulse(data) {
           <div class="col-6 col-sm-4">
             <select class="form-select form-select-sm" onchange="setSafetyPulseFilter('status', this.value)">
               <option value="open"${filters.status === 'open' ? ' selected' : ''}>ยังไม่ปิดเคส</option>
-              <option value="new"${filters.status === 'new' ? ' selected' : ''}>New</option>
-              <option value="acknowledged"${filters.status === 'acknowledged' ? ' selected' : ''}>Acknowledged</option>
-              <option value="resolved"${filters.status === 'resolved' ? ' selected' : ''}>Resolved</option>
+              ${['new', 'acknowledged', 'resolved'].map(status => `<option value="${status}"${filters.status === status ? ' selected' : ''}>${RoyalStatus.get('safety', status).label}</option>`).join('')}
               <option value="all"${filters.status === 'all' ? ' selected' : ''}>ทุกสถานะ</option>
             </select>
           </div>
@@ -2675,7 +2717,7 @@ function renderSafetyPulse(data) {
       </div>
       <div class="d-flex flex-wrap gap-2 mb-3">
         ${tabButton('action', 'รอติดตาม', rawActionCount, 'fa-list-check', rawActionCount ? 'danger' : 'success')}
-        ${tabButton('pending', 'ยังไม่เช็คอิน', pendingItems.length || pending, 'fa-user-clock', pending > 0 ? 'warning' : 'secondary')}
+        ${tabButton('pending', 'ยังไม่เช็กอิน', pendingItems.length || pending, 'fa-user-clock', pending > 0 ? 'warning' : 'secondary')}
         ${tabButton('risk', 'ความเสี่ยง', riskItems.length, 'fa-triangle-exclamation', riskItems.length ? 'warning' : 'secondary')}
         ${tabButton('departments', 'แผนก', departments.length, 'fa-ranking-star', 'primary')}
         ${tabButton('overview', 'ภาพรวม', `${rate}%`, 'fa-chart-simple', 'primary')}
@@ -2750,17 +2792,18 @@ function showSafetyRiskCase(id) {
   `).join('');
 
   Swal.fire({
-    title: 'Safety Case Detail',
+    title: 'รายละเอียดเคสความปลอดภัย',
     html: `
       <div class="text-start">
         <div class="border rounded-3 p-2 mb-2 bg-light">
           <div class="fw-bold text-dark">${escapeAuditHtml(item.name || '')}</div>
-          <div class="small text-muted">${escapeAuditHtml(item.room || '')} | ${escapeAuditHtml(typeText)} | ${escapeAuditHtml(status)}</div>
+          <div class="small text-muted text-break">${escapeAuditHtml(item.room || '')} · ${escapeAuditHtml(typeText)}</div>
+          ${RoyalStatus.badge('safety', status)}
         </div>
-        ${item.note ? `<div class="mb-2"><div class="small fw-bold text-dark">User note</div><div class="small text-muted">${escapeAuditHtml(item.note)}</div></div>` : ''}
-        ${item.riskAdminNote ? `<div class="mb-2"><div class="small fw-bold text-dark">Admin note</div><div class="small text-primary">${escapeAuditHtml(item.riskAdminNote)}</div></div>` : ''}
-        <div class="small fw-bold text-dark mb-2">Timeline</div>
-        ${timelineHtml || '<div class="small text-muted">ยังไม่มี timeline</div>'}
+        ${item.note ? `<div class="mb-2"><div class="small fw-bold text-dark">หมายเหตุจากสมาชิก</div><div class="small text-muted text-break">${escapeAuditHtml(item.note)}</div></div>` : ''}
+        ${item.riskAdminNote ? `<div class="mb-2"><div class="small fw-bold text-dark">หมายเหตุจากผู้ดูแล</div><div class="small text-primary text-break">${escapeAuditHtml(item.riskAdminNote)}</div></div>` : ''}
+        <div class="small fw-bold text-dark mb-2">ประวัติการดำเนินการ</div>
+        ${timelineHtml || '<div class="small text-muted">ยังไม่มีประวัติการดำเนินการ</div>'}
       </div>
     `,
     confirmButtonText: 'ปิด',

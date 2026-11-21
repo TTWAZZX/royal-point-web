@@ -734,6 +734,29 @@ module.exports = async (req, res) => {
 
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
   if (req.method === 'GET') {
+    if (req.query.action === 'pending_work') {
+      if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
+      const queues = [
+        ['pickup', 'redemptions', 'approved'],
+        ['help', 'auth_help_cases', 'open'],
+        ['line', 'line_notification_outbox', 'failed'],
+        ['audit', 'audit_failure_outbox', 'pending']
+      ]
+      const counts = await Promise.allSettled(queues.map(async ([, table, status]) => {
+        const result = await supabaseAdmin.from(table).select('id', { count: 'exact', head: true }).eq('status', status)
+        if (result.error) throw result.error
+        if (!Number.isInteger(result.count)) throw new Error('Count unavailable')
+        return result.count
+      }))
+      const data = Object.fromEntries(queues.map(([key], index) => {
+        const result = counts[index]
+        if (result.status === 'fulfilled') return [key, result.value]
+        console.error('[admin-actions] pending work count failed:', key, result.reason?.message)
+        return [key, null]
+      }))
+      return res.status(200).json({ status: 'success', data })
+    }
+
     if (req.query.action === 'ad_banners') {
       try {
         if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
@@ -764,12 +787,12 @@ module.exports = async (req, res) => {
           .eq('status', 'approved')
           .lt('recovery_until', now)
 
+        const requestedStatus = String(req.query.status || '').trim()
         let query = supabaseAdmin
           .from('auth_help_cases')
           .select('*')
-          .order('last_requested_at', { ascending: false })
+          .order('last_requested_at', { ascending: requestedStatus === 'open' })
           .limit(200)
-        const requestedStatus = String(req.query.status || '').trim()
         if (requestedStatus && requestedStatus !== 'all') query = query.eq('status', requestedStatus)
         const { data: cases, error } = await query
         if (error) throw error
@@ -2051,7 +2074,7 @@ module.exports = async (req, res) => {
     // ⭐ CASE E: ดึงประวัติการแลก (แก้ให้ตรง DB เป๊ะๆ)
     // ==================================================
     else if (action === 'get_history') {
-      
+      const pendingOnly = status === 'approved'
       let query = supabaseAdmin
         .from('redemptions')
         .select(`
@@ -2070,9 +2093,10 @@ module.exports = async (req, res) => {
            users:user_id ( name, uid, room ),
            rewards:reward_id ( name, img_url )
         `)
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: pendingOnly })
         .limit(100)
 
+      if (pendingOnly) query = query.eq('status', 'approved')
       // optional filter by reward
       if (rewardId) query = query.eq('reward_id', rewardId)
 

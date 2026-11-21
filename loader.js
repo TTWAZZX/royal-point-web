@@ -552,6 +552,15 @@
 
   global.RoyalSpend = {
     pending: getPendingRedemption,
+    pendingRewards(uid) {
+      if (!uid) return [];
+      const prefix = redemptionKey(uid, '');
+      const keys = new Set(pendingRedemptions.keys());
+      try {
+        for (let offset = 0; offset < global.sessionStorage.length; offset++) keys.add(global.sessionStorage.key(offset));
+      } catch {}
+      return [...keys].filter(key => key?.startsWith(prefix)).map(key => key.slice(prefix.length));
+    },
     start(uid, rewardId) {
       const pending = getPendingRedemption(uid, rewardId);
       if (pending) return pending;

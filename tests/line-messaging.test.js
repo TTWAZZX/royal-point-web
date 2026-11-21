@@ -106,11 +106,16 @@ test('builds point and reward transaction Flex Messages', () => {
   }))
   const created = buildRedemptionCreatedMessage({ redemption, reward, balance:960, url:redemptionUrl })
   assertFlex(created)
+  assert.match(JSON.stringify(created), /รอรับรางวัล/)
   assert.match(JSON.stringify(created), /โทรศัพท์ภายในบริษัทที่ 1199 หรือ 1919/)
-  assertFlex(buildAdminRedemptionRequestMessage({
+  const admin = buildAdminRedemptionRequestMessage({
     redemption, reward, user:{ name:'ผู้ใช้ทดสอบ', room:'SHE' },
     url:adminRedemptionUrl(req, redemption.id)
-  }))
-  assertFlex(buildRedemptionReceivedMessage({ redemption, reward, url:redemptionUrl }))
+  })
+  assertFlex(admin)
+  assert.match(JSON.stringify(admin), /รอรับรางวัล/)
+  const received = buildRedemptionReceivedMessage({ redemption, reward, url:redemptionUrl })
+  assertFlex(received)
+  assert.match(JSON.stringify(received), /รับรางวัลแล้ว/)
   assertFlex(buildRedemptionCancelledMessage({ redemption, reward, reason:'ของจริงไม่พร้อมจ่าย', balance:1000, url:'https://liff.line.me/test?view=score-history' }))
 })

@@ -17,7 +17,7 @@ if (!executablePath) throw new Error('ไม่พบ Chrome/Edge สำหร�
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' }
 const server = http.createServer((req, res) => {
   const pathname = decodeURIComponent(new URL(req.url, 'http://127.0.0.1').pathname)
-  const relative = pathname === '/' ? 'all-rewards.html' : pathname.replace(/^\/+/, '')
+  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '')
   const file = path.resolve(root, relative)
   if (!file.startsWith(`${root}${path.sep}`) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404).end('not found')
@@ -125,8 +125,9 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
   const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
   await page.addInitScript(() => {
     window.Swal = { fire: async (title, text) => {
-      window.testRedemptionDialog = [typeof title === 'string' ? title : title.title, text]
-      return { isConfirmed: true }
+      const label = typeof title === 'string' ? title : title.title
+      window.testRedemptionDialog = [label, text]
+      return { isConfirmed: label !== 'พบรายการแลกเดิมในประวัติ' }
     } }
   })
   for (const domain of ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'unpkg.com']) {
@@ -171,7 +172,8 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
     return route.fulfill({ json: { status: 'success', items: [], data: { checkedIn: false } } })
   })
 
-  await page.goto(`${baseUrl}/${pathName}`)
+  const filteredCatalog = pathName === 'all-rewards.html'
+  await page.goto(`${baseUrl}/${pathName}${filteredCatalog ? '?filter=affordable' : ''}`)
   await page.locator('#systemBootOverlay').waitFor({ state: 'hidden' })
   const redeem = page.getByRole('button', { name: /^แลก( รางวัลทดสอบ|รางวัล)$/ })
   if (viewport.width < 500) await redeem.tap()
@@ -179,7 +181,13 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
   await page.waitForFunction(() => window.testRedemptionDialog?.[0] === 'ผิดพลาด')
   await page.reload()
   await page.locator('#systemBootOverlay').waitFor({ state: 'hidden' })
-  const retry = page.getByRole('button', { name: /^ตรวจรายการเดิม/ })
+  if (filteredCatalog) {
+    await page.waitForFunction(() => !document.querySelector('#rewardPendingLink').classList.contains('d-none'))
+    assert.equal(await page.locator('#rewardPendingLink').getAttribute('href'), '/#redemptionTracker')
+    assert.equal(await page.locator('#rewardGrid .reward-card').count(), 0)
+    await page.getByRole('button', { name: 'ทั้งหมด', exact: true }).click()
+  }
+  const retry = page.locator('.rp-reward-card, .reward-card').getByRole('button', { name: /^ตรวจรายการเดิม/ })
   if (viewport.width < 500) await retry.tap()
   else await retry.click()
   await page.waitForFunction(() => window.testRedemptionDialog?.some(text => text?.includes('พบรายการแลกเดิมในประวัติ')))
@@ -193,6 +201,98 @@ async function runRedemptionReplay(browser, baseUrl, viewport, pathName) {
   await page.close()
 }
 
+async function runPickupTracking(browser, baseUrl, viewport) {
+  const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
+  const rewardId = '20000000-0000-4000-8000-000000000005'
+  const redemptionId = '40000000-0000-4000-8000-000000000005'
+  await page.addInitScript(() => {
+    window.Swal = { fire: async (config, text) => {
+      window.pickupDialog = typeof config === 'string' ? text : config.title
+      window.pickupDialogHtml = typeof config === 'object' ? config.html : ''
+      return { isConfirmed: true }
+    } }
+  })
+  await page.route('https://static.line-scdn.net/**', route => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.liff={init:async()=>{},isLoggedIn:()=>true,getProfile:async()=>({userId:'U_PICKUP_TEST'}),getAccessToken:()=> 'test-token'};`
+  }))
+  for (const domain of ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'unpkg.com']) {
+    await page.route(`https://${domain}/**`, route => route.abort())
+  }
+  let postedRequest = ''
+  let completed = false
+  let pickup = 'approved'
+  let evidenceReads = 0
+  let successfulSpend = false
+  await page.route('**/api/**', async route => {
+    const request = route.request()
+    const { pathname, searchParams } = new URL(request.url())
+    let result = { status: 'success', items: [], data: { checkedIn: false } }
+    if (pathname === '/api/get-score') result.data = { score: 100 }
+    if (pathname === '/api/rewards' && !searchParams.has('action')) {
+      result.items = [{ id: rewardId, cost: 10, stock: 1, name: 'รางวัลทดสอบ' }]
+    }
+    if (pathname === '/api/redemptions') {
+      assert.equal(searchParams.get('pickup'), 'pending')
+      if (completed && pickup === 'approved') result.items = [{ id: redemptionId, cost: 10, status: pickup, reward_name: 'รางวัลทดสอบ' }]
+    }
+    if (pathname === '/api/spend' && request.method() === 'POST') {
+      if (successfulSpend) {
+        return route.fulfill({ json: { status: 'success', balance: 90, redemption: { id: redemptionId, status: 'approved' } } })
+      }
+      assert.equal(postedRequest, '')
+      postedRequest = request.postDataJSON().requestId
+      return route.fulfill({ status: 503, json: { status: 'error', message: 'spend_failed' } })
+    }
+    if (pathname === '/api/spend' && request.method() === 'GET') {
+      evidenceReads++
+      if (searchParams.has('requestId')) {
+        assert.equal(searchParams.get('requestId'), postedRequest)
+        assert.equal(searchParams.get('rewardId'), rewardId)
+        if (!completed) return route.fulfill({ status: 404, json: { status: 'error' } })
+      } else assert.equal(searchParams.get('redemptionId'), redemptionId)
+      result.data = { id: redemptionId, cost: 10, redemptionStatus: pickup, createdAt: new Date().toISOString(), rewardName: 'รางวัลทดสอบ' }
+    }
+    return route.fulfill({ json: result })
+  })
+
+  try {
+    await page.goto(`${baseUrl}/index.html`)
+    await page.locator('#systemBootOverlay').waitFor({ state: 'hidden' })
+    const start = page.getByRole('button', { name: 'แลก รางวัลทดสอบ' })
+    if (viewport.width < 500) await start.tap()
+    else await start.click()
+    const check = page.locator('#redemptionTracker [data-check-redemption]')
+    await page.locator('#pendingRedemptionList .rp-status--waiting').getByText('รอตรวจผลการแลก', { exact: true }).waitFor()
+    await check.click()
+    await page.waitForFunction(() => window.pickupDialog?.includes('ยังไม่พบรายการที่บันทึกไว้'))
+    assert.ok(await check.count())
+
+    completed = true
+    await check.click()
+    await page.waitForFunction(() => window.pickupDialog === 'หลักฐานรายการแลก')
+    await check.waitFor({ state: 'detached' })
+    const evidence = page.locator('#redemptionTracker [data-open-redemption]')
+    await page.locator('#pickupRedemptionList .rp-status--waiting').getByText('รอรับรางวัล', { exact: true }).waitFor()
+    await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).searchParams.get('redemptionId') === redemptionId),
+      evidence.click()
+    ])
+    assert.equal(evidenceReads, 3)
+    assert.match(await page.evaluate(() => window.pickupDialogHtml), /rp-status--waiting">รอรับรางวัล/)
+    pickup = 'received'
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')))
+    await evidence.waitFor({ state: 'detached' })
+
+    pickup = 'approved'
+    successfulSpend = true
+    await page.goto(`${baseUrl}/all-rewards.html`)
+    await page.getByRole('button', { name: 'แลกรางวัล' }).click()
+    await page.waitForURL(url => url.pathname === '/' && url.searchParams.get('redemption_id') === redemptionId, { waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => window.pickupDialog === 'หลักฐานรายการแลก')
+  } finally { await page.close() }
+}
+
 async function runAdminViewport(browser, baseUrl, viewport) {
   const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
   await page.addInitScript(() => {
@@ -201,6 +301,10 @@ async function runAdminViewport(browser, baseUrl, viewport) {
       Modal: class { show() {} }
     }
     window.Swal = { fire: async title => { window.testAdminDialog = title; return { isConfirmed: true } } }
+    document.addEventListener('click', event => {
+      const tab = event.target.closest('#adminTabs [data-bs-toggle="pill"]')
+      if (tab) window.bootstrap.Tab.getOrCreateInstance(tab).show()
+    })
     sessionStorage.setItem('ROYAL_AUTH_RECOVERY_UNTIL', String(Date.now() + 60000))
   })
   await page.route('https://cdn.jsdelivr.net/**', route => route.abort())
@@ -214,6 +318,8 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   let birthdayStatus = 'pending'
   let memberScore = 100
   let couponBatch = null
+  let pendingWorkReads = 0
+  let pickupStatus = 'approved'
   const couponRequests = []
   await page.route('**/api/admin-coupons?**', async route => {
     const params = new URL(route.request().url()).searchParams
@@ -242,6 +348,28 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
     const params = new URL(route.request().url()).searchParams
     const action = params.get('action')
+    if (action === 'pending_work') {
+      pendingWorkReads++
+      return route.fulfill({ json: { status: 'success', data: {
+        pickup: pickupStatus === 'approved' ? 1 : 0, help: 2, line: 1, audit: pendingWorkReads === 1 ? null : 0
+      } } })
+    }
+    if (action === 'safety_pulse') {
+      return route.fulfill({ json: { status: 'success', data: { riskItems: [{
+        id: 'mock-risk', room: 'SHE', name: 'สมาชิกทดสอบ', riskStatus: 'acknowledged', answer: 'need_support'
+      }] } } })
+    }
+    if (action === 'auth_help_cases' && params.get('status') === 'open') {
+      return route.fulfill({ json: { status: 'success', data: [{
+        id: 'mock-open-help', case_no: 'RP-TEST', status: 'open', notifications: [{ id: 'mock-help-failure', status: 'failed' }]
+      }] } })
+    }
+    if (action === 'line_notifications' && params.get('status') === 'failed') {
+      assert.equal(params.get('kind'), 'all')
+      return route.fulfill({ json: { status: 'success', data: [{
+        id: 'mock-line-failure', dedupe_key: 'mock-failure', message_kind: 'score_adjusted', status: 'failed'
+      }] } })
+    }
     if (action === 'line_notifications' && params.get('kind') === 'birthday_reward') {
       return route.fulfill({ json: { status: 'success', data: [{
         id: 'birthday-test-id', dedupe_key: 'birthday-reward:test', message_kind: 'birthday_reward', status: birthdayStatus
@@ -249,9 +377,21 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     }
     await route.fulfill({ json: action ? { status: 'success', data: [] } : { isAdmin: Boolean(role), role } })
   })
+  await page.route('**/api/admin-audit-logs?**', route => route.fulfill({ json: { status: 'success', data: [], auditFailures: [] } }))
   await page.route('**/api/admin-actions', async route => {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
-    const { action, notificationId, targetUid, checkinDate } = route.request().postDataJSON()
+    const { action, notificationId, targetUid, checkinDate, status, redemptionId } = route.request().postDataJSON()
+    if (action === 'get_history') {
+      assert.equal(status, 'approved')
+      return route.fulfill({ json: { status: 'success', data: pickupStatus === 'approved'
+        ? [{ id: 'mock-pickup', status: pickupStatus, reward_name: 'รางวัลรอรับ' }]
+        : [] } })
+    }
+    if (action === 'redemption_receive') {
+      assert.equal(redemptionId, 'mock-pickup')
+      pickupStatus = 'received'
+      return route.fulfill({ json: { status: 'success', data: { lineNotification: { status: 'sent' } } } })
+    }
     if (action === 'safety_checkin_points_recover') {
       assert.equal(targetUid, 'U_MEMBER')
       assert.equal(checkinDate, '2026-01-10')
@@ -274,15 +414,60 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   assert.equal(await page.evaluate(() => window.RoyalAdminReady()), true)
   assert.equal(await page.evaluate(() => window.RoyalAdminInitialTabReady()), '#pills-auth-help')
   assert.equal(await page.locator('#adminContent').evaluate(element => element.hidden), false)
+  assert.equal(pendingWorkReads, 0)
+  const pendingWorkTab = page.getByRole('tab', { name: 'งานค้าง' })
+  if (viewport.width < 500) await pendingWorkTab.tap()
+  else await pendingWorkTab.click()
+  const pendingStatus = page.locator('#pendingWorkStatus')
+  await pendingStatus.getByText('โหลดยอดบางรายการไม่สำเร็จ', { exact: false }).waitFor()
+  const readCount = name => page.locator(`[data-pending-count="${name}"]`).textContent()
+  assert.equal(await readCount('pickup'), '1')
+  assert.equal(await readCount('audit'), '—')
+  const workGrid = await page.locator('#pendingWorkGrid').evaluate(grid => ({
+    overflow: grid.scrollWidth - grid.clientWidth,
+    minimumButtonHeight: Math.min(...Array.from(grid.querySelectorAll('button'), button => button.offsetHeight))
+  }))
+  assert.ok(workGrid.overflow <= 1)
+  assert.ok(workGrid.minimumButtonHeight >= 44)
+  await page.getByRole('button', { name: 'อัปเดตยอด' }).click()
+  await pendingStatus.getByText('อัปเดตยอดแล้ว', { exact: true }).waitFor()
+  assert.equal(await readCount('audit'), '0')
+
+  await page.getByRole('button', { name: 'ดูรายการรอรับรางวัล' }).click()
+  assert.equal(await page.locator('#historyStatusFilter').inputValue(), 'approved')
+  await page.locator('#historyListArea').getByText('รางวัลรอรับ', { exact: true }).waitFor()
+  await page.locator('#historyListArea .rp-status--waiting').getByText('รอรับรางวัล', { exact: true }).waitFor()
+  await page.locator('#historyListArea').getByRole('button', { name: 'ยืนยันรับของ' }).click()
+  await page.locator('#historyListArea').getByText('ไม่มีรายการรอรับรางวัล', { exact: true }).waitFor()
+  await pendingWorkTab.click()
+  await pendingStatus.getByText('อัปเดตยอดแล้ว', { exact: true }).waitFor()
+  assert.equal(await readCount('pickup'), '0')
+
+  await page.getByRole('button', { name: 'ดูเรื่องที่รอดำเนินการ' }).click()
+  assert.equal(await page.locator('#authHelpStatusFilter').inputValue(), 'open')
+  await page.locator('#authHelpListArea').getByText('RP-TEST', { exact: true }).waitFor()
+  await page.locator('#authHelpListArea .rp-status--danger').getByText('ส่ง LINE ไม่สำเร็จ', { exact: true }).waitFor()
+  await pendingWorkTab.click()
+  await page.getByRole('button', { name: 'ดูข้อความที่ส่งไม่สำเร็จ' }).click()
+  assert.equal(await page.locator('#lineNotificationStatus').inputValue(), 'failed')
+  await page.locator('#lineNotificationList').getByRole('button', { name: 'ส่งใหม่', exact: true }).waitFor()
+  await page.locator('#lineNotificationList .rp-status--danger').getByText('ส่ง LINE ไม่สำเร็จ', { exact: true }).waitFor()
+  assert.ok(await page.locator('#lineNotificationList button').evaluateAll(buttons => buttons.every(button => button.offsetHeight >= 44)))
+  await pendingWorkTab.click()
+  await page.getByRole('button', { name: 'ดูบันทึกที่รอกู้คืน' }).click()
+  await page.locator('#auditFailureArea').getByText('ไม่มีบันทึกระบบที่รอกู้คืน', { exact: true }).waitFor()
+  await page.locator('#lineNotificationStatus').selectOption('all')
   await page.locator('#lineNotificationKind').selectOption('birthday_reward')
   const birthdayList = page.locator('#lineNotificationList')
   await birthdayList.getByText('คะแนนวันเกิด', { exact: true }).waitFor()
   const sendBirthday = birthdayList.getByRole('button', { name: 'ส่งตอนนี้' })
   if (viewport.width < 500) await sendBirthday.tap()
   else await sendBirthday.click()
-  await birthdayList.getByText('ส่งแล้ว', { exact: true }).waitFor()
+  await birthdayList.getByText('ส่ง LINE แล้ว', { exact: true }).waitFor()
 
   await page.evaluate(async () => { await window.loadPageUsers(); window.openActionModal('U_MEMBER') })
+  assert.equal(await page.locator('#adminTableBody .rp-status').textContent(), 'รอย้ายระบบ')
+  assert.equal(await page.locator('#actionAuthStatus').textContent(), 'รอย้ายระบบ')
   await page.locator('#safetyRecoveryDate').fill('2026-01-10')
   const recoverPoints = page.locator('#btnRecoverSafetyPoints')
   if (viewport.width < 500) await recoverPoints.tap()
@@ -316,10 +501,18 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.waitForFunction(() => document.querySelector('#couponBatchCodes').value === 'ABCDEF\nGHJKLM')
   assert.equal(couponRequests.length, 2)
 
+  await page.locator('#tabSafetyBtn').click()
+  await page.locator('#safetyPulseArea .rp-status--info').getByText('รับทราบแล้ว', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'ดูรายละเอียดเคส', exact: true }).click()
+  assert.match(await page.evaluate(() => window.testAdminDialog.html), /rp-status--info">รับทราบแล้ว/)
+
   role = 'safety_viewer'
+  const pendingReadsBeforeRoleChange = pendingWorkReads
   await page.goto(deepLink)
   assert.equal(await page.evaluate(() => window.RoyalAdminReady()), true)
   assert.equal(await page.evaluate(() => window.RoyalAdminInitialTabReady()), '#pills-safety')
+  assert.equal(await page.locator('#tabPendingWorkBtn').evaluate(button => button.closest('li').classList.contains('d-none')), true)
+  assert.equal(pendingWorkReads, pendingReadsBeforeRoleChange)
 
   role = ''
   await page.goto(deepLink)
@@ -335,14 +528,21 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
     { path: 'all-rewards.html', slow: '/api/get-score' },
     { path: 'admin.html', slow: 'safety_pulse' }
   ]) {
-    const page = await browser.newPage({ viewport })
+    const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
     let releaseSlowResponse
     const slowResponse = new Promise(resolve => { releaseSlowResponse = resolve })
     const requests = []
     try {
       await page.addInitScript(() => {
         sessionStorage.setItem('RP_ADMIN_ACTIVE_TAB', '#pills-safety')
-        window.bootstrap = { Tab: { getOrCreateInstance: button => ({ show: () => button.dispatchEvent(new Event('shown.bs.tab')) }) } }
+        window.bootstrap = {
+          Tab: { getOrCreateInstance: button => ({ show: () => button.dispatchEvent(new Event('shown.bs.tab')) }) },
+          Modal: {
+            getOrCreateInstance: element => ({ show: () => element.classList.add('show') }),
+            getInstance: element => ({ hide: () => element.classList.remove('show') })
+          }
+        }
+        window.Swal = { fire: async config => config.title?.startsWith('แลกสำเร็จ') ? new Promise(() => {}) : { isConfirmed: true } }
       })
       await page.route('https://static.line-scdn.net/**', route => route.fulfill({
         contentType: 'text/javascript',
@@ -365,7 +565,15 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
           return route.fulfill({ json: { isAdmin: true, role: 'super_admin' } })
         }
         if (pathname === '/api/rewards' && !action) {
-          return route.fulfill({ json: { status: 'success', items: [{ id: 'startup-reward', cost: 20, stock: 1, name: 'รางวัลทดสอบ' }] } })
+          return route.fulfill({ json: { status: 'success', items: [
+            { id: 'startup-reward', cost: 100, stock: 2, name: 'รางวัลทดสอบ' },
+            { id: 'expensive', cost: 135, stock: 1, name: 'รางวัลคะแนนสูง' },
+            { id: 'sold-out', cost: 20, stock: 0, name: 'รางวัลที่หมด' }
+          ] } })
+        }
+        if (pathname === '/api/spend' && route.request().method() === 'POST') {
+          assert.equal(route.request().postDataJSON().rewardId, 'startup-reward')
+          return route.fulfill({ json: { status: 'success', balance: 0, redemption: { id: 'startup-redemption' } } })
         }
         return route.fulfill({ json: { status: 'success', data: [], items: [] } })
       })
@@ -382,12 +590,41 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
       if (scenario.path === 'index.html') {
         assert.equal(await page.evaluate(() => window.__userBalance), 100)
         assert.equal(requests.filter(request => request === '/api/get-score').length, 1)
+        assert.equal(await page.getByRole('link', { name: 'แลกได้ตอนนี้' }).getAttribute('href'), '/all-rewards.html?filter=affordable')
+        const expensive = page.locator('.rp-reward-card[data-id="expensive"]')
+        await expensive.waitFor({ state: 'visible' })
+        assert.match(await expensive.textContent(), /ขาดอีก 35 คะแนน/)
       } else if (scenario.path === 'all-rewards.html') {
-        const rewardButton = page.locator('#rewardGrid .reward-card button')
+        const rewardButton = page.locator('[data-reward-id="startup-reward"] button')
+        const affordable = page.getByRole('button', { name: 'แลกได้ตอนนี้' })
+        const all = page.getByRole('button', { name: 'ทั้งหมด', exact: true })
         await rewardButton.waitFor({ state: 'visible' })
         assert.ok(await rewardButton.isDisabled())
+        if (viewport.width < 500) await affordable.tap()
+        else await affordable.click()
+        assert.equal(await page.locator('#rewardWalletBalance').textContent(), '—')
+        assert.equal(await page.locator('#rewardGrid .reward-card').count(), 0)
+        assert.match(await page.locator('#rewardGrid').textContent(), /เมื่อตรวจคะแนนสำเร็จ/)
         releaseSlowResponse()
-        await page.waitForFunction(() => !document.querySelector('#rewardGrid .reward-card button')?.disabled)
+        await rewardButton.waitFor({ state: 'visible' })
+        assert.ok(await rewardButton.isEnabled())
+        assert.equal(await page.locator('#rewardGrid .reward-card').count(), 1)
+        assert.equal(await page.locator('#rewardWalletBalance').textContent(), '100')
+        assert.equal(await affordable.getAttribute('aria-pressed'), 'true')
+        await all.click()
+        assert.equal(await page.locator('#rewardGrid .reward-card').count(), 3)
+        assert.equal(await page.locator('[data-reward-id="sold-out"] .rp-status').textContent(), 'หมดแล้ว')
+        assert.equal(await page.locator('[data-reward-id="startup-reward"] .reward-cost').textContent(), '100 คะแนน')
+        assert.ok(await page.getByRole('button', { name: 'ขาดอีก 35 คะแนน' }).isDisabled())
+        await page.locator('[data-reward-id="expensive"] .reward-name').click()
+        assert.equal(await page.locator('#rewardPreviewRedeemBtn').textContent(), 'ขาดอีก 35 คะแนน')
+        assert.ok(await page.locator('#rewardPreviewRedeemBtn').isDisabled())
+        await page.evaluate(() => window.bootstrap.Modal.getInstance(document.getElementById('rewardPreviewModal')).hide())
+        await affordable.click()
+        await rewardButton.click()
+        await page.waitForFunction(() => document.querySelector('#rewardWalletBalance').textContent === '0')
+        assert.equal(await page.locator('#rewardGrid .reward-card').count(), 0)
+        assert.match(await page.locator('#rewardGrid').textContent(), /ยังไม่มีของรางวัลที่แลกได้/)
       } else {
         assert.ok(await page.locator('#adminContent').evaluate(element => !element.hidden))
         assert.ok(!requests.includes('safety_questions') && !requests.includes('safety_settings'))
@@ -414,6 +651,7 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
       await runMemberCheckinViewport(browser, baseUrl, viewport)
       await runRedemptionReplay(browser, baseUrl, viewport, 'index.html')
       await runRedemptionReplay(browser, baseUrl, viewport, 'all-rewards.html')
+      await runPickupTracking(browser, baseUrl, viewport)
       await runAdminViewport(browser, baseUrl, viewport)
       await runProgressiveStartupViewport(browser, baseUrl, viewport)
     }

@@ -26,20 +26,23 @@ function rpcErrorCode(error) {
 async function getRedemptionEvidence(req, res) {
   const cleanUid = String(req.query.uid || '').trim()
   const redemptionId = String(req.query.redemptionId || '').trim()
-  if (!cleanUid || !UUID_RE.test(redemptionId)) {
+  const requestId = String(req.query.requestId || '').trim()
+  const rewardId = String(req.query.rewardId || '').trim()
+  const byRequest = !redemptionId && UUID_RE.test(requestId) && UUID_RE.test(rewardId)
+  if (!cleanUid || (!UUID_RE.test(redemptionId) && !byRequest)) {
     return res.status(400).json({ status: 'error', message: 'ข้อมูลรายการไม่ครบ' })
   }
   await authenticateRequest(req, { claimedUid: cleanUid })
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('redemptions')
     .select(`
       id,cost,status,created_at,cancel_reason,
       users:user_id!inner(uid),
       rewards:reward_id(name,img_url)
     `)
-    .eq('id', redemptionId)
     .eq('users.uid', cleanUid)
-    .maybeSingle()
+  query = byRequest ? query.eq('request_id', requestId).eq('reward_id', rewardId) : query.eq('id', redemptionId)
+  const { data, error } = await query.maybeSingle()
   if (error) throw error
   if (!data) return res.status(404).json({ status: 'error', message: 'ไม่พบรายการแลกของรางวัล' })
   return res.status(200).json({

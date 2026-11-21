@@ -399,6 +399,7 @@ async function initApp(ctx = {}) {
     if (!payload) await refreshUserScore({ initialUid: uid });
     void refreshDailyCheckinStatus();
     void loadRewards({ uid });
+    void loadPickupRedemptions();
 
     await handleTransactionDeepLinks();
 
@@ -578,6 +579,7 @@ async function toggleTorch(on) {
 
 // ฟังก์ชันผูกปุ่มต่างๆ (แก้ไขปุ่มรีเฟรช: บังคับส่งคะแนนให้ของรางวัลทันที)
 function bindUI(){
+  bindRedemptionTracker();
   // 1. ปุ่มรีเฟรชคะแนน (แก้ไขใหม่)
   if (els.btnRefresh && !els.btnRefresh.dataset._rpBound) {
     els.btnRefresh.dataset._rpBound = 1;
@@ -819,15 +821,15 @@ function setDailyCheckinUi(state = {}) {
   if (state.loading) {
     label.textContent = 'กำลังตรวจสถานะ';
   } else if (checkedIn) {
-    label.textContent = 'เช็คอินแล้ว';
+    label.textContent = 'เช็กอินแล้ว';
   } else {
     label.textContent = 'Safety Check-in';
   }
 
   if (meta) {
     let text = state.meta || '';
-    if (!text && checkedIn) text = `Streak ${streak} วัน`;
-    if (!text && !checkedIn && !unavailable) text = streak > 1 ? `+${points} pt | ต่อเนื่อง ${streak} วัน` : `+${points} pt | วันนี้`;
+    if (!text && checkedIn) text = `ต่อเนื่อง ${streak} วัน`;
+    if (!text && !checkedIn && !unavailable) text = streak > 1 ? `+${points} คะแนน · ต่อเนื่อง ${streak} วัน` : `+${points} คะแนนวันนี้`;
     meta.textContent = text;
     meta.classList.toggle('d-none', !text);
   }
@@ -879,7 +881,7 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
     badge.classList.remove('d-none');
     badge.dataset.level = 'starter';
     titleEl.textContent = 'กำลังโหลด Safety Streak';
-    textEl.textContent = 'กำลังตรวจสถานะเช็คอินวันนี้';
+    textEl.textContent = 'กำลังตรวจสถานะเช็กอินวันนี้';
     daysEl.textContent = '...';
     return;
   }
@@ -888,7 +890,7 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
     badge.classList.remove('d-none');
     badge.dataset.level = 'starter';
     titleEl.textContent = 'Safety Streak ยังไม่พร้อม';
-    textEl.textContent = navigator.onLine ? 'โหลดข้อมูลเช็คอินไม่ได้' : 'ออฟไลน์อยู่ ระบบจะแสดงอีกครั้งเมื่อออนไลน์';
+    textEl.textContent = navigator.onLine ? 'โหลดข้อมูลเช็กอินไม่ได้' : 'ออฟไลน์อยู่ ระบบจะแสดงอีกครั้งเมื่อออนไลน์';
     daysEl.textContent = '-';
     return;
   }
@@ -905,7 +907,7 @@ function updateSafetyStreakBadge({ checkedIn = false, streak = 0, unavailable = 
       ? `รักษาแล้ว | อีก ${Math.max(meta.next - days, 0)} วัน`
       : 'รักษาระดับสูงสุดแล้ว';
   } else if (days > 1) {
-    textEl.textContent = 'เช็คอินเพื่อรักษาต่อ';
+    textEl.textContent = 'เช็กอินเพื่อรักษาต่อ';
   } else {
     textEl.textContent = 'เริ่ม Safety Streak วันนี้';
   }
@@ -983,7 +985,7 @@ function updateWeeklyMissionCard(mission, { loading = false, unavailable = false
     textEl.textContent = 'ครบเงื่อนไขแล้ว ระบบกำลังเตรียมโบนัสให้';
     statusEl.textContent = 'ครบแล้ว';
   } else {
-    textEl.textContent = `เช็คอินให้ครบ ${target} วันในสัปดาห์นี้เพื่อรับโบนัสเล็ก ๆ`;
+    textEl.textContent = `เช็กอินให้ครบ ${target} วันในสัปดาห์นี้เพื่อรับโบนัสเล็ก ๆ`;
     statusEl.textContent = `เหลือ ${Math.max(target - count, 0)} วัน`;
   }
 }
@@ -1173,14 +1175,14 @@ function showSafetyPhotoReminder({ points = 5, weeklyBonusAwarded = false, bonus
 
 async function performDailyCheckin() {
   if (DAILY_CHECKIN_IN_FLIGHT) return;
-  if (!navigator.onLine) return toastErr('ยังเช็คอินไม่ได้ขณะออฟไลน์');
+  if (!navigator.onLine) return toastErr('ยังเช็กอินไม่ได้ขณะออฟไลน์');
 
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
   const latestStatus = await refreshDailyCheckinStatus();
   if (latestStatus?.checkedIn) {
     void refreshUserScore({ bust: true });
-    return toastOk('วันนี้เช็คอินแล้ว');
+    return toastOk('วันนี้เช็กอินแล้ว');
   }
   if (latestStatus?.checkinRule?.enabled && !latestStatus.checkinRule.allowed) {
     return toastErr(`Open ${latestStatus.checkinRule.startTime}-${latestStatus.checkinRule.endTime}`);
@@ -1206,11 +1208,11 @@ async function performDailyCheckin() {
       if (json?.message === 'safety_question_expired') {
         if (data?.safetyQuestion) DAILY_CHECKIN_STATUS = { ...(DAILY_CHECKIN_STATUS || {}), ...data };
         setDailyCheckinUi({ ...data, checkedIn: false, disabled: false });
-        return toastErr('คำถามมีการเปลี่ยนแปลง กรุณากดเช็คอินใหม่อีกครั้ง');
+        return toastErr('คำถามมีการเปลี่ยนแปลง กรุณากดเช็กอินใหม่อีกครั้ง');
       }
       setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
       void refreshUserScore({ bust: true });
-      return toastOk('วันนี้เช็คอินแล้ว');
+      return toastOk('วันนี้เช็กอินแล้ว');
     }
 
     if (!res.ok || json?.status === 'error') {
@@ -1282,10 +1284,10 @@ async function performDailyCheckin() {
     const map = {
       user_not_found: 'ไม่พบผู้ใช้นี้ในระบบ',
       apply_points_failed: 'เพิ่มแต้มไม่สำเร็จ กรุณาลองใหม่',
-      checkin_failed: 'เช็คอินไม่สำเร็จ กรุณาลองใหม่'
+      checkin_failed: 'เช็กอินไม่สำเร็จ กรุณาลองใหม่'
     };
     setDailyCheckinUi({ unavailable: true, disabled: false, meta: 'ลองกดใหม่อีกครั้ง' });
-    return toastErr(map[msg] || 'เช็คอินไม่สำเร็จ กรุณาลองใหม่');
+    return toastErr(map[msg] || 'เช็กอินไม่สำเร็จ กรุณาลองใหม่');
   } finally {
     DAILY_CHECKIN_IN_FLIGHT = false;
   }
@@ -1650,6 +1652,7 @@ async function loadRewards(opts = {}) {
 
     REWARDS_CACHE = ordered;
     try { cacheRewards(ordered); } catch {}
+    renderRedemptionTracker();
 
     if (typeof renderRewards === 'function') {
       const score = Number(window.prevScore || 0);
@@ -1708,7 +1711,8 @@ function renderRewards(currentScore){
     const stockMax = stockMaxRaw > 0 ? stockMaxRaw : null;
 
     const outOfStock    = stock <= 0;
-    const lockedByPoint = !outOfStock && score < cost; // ถ้าของหมด ไม่ต้องโชว์ "คะแนนไม่พอ"
+    const shortage = outOfStock ? 0 : Math.max(0, cost - score);
+    const lockedByPoint = shortage > 0;
     const pending = Boolean(window.RoyalSpend.pending(resolveCurrentUid(), r.id));
 
     const classes = ['rp-reward-card'];
@@ -1725,7 +1729,7 @@ function renderRewards(currentScore){
     // text stock
     let stockLabel = '';
     if (outOfStock) {
-      stockLabel = `<span class="rp-reward-stock rp-reward-stock-out">หมดแล้ว</span>`;
+      stockLabel = `<span class="rp-reward-stock rp-reward-stock-out">${RoyalStatus.get('reward', 'sold_out').label}</span>`;
     } else if (stockMax != null) {
       stockLabel = `<span class="rp-reward-stock">เหลือ ${stock}/${stockMax} ชิ้น</span>`;
     } else {
@@ -1738,6 +1742,7 @@ function renderRewards(currentScore){
            data-cost="${cost}"
            data-stock="${stock}"
            data-stock-max="${stockMax || 0}"
+           data-shortage="${shortage}"
            title="${name}">
         <div class="rp-reward-img">
           <img
@@ -1749,11 +1754,12 @@ function renderRewards(currentScore){
             width="300" height="425"
             data-reward-image
           >
-          <div class="rp-reward-cost">${cost} pt</div>
+          <div class="rp-reward-cost">${cost.toLocaleString('th-TH')} คะแนน</div>
           ${stockLabel}
         </div>
-        <div class="rp-reward-body p-2">
+        <div class="rp-reward-body">
           <div class="fw-bold text-truncate">${name}</div>
+          ${lockedByPoint && !pending ? `<div class="rp-reward-shortage">ขาดอีก ${shortage.toLocaleString('th-TH')} คะแนน</div>` : ''}
         </div>
         <button class="rp-redeem-btn"
                 aria-label="${pending ? 'ตรวจรายการเดิม' : 'แลก'} ${name}"
@@ -1810,7 +1816,8 @@ function openRewardPreviewFromCard(card) {
   const stockMax = Number(card.dataset.stockMax || 0);
   const name = card.getAttribute('title') || 'ของรางวัล';
   const img = card.querySelector('img')?.src || '';
-  const isLocked = card.classList.contains('locked');
+  const shortage = Number(card.dataset.shortage || 0);
+  const isLocked = shortage > 0;
   const isSoldOut = card.classList.contains('soldout') || stock <= 0;
   const pending = Boolean(window.RoyalSpend.pending(resolveCurrentUid(), id));
 
@@ -1822,11 +1829,12 @@ function openRewardPreviewFromCard(card) {
 
   if (imgEl) imgEl.src = img;
   if (nameEl) nameEl.textContent = name;
-  if (costEl) costEl.textContent = `${cost} pt`;
-  if (stockEl) stockEl.textContent = isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax} ชิ้น` : `เหลือ ${stock} ชิ้น`);
+  if (costEl) costEl.textContent = `${cost.toLocaleString('th-TH')} คะแนน`;
+  const soldOutLabel = RoyalStatus.get('reward', 'sold_out').label;
+  if (stockEl) stockEl.textContent = isSoldOut ? soldOutLabel : (stockMax > 0 ? `เหลือ ${stock}/${stockMax} ชิ้น` : `เหลือ ${stock} ชิ้น`);
   if (redeemBtn) {
     redeemBtn.disabled = !pending && (isLocked || isSoldOut);
-    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : (isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล');
+    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? soldOutLabel : isLocked ? `ขาดอีก ${shortage.toLocaleString('th-TH')} คะแนน` : 'แลกรางวัล';
     redeemBtn.onclick = async () => {
       if (redeemBtn.disabled) return;
       bootstrap.Modal.getInstance(modalEl)?.hide();
@@ -1890,14 +1898,14 @@ async function redeemReward(reward, btn){
   const confirmed = window.Swal
     ? (await Swal.fire({
         title: pending ? 'ส่งคำขอแลกรางวัลเดิมอีกครั้ง?' : 'ยืนยันการแลก?',
-        html: `ต้องการแลก <b>${h(name)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
+        html: `ต้องการแลก <b>${h(name)}</b><br>ใช้ <b>${cost.toLocaleString('th-TH')}</b> คะแนน`,
         icon: "question", 
         showCancelButton: true, 
         confirmButtonText: pending ? 'ส่งคำขอเดิม' : 'แลกเลย',
         confirmButtonColor: "#3085d6",
         cancelButtonText: "ยกเลิก"
       })).isConfirmed
-    : confirm(`ใช้ ${cost} pt แลกรางวัล ${name}?`);
+    : confirm(`ใช้ ${cost.toLocaleString('th-TH')} คะแนนแลกรางวัล ${name}?`);
   if (!confirmed || REDEEMING) return;
 
   REDEEMING = true;
@@ -1921,12 +1929,13 @@ async function redeemReward(reward, btn){
     }
 
     window.RoyalSpend.finish(curUid, id);
+    void loadPickupRedemptions();
     if (payload.duplicate) {
       UiOverlay.hide();
       await refreshUserScore({ bust: true });
       try { await loadRewards({ include: 0, uid: curUid }); } catch {}
       const status = payload.redemption?.status === 'cancelled_refunded' ? 'รายการเดิมถูกยกเลิกและคืนคะแนนแล้ว' : 'พบรายการแลกเดิมในประวัติ';
-      return toastOk(`${status} · เลขรายการ ${payload.redemption.id}`);
+      return showRedemptionResult(payload.redemption.id, status, `เลขรายการ ${payload.redemption.id}`);
     }
 
     // 2. คำนวณแต้มใหม่ และอัปเดตตัวแปรทั้งหมดให้ตรงกัน (แก้บั๊กแต้มหาย)
@@ -1956,7 +1965,8 @@ async function redeemReward(reward, btn){
         stock -= 1;
         card.dataset.stock = stock;
         if (stock === 0) {
-          stockEl.textContent = "หมดแล้ว";
+          stockEl.textContent = RoyalStatus.get('reward', 'sold_out').label;
+          stockEl.classList.add('rp-reward-stock-out');
           card.classList.add("soldout");
           const btnRedeem = card.querySelector(".rp-redeem-btn");
           if (btnRedeem) btnRedeem.disabled = true;
@@ -1971,7 +1981,7 @@ async function redeemReward(reward, btn){
 
     // Popup สำเร็จ
     if (window.Swal){
-      await Swal.fire({
+      const result = await Swal.fire({
         title: "แลกสำเร็จ! 🎉",
         imageUrl: img || undefined,
         imageWidth: 150,
@@ -1979,16 +1989,20 @@ async function redeemReward(reward, btn){
         imageAlt: name,
         html: `
           <h5 class="fw-bold text-dark mt-2">${h(name)}</h5>
-          <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
+          <div class="mb-3">${RoyalStatus.badge('redemption', 'approved')}</div>
+          <div class="mb-3 text-muted">ใช้ ${cost.toLocaleString('th-TH')} คะแนน</div>
           <div class="alert alert-success small p-2 text-start">
              สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหลักฐานรายการแลกแก่ จป.วิชาชีพ<br>
              หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>
           </div>
-          ${payload?.redemption?.id ? `<div class="small text-muted">เลขรายการ: ${h(payload.redemption.id)}</div>` : ''}
+          ${payload?.redemption?.id ? `<div class="small text-muted text-break">เลขรายการ: ${h(payload.redemption.id)}</div>` : ''}
         `,
-        confirmButtonText: "ตกลง",
+        confirmButtonText: 'ดูหลักฐานรับของ',
+        showCancelButton: true,
+        cancelButtonText: 'ปิด',
         confirmButtonColor: "#22c55e"
       });
+      if (result.isConfirmed && payload.redemption?.id) await openRedemptionEvidence(payload.redemption.id);
     } else {
       alert(`แลก ${name} สำเร็จ!`);
     }
@@ -2000,7 +2014,8 @@ async function redeemReward(reward, btn){
     console.error(err);
     UiOverlay.hide();
     window.RoyalSpend.finish(curUid, id, err?.message || 'spend_failed');
-    toastErr(mapSpendError(err));
+    renderRedemptionTracker();
+    toastErr(RoyalStatus.spendError(err));
   }finally{
     setBtnLoading(btn, false);
     REDEEMING = false;
@@ -2232,54 +2247,153 @@ async function handleTransactionDeepLinks() {
   const redemptionId = String(params.get('redemption_id') || '').trim();
   if (!redemptionId) return;
   window.__TRANSACTION_DEEP_LINK_HANDLED = true;
-  const uid = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
+  window.SystemBoot?.hide?.();
+  await openRedemptionEvidence(redemptionId);
+}
+
+async function fetchRedemptionEvidence(params, uid = resolveCurrentUid()) {
   if (!uid) throw new Error('ยังไม่พบข้อมูลผู้ใช้');
-  const response = await fetch(`${API_SPEND}?uid=${encodeURIComponent(uid)}&redemptionId=${encodeURIComponent(redemptionId)}`, { cache: 'no-store' });
+  const query = new URLSearchParams({ uid, ...params });
+  const response = await fetchWithActionTimeout(`${API_SPEND}?${query}`, { cache: 'no-store' });
   const payload = await safeJson(response);
+  if (response.status === 404 && params.requestId) return null;
   if (!response.ok || payload?.status !== 'success') throw new Error(payload?.message || 'โหลดหลักฐานรับของไม่สำเร็จ');
-  const item = payload.data || {};
-  const statusMeta = {
-    legacy: { label: 'ประวัติเก่า', tone: 'secondary', detail: 'รายการนี้เกิดขึ้นก่อนเริ่มใช้ระบบยืนยันการรับของใหม่' },
-    approved: { label: 'รอรับของ', tone: 'success', detail: 'สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหน้าจอนี้แก่ จป.วิชาชีพ' },
-    received: { label: 'รับของแล้ว', tone: 'primary', detail: 'รายการนี้เสร็จสมบูรณ์แล้ว' },
-    cancelled_refunded: { label: 'ยกเลิกและคืนคะแนนแล้ว', tone: 'info', detail: item.cancelReason || 'ผู้ดูแลยกเลิกรายการและคืนคะแนนแล้ว' }
-  }[item.redemptionStatus] || { label: item.redemptionStatus || '-', tone: 'secondary', detail: '' };
+  return payload.data;
+}
+
+async function openRedemptionEvidence(redemptionId) {
+  try {
+    const item = await fetchRedemptionEvidence({ redemptionId });
+    if (item.redemptionStatus !== 'approved' && pickupRedemptions.some(row => row.id === item.id)) {
+      void loadPickupRedemptions();
+    }
+    return await showRedemptionEvidence(item);
+  } catch (error) {
+    return toastErr(error.message || 'โหลดหลักฐานรับของไม่สำเร็จ');
+  }
+}
+
+async function showRedemptionResult(redemptionId, title, text) {
+  if (!window.Swal) return toastOk(text);
+  const result = await Swal.fire({ title, text, icon: 'info', showCancelButton: true, confirmButtonText: 'ดูหลักฐาน', cancelButtonText: 'ปิด' });
+  if (result.isConfirmed && redemptionId) await openRedemptionEvidence(redemptionId);
+}
+
+async function showRedemptionEvidence(item) {
+  const status = item.redemptionStatus;
+  const descriptions = {
+    legacy: 'รายการนี้เกิดขึ้นก่อนเริ่มใช้ระบบยืนยันการรับรางวัล',
+    approved: 'แสดงหน้าจอนี้แก่ จป.วิชาชีพ ที่ส่วนงาน SHE เพื่อรับรางวัล',
+    received: 'รายการนี้เสร็จสมบูรณ์แล้ว',
+    cancelled_refunded: item.cancelReason || 'ผู้ดูแลยกเลิกรายการและคืนคะแนนแล้ว'
+  };
+  const detail = Object.prototype.hasOwnProperty.call(descriptions, status) ? descriptions[status] : 'กรุณาตรวจสอบรายการในประวัติการแลก';
   if (window.Swal) {
     window.SystemBoot?.hide?.();
     await Swal.fire({
       title: 'หลักฐานรายการแลก',
-      imageUrl: item.rewardImage || undefined,
+      imageUrl: safeRewardImageUrl(item.rewardImage, '') || undefined,
       imageWidth: 140,
       imageAlt: item.rewardName || 'ของรางวัล',
       html: `<div class="text-start">
         <div class="fw-bold fs-5 text-center mb-2">${h(item.rewardName || 'ของรางวัล')}</div>
-        <div class="text-center mb-3"><span class="badge bg-${h(statusMeta.tone)}-subtle text-${h(statusMeta.tone)}">${h(statusMeta.label)}</span></div>
-        <div class="small"><b>เลขรายการ:</b> <code>${h(item.id)}</code></div>
+        <div class="text-center mb-3">${RoyalStatus.badge('redemption', status)}</div>
+        <div class="small text-break"><b>เลขรายการ:</b> <code>${h(item.id)}</code></div>
         <div class="small mt-1"><b>คะแนนที่ใช้:</b> ${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</div>
         <div class="small mt-1"><b>วันที่แลก:</b> ${h(new Date(item.createdAt).toLocaleString('th-TH'))}</div>
-        <div class="alert alert-light border small mt-3 mb-0">${h(statusMeta.detail)}${item.redemptionStatus === 'approved' ? '<br>หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>' : ''}</div>
+        <div class="alert alert-light border small mt-3 mb-0 text-break">${h(detail)}${status === 'approved' ? '<br>หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>' : ''}</div>
       </div>`,
       confirmButtonText: 'ปิด'
     });
+  } else alert(`${RoyalStatus.get('redemption', status).label}\n${item.rewardName}\nเลขรายการ ${item.id}\n${detail}`);
+}
+
+let pickupRedemptions = [];
+let pickupLoadFailed = false;
+let pickupLoadVersion = 0;
+
+function renderRedemptionTracker() {
+  const tracker = document.getElementById('redemptionTracker');
+  if (!tracker) return;
+  const pendingRewards = window.RoyalSpend?.pendingRewards(resolveCurrentUid()) || [];
+  tracker.classList.toggle('d-none', !pendingRewards.length && !pickupRedemptions.length && !pickupLoadFailed);
+  document.getElementById('pendingRedemptionList').innerHTML = pendingRewards.map(rewardId => {
+    const name = REWARDS_CACHE.find(reward => reward.id === rewardId)?.name || 'คำขอแลกรางวัล';
+    return `<div class="border rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="text-break"><div class="fw-semibold mb-1">${h(name)}</div>${RoyalStatus.badge('redemption', 'pending')}</div>
+      <button type="button" class="btn btn-sm btn-outline-primary py-2" data-check-redemption="${h(rewardId)}">ตรวจรายการเดิม</button>
+    </div>`;
+  }).join('');
+  document.getElementById('pickupRedemptionList').innerHTML = pickupRedemptions.map(item => `
+    <div class="border rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <div class="text-break"><div class="fw-semibold mb-1">${h(item.reward_name)}</div>${RoyalStatus.badge('redemption', 'approved')} <small class="text-muted">${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</small></div>
+      <button type="button" class="btn btn-sm btn-outline-success py-2" data-open-redemption="${h(item.id)}">ดูหลักฐานรับของ</button>
+    </div>`).join('') + (pickupLoadFailed ? '<p class="small text-muted mb-0">โหลดรายการรอรับรางวัลไม่สำเร็จ <button type="button" class="btn btn-sm btn-link" data-retry-pickup>ลองใหม่</button></p>' : '');
+}
+
+async function loadPickupRedemptions() {
+  const uid = resolveCurrentUid();
+  if (!uid || !document.getElementById('redemptionTracker')) return;
+  const version = ++pickupLoadVersion;
+  renderRedemptionTracker();
+  try {
+    const query = new URLSearchParams({ uid, limit: '3', pickup: 'pending' });
+    const response = await fetchWithActionTimeout(`${API_REDEMPTIONS}?${query}`, { cache: 'no-store' });
+    const payload = await safeJson(response);
+    if (!response.ok || !Array.isArray(payload?.items)) throw new Error('pickup_load_failed');
+    if (version !== pickupLoadVersion || uid !== resolveCurrentUid()) return;
+    pickupRedemptions = payload.items.filter(item => item.status === 'approved');
+    pickupLoadFailed = false;
+  } catch {
+    if (version !== pickupLoadVersion || uid !== resolveCurrentUid()) return;
+    pickupRedemptions = [];
+    pickupLoadFailed = true;
+  }
+  renderRedemptionTracker();
+}
+
+async function checkPendingRedemption(rewardId) {
+  const uid = resolveCurrentUid();
+  const requestId = window.RoyalSpend.pending(uid, rewardId);
+  if (!requestId) return;
+  try {
+    const item = await fetchRedemptionEvidence({ rewardId, requestId }, uid);
+    if (uid !== resolveCurrentUid()) return;
+    if (!item) return toastErr('ยังไม่พบรายการที่บันทึกไว้ กรุณาลองตรวจอีกครั้ง หรือส่งคำขอเดิมจากการ์ดรางวัลเดิม');
+    window.RoyalSpend.finish(uid, rewardId);
+    renderRedemptionTracker();
+    void loadPickupRedemptions();
+    await showRedemptionEvidence(item);
+    void refreshUserScore().then(() => loadRewards({ uid }));
+  } catch (error) {
+    return toastErr(error.message || 'ตรวจผลการแลกไม่สำเร็จ');
   }
 }
 
-// แปลง res/json → ข้อความสำหรับผู้ใช้ และประเภท error ที่สนใจ
-function mapSpendError(err) {
-  const msg = String(err?.message || err?.status || err || '');
-  const map = {
-    insufficient_points: 'คะแนนไม่พอสำหรับแลกรางวัลนี้',
-    out_of_stock: 'รางวัลนี้หมดแล้ว กรุณาเลือกรางวัลอื่น',
-    stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
-    reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
-    reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
-    request_id_required: 'กรุณาตรวจประวัติการแลก แล้วโหลดหน้าใหม่ก่อนลองอีกครั้ง',
-    request_id_conflict: 'คำขอเดิมไม่ตรงกับรายการนี้ กรุณาตรวจประวัติการแลกก่อนลองอีกครั้ง',
-    user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณาเปิดหน้าแรกผ่าน LINE อีกครั้ง',
-    'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
-  };
-  const message = map[msg] || 'ยังยืนยันผลการแลกไม่ได้ กรุณาตรวจประวัติหรือส่งคำขอเดิมอีกครั้ง';
-  return err?.correlationId ? `${message} · เลขอ้างอิง ${err.correlationId}` : message;
+function bindRedemptionTracker() {
+  document.getElementById('redemptionTrackerHistory')?.addEventListener('click', openHistory);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void loadPickupRedemptions();
+  });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) void loadPickupRedemptions();
+  });
+  document.addEventListener('click', async event => {
+    const button = event.target.closest('button[data-open-redemption], button[data-check-redemption], button[data-retry-pickup]');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    try {
+      if (button.dataset.openRedemption) {
+        const modal = button.closest('.modal');
+        if (modal) window.bootstrap?.Modal.getInstance(modal)?.hide();
+        await openRedemptionEvidence(button.dataset.openRedemption);
+      } else if (button.dataset.checkRedemption) {
+        await checkPendingRedemption(button.dataset.checkRedemption);
+      } else {
+        await loadPickupRedemptions();
+      }
+    } finally { button.disabled = false; }
+  });
 }
 
 function mapRedeemError(res, json) {
@@ -2420,7 +2534,7 @@ function historyTypeMeta(type, amount) {
   if (raw.includes('COUPON')) return { icon: 'fa-ticket', label: 'รับคูปอง', tone: 'plus' };
   if (raw.includes('SPEND') || Number(amount) < 0) return { icon: 'fa-gift', label: 'แลกรางวัล', tone: 'minus' };
   if (raw.includes('WEEKLY_SAFETY')) return { icon: 'fa-flag-checkered', label: 'Weekly Safety Mission', tone: 'plus' };
-  if (raw.includes('DAILY_CHECKIN')) return { icon: 'fa-calendar-check', label: 'เช็คอินประจำวัน', tone: 'plus' };
+  if (raw.includes('DAILY_CHECKIN')) return { icon: 'fa-calendar-check', label: 'เช็กอินประจำวัน', tone: 'plus' };
   if (raw.includes('BIRTHDAY')) return { icon: 'fa-cake-candles', label: 'วันเกิด', tone: 'plus' };
   if (raw.includes('ADMIN')) return { icon: 'fa-user-shield', label: 'แอดมินปรับแต้ม', tone: Number(amount) >= 0 ? 'plus' : 'minus' };
   return { icon: 'fa-star', label: 'รายการคะแนน', tone: Number(amount) >= 0 ? 'plus' : 'minus' };
@@ -2446,6 +2560,7 @@ function toRedemptionTimelineItem(it) {
   const cost = Number(it.cost || 0);
   return {
     kind: 'redemption',
+    redemption_id: it.id,
     created_at: it.created_at,
     title: 'แลกรางวัล',
     subtitle: it.reward_name || 'ของรางวัล',
@@ -2520,6 +2635,7 @@ function renderUserTimeline(items = []) {
           <div class="fw-bold text-dark">${esc(item.title)}</div>
           ${item.subtitle ? `<div class="small text-muted text-truncate">${esc(item.subtitle)}</div>` : ''}
           <div class="small text-muted">${esc(fmt(item.created_at))}</div>
+          ${item.redemption_id ? `<button type="button" class="btn btn-sm btn-link px-0" data-open-redemption="${esc(item.redemption_id)}">ดูหลักฐาน</button>` : ''}
         </div>
         <div class="fw-bold ${amountClass}">${sign}${amount}</div>
       </div>

@@ -40,7 +40,7 @@ module.exports = async (req, res) => {
 
     // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
     if (req.query.kind === 'redemptions') {
-      const { data, error } = await supabase
+      let query = supabase
         .from('redemptions')
         .select(`
           id,
@@ -49,7 +49,9 @@ module.exports = async (req, res) => {
           status,
           rewards:reward_id ( name, img_url )
         `)
-        .eq('user_id', user.id)
+        .eq('user_id', user.id);
+      if (req.query.pickup === 'pending') query = query.eq('status', 'approved');
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .limit(limit);
 

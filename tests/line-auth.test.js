@@ -163,12 +163,41 @@ test('spend rejects invalid or conflicting request IDs and returns a matching re
   assert.equal(replay.payload.lineNotification.status, 'not_needed')
 })
 
+test('pickup evidence lookup by request is read-only and scoped to the member and reward', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const originalFrom = supabaseAdmin.from.bind(supabaseAdmin)
+  const filters = {}
+  t.mock.method(supabaseAdmin, 'from', table => {
+    if (table !== 'redemptions') return originalFrom(table)
+    const read = {
+      select() { return read },
+      eq(key, value) { filters[key] = value; return read },
+      async maybeSingle() { return { data: { id: 'evidence-id', status: 'approved', cost: 10 } } }
+    }
+    return read
+  })
+  const result = {}
+  const res = {
+    setHeader() {},
+    status(code) { result.code = code; return this },
+    json(body) { result.body = body; return this }
+  }
+  const requestId = '30000000-0000-4000-8000-000000000001'
+  const rewardId = '20000000-0000-4000-8000-000000000001'
+  const spend = require('../api/spend')
+  await spend({ method: 'GET', headers: {}, query: { uid: 'U-user-1', requestId, rewardId } }, res)
+  assert.equal(result.code, 200)
+  assert.equal(result.body.data.id, 'evidence-id')
+  assert.deepEqual(filters, { 'users.uid': 'U-user-1', request_id: requestId, reward_id: rewardId })
+})
+
 test('privileged routes require a LINE token and use the verified role', async () => {
   process.env.ADMIN_UID = 'U-admin'
   process.env.SAFETY_VIEWER_UIDS = 'U-safety-viewer'
   const adminActions = require('../api/admin-actions')
   const routes = [
     [adminActions, { adminUid: 'U-admin' }],
+    [adminActions, { adminUid: 'U-admin', action: 'pending_work' }],
     [require('../api/admin-coupons'), { adminUid: 'U-admin' }],
     [require('../api/all-scores'), { adminUid: 'U-admin' }],
     [require('../api/rewards'), { include: '1' }]
@@ -202,6 +231,51 @@ test('privileged routes require a LINE token and use the verified role', async (
   assert.equal(viewer.payload.role, 'safety_viewer')
   const blocked = await call(adminActions, {}, 'valid-token', 'POST', { action: 'safety_settings_update' })
   assert.equal(blocked.statusCode, 403)
+  const blockedPending = await call(adminActions, { action: 'pending_work' }, 'valid-token')
+  assert.equal(blockedPending.statusCode, 403)
+})
+
+test('pending work returns exact counts and isolates unavailable queues', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  process.env.ADMIN_UID = 'U-admin'
+  mockLine({ uid: 'U-admin' })
+  const expected = {
+    redemptions: ['approved', 174],
+    auth_help_cases: ['open', 0],
+    line_notification_outbox: ['failed', 3],
+    audit_failure_outbox: ['pending', null]
+  }
+  const seen = new Set()
+  const originalFrom = supabaseAdmin.from
+  t.mock.method(supabaseAdmin, 'from', table => {
+    if (!(table in expected)) return originalFrom(table)
+    return {
+      ...(table === 'auth_help_cases' ? originalFrom(table) : {}),
+      select(field, options) {
+        assert.equal(field, 'id')
+        assert.deepEqual(options, { count: 'exact', head: true })
+        return {
+          async eq(column, value) {
+            const [status, count] = expected[table]
+            assert.equal(column, 'status')
+            assert.equal(value, status)
+            seen.add(table)
+            return { count, error: count === null ? new Error('unavailable') : null }
+          }
+        }
+      }
+    }
+  })
+  const result = { headers: {} }
+  await require('../api/admin-actions')({ ...request('valid-token'), method: 'GET', query: { action: 'pending_work' } }, {
+    setHeader(name, value) { result.headers[name] = value },
+    status(code) { result.code = code; return this },
+    json(payload) { result.payload = payload; return this }
+  })
+  assert.equal(seen.size, 4)
+  assert.equal(result.code, 200)
+  assert.equal(result.headers['Cache-Control'], 'private, no-store')
+  assert.deepEqual(result.payload, { status: 'success', data: { pickup: 174, help: 0, line: 3, audit: null } })
 })
 
 test('coupon generation retries code collisions with the same request ID and returns the database batch', async (t) => {

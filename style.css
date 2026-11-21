@@ -861,11 +861,6 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
 }
 .rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
 
-/* แนะนำ: เมื่อคะแนนไม่พอ ให้โชว์ overlay */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-  background:rgba(255,255,255,.6); backdrop-filter:blur(2px); font-weight:800; color:#64748b
-}
 
 /* ปรับ card ให้ไม่ตัดบรรทัด/ไม่ล้น */
 .rp-profile-card{ grid-template-columns: auto 1fr; align-items: center; }
@@ -920,13 +915,6 @@ body{ padding-bottom: env(safe-area-inset-bottom) }
 }
 .rp-redeem-btn:disabled{ opacity:.45; pointer-events:none }
 
-/* “คะแนนไม่พอ” — โปร่งให้เห็นรูปชัด */
-.rp-reward-card.locked::after{
-  content:"คะแนนไม่พอ"; position:absolute; inset:0;
-  display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.55));
-  color:#475569; font-weight:800; letter-spacing:.3px;
-}
 
 /* Top progress bar */
 #topbar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#0ea5e9,#22c55e);width:0;transition:width .3s,opacity .4s;z-index:9999}
@@ -984,7 +972,6 @@ body.ready #topbar{width:100%;opacity:0}
 .rp-reward-rail{ display:grid; grid-auto-flow:column; grid-auto-columns: calc(70% - 16px); gap:12px; overflow-x:auto; padding:4px 2px 8px; scroll-snap-type:x mandatory; }
 @media (min-width:576px){ .rp-reward-rail{ grid-auto-columns: 280px; } }
 .rp-reward-card{ position:relative; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; background:#fff; scroll-snap-align:center; }
-.rp-reward-card.locked{ opacity:.7; }
 .rp-reward-img{ aspect-ratio: 4/3; background:#f1f5f9; }
 .rp-reward-img img{ width:100%; height:100%; object-fit:cover; display:block; }
 .rp-reward-cost{ font-weight:800; color:#111827 }
@@ -3894,7 +3881,13 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
 
 /* กล่องชื่อรางวัล */
 .rp-reward-body {
-  padding: 8px;
+  padding: 8px 60px 8px 8px;
+}
+
+.rp-reward-shortage {
+  color: #854d0e;
+  font-size: .8rem;
+  font-weight: 700;
 }
 
 /* ป้ายราคา */
@@ -3952,31 +3945,7 @@ body{ padding-bottom: env(safe-area-inset-bottom); }
   pointer-events: none;
 }
 
-/* overlay คะแนนไม่พอ */
-.rp-reward-card.locked::after {
-  content: "คะแนนไม่พอ";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.55));
-  color: #475569;
-  font-weight: 800;
-}
 
-/* overlay ของหมด */
-.rp-reward-card.soldout::after {
-  content: "ของหมดแล้ว";
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(180deg,rgba(255,255,255,1),rgba(255,255,255,.7));
-  color: #b91c1c;
-  font-weight: 800;
-}
 
 /* กล่องรูปของรางวัล */
 .rp-reward-img {

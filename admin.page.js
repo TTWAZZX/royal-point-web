@@ -48,25 +48,16 @@ function isRecoveryActive(auth) {
   return Number.isFinite(until) && until > Date.now();
 }
 
-function authBadge(auth) {
-  if (isRecoveryActive(auth)) return '<span class="badge bg-warning-subtle text-warning-emphasis ms-1">โหมดช่วยเหลือ</span>';
-  if (auth?.tokenRequired) return '<span class="badge bg-success-subtle text-success ms-1">ยืนยันผ่าน LINE แล้ว</span>';
-  return '<span class="badge bg-secondary-subtle text-secondary ms-1">รอย้ายระบบ</span>';
+function memberAuthStatus(auth) {
+  if (!auth?.tokenRequired) return 'legacy';
+  return isRecoveryActive(auth) ? 'recovery' : 'verified';
 }
-
-const AUTH_HELP_STATUS = {
-  open: { label:'รอดำเนินการ', tone:'warning' },
-  approved: { label:'เปิดช่วยเหลือแล้ว', tone:'primary' },
-  resolved: { label:'ผู้ใช้เข้าใช้งานสำเร็จ', tone:'success' },
-  expired: { label:'หมดอายุ', tone:'secondary' },
-  closed: { label:'ปิดเรื่อง', tone:'dark' }
-};
 
 function helpOutcomeSummary(helpCase) {
     if (helpCase?.status === 'resolved') {
         const viaRecovery = helpCase.resolution_method === 'recovery_completed';
         return {
-            label: viaRecovery ? 'เข้าใช้งานผ่านโหมดช่วยเหลือสำเร็จ' : 'ยืนยัน LINE สำเร็จ',
+            label: viaRecovery ? 'เข้าใช้งานผ่านโหมดช่วยเหลือสำเร็จ' : RoyalStatus.get('migration', 'verified').label,
             tone: 'success',
             icon: 'fa-circle-check',
             time: helpCase.resolved_at || null
@@ -119,16 +110,16 @@ function renderTable(totalPages) {
              <div class="fw-bold text-dark text-truncate mb-1" style="font-size:1.05rem;">
                 ${escapeHtml(r.name || 'ไม่ระบุชื่อ')}
              </div>
-             <div class="text-muted small">
-                <i class="fa-regular fa-id-card me-1 opacity-50"></i>${escapeHtml(r.room || r.tel || 'General User')}
-                ${authBadge(r.auth)}
+             <div class="text-muted small d-flex flex-wrap align-items-center gap-1 text-break">
+                <span><i class="fa-regular fa-id-card me-1 opacity-50"></i>${escapeHtml(r.room || r.tel || 'สมาชิกทั่วไป')}</span>
+                ${RoyalStatus.badge('migration', memberAuthStatus(r.auth))}
              </div>
           </div>
 
           <div class="d-flex align-items-center gap-3 flex-shrink-0 ms-3">
              <div class="text-end">
                 <div class="fw-bold text-primary" style="font-size:1.2rem; line-height:1;">${fmt(r.score)}</div>
-                <div class="small text-muted" style="font-size:0.65rem;">POINTS</div>
+                <div class="small text-muted" style="font-size:0.75rem;">คะแนน</div>
              </div>
              <div class="d-flex gap-1 bg-light rounded-pill p-1 border">
                 <button class="btn btn-sm text-secondary rounded-circle" style="width:34px; height:34px;" onclick="openHistoryModal('${r.uid}')">
@@ -202,39 +193,44 @@ function bindEvents() {
   qs("#btnCloseAuthRecovery")?.addEventListener("click", closeAuthRecovery);
   qs('#btnRecoverSafetyPoints')?.addEventListener('click', recoverSafetyCheckinPoints);
   qs("#authHelpSearch")?.addEventListener("input", debounce(renderAuthHelpCases, 250));
-  qs("#authHelpStatusFilter")?.addEventListener("change", renderAuthHelpCases);
+  qs("#authHelpStatusFilter")?.addEventListener("change", () => loadAdminTabData('#pills-auth-help'));
   qs("#btnRefreshAuthHelp")?.addEventListener("click", loadAuthHelpCases);
 }
 
 function notificationSummary(helpCase) {
     const items = Array.isArray(helpCase?.notifications) ? helpCase.notifications : [];
-    if (!items.length) return { label:'ยังไม่มีการส่ง LINE', tone:'secondary', failed:null };
+    if (!items.length) return { status: 'missing', failed: null };
     const failed = items.find(item => item.status === 'failed');
-    if (failed) return { label:'ส่ง LINE ไม่สำเร็จ', tone:'danger', failed };
+    if (failed) return { status: 'failed', failed };
     const pending = items.find(item => item.status === 'pending');
-    if (pending) return { label:'รอส่ง LINE', tone:'warning', failed:null };
-    return { label:'ส่ง LINE แล้ว', tone:'success', failed:null };
+    return { status: pending ? 'pending' : items[0].status, failed: null };
 }
 
+let latestAuthHelpRequest;
 async function loadAuthHelpCases() {
     const area = qs('#authHelpListArea');
     if (!area) return;
+    const request = latestAuthHelpRequest = Symbol();
+    const openOnly = qs('#authHelpStatusFilter')?.value === 'open';
     area.innerHTML = '<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary"></div><div class="small text-muted mt-2">กำลังโหลดเรื่องช่วยเหลือ...</div></div>';
     try {
         const adminUid = getCurrentAdminUid();
-        const response = await fetch(`${API_ACTIONS}?action=auth_help_cases&adminUid=${encodeURIComponent(adminUid || '')}&ts=${Date.now()}`, { cache:'no-store' });
+        const query = new URLSearchParams({ action: 'auth_help_cases', adminUid: adminUid || '', status: openOnly ? 'open' : 'all' });
+        const response = await fetch(`${API_ACTIONS}?${query}`, { cache:'no-store' });
         const payload = await response.json();
+        if (request !== latestAuthHelpRequest) return;
         if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'โหลดเรื่องช่วยเหลือไม่สำเร็จ');
         AUTH_HELP_CASES = Array.isArray(payload.data) ? payload.data : [];
         const openCount = AUTH_HELP_CASES.filter(item => item.status === 'open').length;
         const count = qs('#authHelpOpenCount');
-        if (count) {
+        if (count && !openOnly) {
             count.textContent = String(openCount);
             count.classList.toggle('d-none', openCount === 0);
         }
         renderAuthHelpCases();
         openDeepLinkedHelpCase();
     } catch (error) {
+        if (request !== latestAuthHelpRequest) return;
         area.innerHTML = `<div class="m-card text-center py-4 text-danger"><i class="fa-solid fa-triangle-exclamation mb-2"></i><br>${escapeHtml(error.message || 'โหลดไม่สำเร็จ')}<br><button class="btn btn-sm btn-outline-danger rounded-pill mt-3" onclick="loadAuthHelpCases()">ลองใหม่</button></div>`;
     }
 }
@@ -250,28 +246,28 @@ function renderAuthHelpCases() {
         return matchesStatus && (!term || haystack.includes(term));
     });
     if (!filtered.length) {
-        area.innerHTML = '<div class="m-card text-center py-5 text-muted"><i class="fa-solid fa-headset fa-2x mb-3 opacity-25"></i><br>ไม่พบเรื่องช่วยเหลือ</div>';
+        const empty = statusFilter === 'open' && !term ? 'ไม่มีเรื่องช่วยเหลือรอดำเนินการ' : 'ไม่พบเรื่องช่วยเหลือ';
+        area.innerHTML = `<div class="m-card text-center py-5 text-muted"><i class="fa-solid fa-headset fa-2x mb-3 opacity-25"></i><br>${empty}</div>`;
         return;
     }
     area.innerHTML = filtered.map(item => {
-        const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
         const delivery = notificationSummary(item);
         const outcome = helpOutcomeSummary(item);
         const canApprove = item.status === 'open';
         return `<div class="m-card" id="auth-help-case-${escapeHtml(item.id)}">
-          <div class="d-flex align-items-start justify-content-between gap-2">
+          <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
             <div style="min-width:0">
               <div class="fw-bold text-dark">${escapeHtml(item.case_no)}</div>
               <div class="text-muted small text-truncate">${escapeHtml(item.user?.name || 'ไม่ระบุชื่อ')} · ${escapeHtml(item.target_uid || '')}</div>
             </div>
-            <span class="badge bg-${meta.tone}-subtle text-${meta.tone}-emphasis rounded-pill">${meta.label}</span>
+            ${RoyalStatus.badge('help', item.status)}
           </div>
           <div class="small mt-3"><span class="text-muted">สาเหตุ:</span> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || 'ยืนยันตัวตนไม่สำเร็จ')}</div>
           <div class="small text-muted mt-1">แจ้งล่าสุด ${escapeHtml(formatDateTime(item.last_requested_at))} · ${Number(item.request_count || 1)} ครั้ง</div>
           <div class="small mt-2 text-${outcome.tone}-emphasis"><i class="fa-solid ${outcome.icon} me-1"></i><b>ผลผู้ใช้:</b> ${escapeHtml(outcome.label)}${outcome.time ? ` · ${escapeHtml(formatDateTime(outcome.time))}` : ''}</div>
-          <div class="d-flex align-items-center justify-content-between gap-2 mt-3 pt-2 border-top">
-            <span class="badge bg-${delivery.tone}-subtle text-${delivery.tone}-emphasis"><i class="fa-brands fa-line me-1"></i>${delivery.label}</span>
-            <div class="d-flex gap-1">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3 pt-2 border-top">
+            ${RoyalStatus.badge('delivery', delivery.status)}
+            <div class="d-flex gap-1 rp-status-actions">
               ${delivery.failed ? `<button class="btn btn-sm btn-outline-danger rounded-pill" onclick="retryAuthHelpNotification('${escapeHtml(delivery.failed.id)}')">ส่ง LINE ใหม่</button>` : ''}
               <button class="btn btn-sm ${canApprove ? 'btn-primary' : 'btn-outline-primary'} rounded-pill" onclick="openAuthHelpCase('${escapeHtml(item.id)}')">${canApprove ? 'ดำเนินการ' : 'ดูรายละเอียด'}</button>
             </div>
@@ -283,7 +279,6 @@ function renderAuthHelpCases() {
 window.openAuthHelpCase = async (caseId) => {
     const item = AUTH_HELP_CASES.find(row => String(row.id) === String(caseId));
     if (!item) return;
-    const meta = AUTH_HELP_STATUS[item.status] || AUTH_HELP_STATUS.open;
     const delivery = notificationSummary(item);
     const outcome = helpOutcomeSummary(item);
     const recoveryText = item.recovery_until ? `<br><span class="small text-muted">สิทธิ์ถึง ${escapeHtml(formatDateTime(item.recovery_until))}</span>` : '';
@@ -293,9 +288,9 @@ window.openAuthHelpCase = async (caseId) => {
           <div><b>ผู้ใช้:</b> ${escapeHtml(item.user?.name || 'ไม่ระบุชื่อ')}</div>
           <div><b>UID:</b> <code>${escapeHtml(item.target_uid)}</code></div>
           <div><b>สาเหตุ:</b> ${escapeHtml(AUTH_ERROR_LABEL[item.error_code] || item.error_code)}</div>
-          <div><b>สถานะ:</b> ${meta.label}${recoveryText}</div>
+          <div><b>สถานะ:</b> ${RoyalStatus.badge('help', item.status)}${recoveryText}</div>
           <div><b>ผลผู้ใช้:</b> <span class="text-${outcome.tone}-emphasis">${escapeHtml(outcome.label)}</span>${outcome.time ? ` เมื่อ ${escapeHtml(formatDateTime(outcome.time))}` : ''}</div>
-          <div><b>LINE:</b> ${delivery.label}</div>
+          <div>${RoyalStatus.badge('delivery', delivery.status)}</div>
           ${delivery.failed?.last_error ? `<div class="text-danger mt-2">${escapeHtml(delivery.failed.last_error)}</div>` : ''}
         </div>`,
         icon: item.status === 'open' ? 'question' : 'info',
@@ -378,32 +373,29 @@ function openDeepLinkedHelpCase() {
 
 function renderAuthRecoveryState(user) {
     const auth = user?.auth || {};
-    const active = isRecoveryActive(auth);
+    const authState = memberAuthStatus(auth);
+    const { label, tone } = RoyalStatus.get('migration', authState);
     const status = qs('#actionAuthStatus');
+    status.textContent = label;
+    status.className = `rp-status rp-status--${tone}`;
     const detail = qs('#actionAuthDetail');
     const openBtn = qs('#btnOpenAuthRecovery');
     const closeBtn = qs('#btnCloseAuthRecovery');
 
-    if (!auth.tokenRequired) {
-        status.textContent = 'รอย้ายระบบ';
-        status.className = 'badge bg-secondary';
+    if (authState === 'legacy') {
         detail.textContent = 'ผู้ใช้ยังเข้าแบบเดิมได้อยู่ จึงยังไม่ต้องเปิดโหมดช่วยเหลือ';
         openBtn?.classList.add('d-none');
         closeBtn?.classList.add('d-none');
         return;
     }
 
-    if (active) {
-        status.textContent = 'ช่วยเหลือชั่วคราว';
-        status.className = 'badge bg-warning text-dark';
+    if (authState === 'recovery') {
         detail.textContent = `เข้าแบบเดิมได้ถึง ${formatDateTime(auth.recoveryUntil)} · ${auth.recoveryReason || 'ไม่ระบุเหตุผล'}`;
         openBtn?.classList.add('d-none');
         closeBtn?.classList.remove('d-none');
         return;
     }
 
-    status.textContent = 'ยืนยันผ่าน LINE';
-    status.className = 'badge bg-success';
     detail.textContent = auth.lastVerifiedAt
       ? `ยืนยันล่าสุด ${formatDateTime(auth.lastVerifiedAt)}`
       : 'ผู้ใช้นี้ต้องยืนยันตัวตนผ่าน LINE';

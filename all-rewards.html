@@ -10,7 +10,8 @@
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
-  <link href="style.css" rel="stylesheet">
+  <link href="/style.css?v=mobile-status" rel="stylesheet">
+  <link href="/ui-status.css?v=1" rel="stylesheet">
 
   <style>
     body { background:#f8fafc; font-family: 'Kanit', sans-serif; }
@@ -51,35 +52,14 @@
       text-overflow: ellipsis;
     }
 
-    .reward-cost {
-      position: absolute;
-      top: 8px; right: 8px;
-      background: #f0fdfa; color: #047857;
-      padding: 2px 8px;
-      font-weight: 700; border-radius: 999px; font-size: 0.75rem;
-      border: 1px solid #94d6c3; z-index: 10;
-    }
-
-    .reward-stock {
-      position: absolute;
-      top: 8px; left: 8px;
-      background: rgba(0,0,0,0.65);
-      padding: 2px 8px; font-size: 0.7rem;
-      border-radius: 6px; color: #fff; font-weight: 600; z-index: 10;
-    }
+    .reward-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; padding: 0 10px; }
+    .reward-cost { font-weight: 700; font-size: .8125rem; color: #14532d; }
+    .reward-stock { font-size: .8125rem; color: #475569; }
 
     .reward-footer { padding: 6px 10px 10px; }
     .reward-footer button { min-height: 44px; touch-action: manipulation; }
 
-    .reward-card.soldout { opacity: 0.6; pointer-events: none; filter: grayscale(1); }
-    .reward-card.soldout::after {
-      content: "หมดแล้ว";
-      position: absolute; inset: 0;
-      background: rgba(255,255,255,0.5);
-      display: flex; justify-content: center; align-items: center;
-      font-weight: 900; color: #b91c1c; font-size: 1.2rem; z-index: 20;
-      transform: rotate(-15deg);
-    }
+    .reward-card.soldout img { filter: grayscale(1); }
     
     /* Skeleton Animation */
     .skeleton {
@@ -91,25 +71,12 @@
     @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
     /* เพิ่มต่อท้ายใน <style> */
-    .reward-card.locked { filter: grayscale(1); opacity: 0.8; }
-    .reward-card.locked .reward-footer button { 
-      background-color: #94a3b8; 
-      border-color: #94a3b8; 
-      cursor: not-allowed; 
-    }
-    .reward-card.locked::after {
-      content: "คะแนนไม่พอ";
-      position: absolute; inset: 0;
-      background: rgba(255,255,255,0.3);
-      display: flex; justify-content: center; align-items: center;
-      font-weight: 800; color: #64748b; font-size: 1.1rem; z-index: 20;
-      transform: rotate(-10deg);
-      text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    /* ปรับแต่ง soldout ให้ซ้อนทับ locked ได้ */
-    .reward-card.soldout::after {
-      content: "หมดแล้ว";
-      color: #b91c1c;
+    .reward-filters .btn { min-height: 44px; }
+    .reward-shortage:disabled {
+      opacity: 1;
+      color: #854d0e;
+      background: #fef9c3;
+      border-color: #fde68a;
     }
   </style>
 </head>
@@ -132,9 +99,20 @@
 <div class="container py-3">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3 class="fw-bold text-success m-0">🎁 ของรางวัลทั้งหมด</h3>
-    <a href="/" class="text-secondary fs-4" onclick="goBack(event)">
+    <a href="/" class="text-secondary fs-4" onclick="goBack(event)" aria-label="กลับหน้าหลัก">
       <i class="fa-solid fa-circle-left"></i>
     </a>
+  </div>
+
+  <div id="rewardControls" class="d-none mb-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 bg-white border rounded-4 p-3">
+      <p class="m-0" role="status">คะแนนของคุณ <strong id="rewardWalletBalance">—</strong> คะแนน</p>
+      <div class="reward-filters d-flex flex-wrap gap-2" role="group" aria-label="กรองของรางวัล">
+        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" data-filter="all" aria-pressed="true">ทั้งหมด</button>
+        <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" data-filter="affordable" aria-pressed="false">แลกได้ตอนนี้</button>
+      </div>
+    </div>
+    <a id="rewardPendingLink" class="d-none small py-2" href="/#redemptionTracker">ตรวจรายการแลกที่ค้างอยู่</a>
   </div>
 
   <div class="d-flex align-items-center gap-2 mb-2">
@@ -171,7 +149,7 @@
             <h5 id="rewardPreviewName" class="fw-bold mb-1 text-truncate">ของรางวัล</h5>
             <div id="rewardPreviewStock" class="small text-muted"></div>
           </div>
-          <span id="rewardPreviewCost" class="badge bg-success-subtle text-success rounded-pill px-3 py-2">0 pt</span>
+          <span id="rewardPreviewCost" class="badge bg-success-subtle text-success rounded-pill px-3 py-2">0 คะแนน</span>
         </div>
         <button id="rewardPreviewRedeemBtn" type="button" class="btn btn-success w-100 rounded-pill fw-bold mt-3">
           แลกรางวัล
@@ -183,6 +161,7 @@
 
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script src="loader.js?v=line-token-v1-progressive-load"></script>
+<script src="/ui-status.js?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
 
 <script>
@@ -201,6 +180,9 @@ let REWARD_LIST = [];
 let INITIAL_REWARDS_LOADING = true;
 let rewardsLoadPromise = null;
 let REDEEMING = false;
+let rewardFilter = new URLSearchParams(location.search).get('filter') === 'affordable' ? 'affordable' : 'all';
+let rewardsCatalogReady = false;
+const formatRewardPoints = new Intl.NumberFormat('th-TH');
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -228,23 +210,6 @@ function bindRewardImageFallbacks(root = document) {
       image.src = 'https://placehold.co/300x300?text=No+Image';
     }, { once: true });
   });
-}
-
-function friendlySpendError(err) {
-  const message = String(err?.message || err?.status || err || '');
-  const map = {
-    insufficient_points: 'คะแนนไม่พอสำหรับแลกรางวัลนี้',
-    out_of_stock: 'รางวัลนี้หมดแล้ว กรุณาเลือกรางวัลอื่น',
-    stock_conflict: 'รางวัลนี้เพิ่งถูกแลกหมด กรุณาโหลดหน้าใหม่อีกครั้ง',
-    reward_inactive: 'รางวัลนี้ปิดให้แลกชั่วคราว',
-    reward_not_found: 'ไม่พบข้อมูลรางวัลนี้',
-    request_id_required: 'กรุณาตรวจประวัติการแลก แล้วโหลดหน้าใหม่ก่อนลองอีกครั้ง',
-    request_id_conflict: 'คำขอเดิมไม่ตรงกับรายการนี้ กรุณาตรวจประวัติการแลกก่อนลองอีกครั้ง',
-    user_not_found: 'ไม่พบข้อมูลผู้ใช้ กรุณากลับไปหน้าแรกเพื่อเข้าสู่ระบบใหม่',
-    'uid & rewardId required': 'ข้อมูลผู้ใช้หรือรางวัลไม่ครบ กรุณาลองใหม่'
-  };
-  const text = map[message] || 'ยังยืนยันผลการแลกไม่ได้ กรุณาตรวจประวัติหรือส่งคำขอเดิมอีกครั้ง';
-  return err?.correlationId ? `${text} · เลขอ้างอิง ${err.correlationId}` : text;
 }
 
 async function resolveUid() {
@@ -319,23 +284,22 @@ async function refreshRewardsPage() {
     window.SystemBoot?.hide?.();
   }
   REWARDS_SCORE_READY = false;
-  if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+  if (rewardsCatalogReady) renderGrid();
   status.textContent = 'กำลังตรวจคะแนนเพื่อแลกรางวัล';
   retry.classList.add('d-none');
   const uid = auth.uid;
   const loadScore = Loading.apiFetch(`/api/get-score?uid=${encodeURIComponent(uid)}&includeRewards=0`, { cache:'no-store' })
     .then(result => {
       const data = result?.data;
-      const score = Number(data?.score ?? data?.points ?? data?.point ?? data?.balance);
+      const score = Number(data?.score ?? data?.points ?? data?.point ?? data?.balance ?? NaN);
       if (!Number.isFinite(score)) throw new Error('score_missing');
       CURRENT_SCORE = score;
       REWARDS_SCORE_READY = true;
       try { localStorage.setItem(`RP_SCORE:${uid}`, score); } catch {}
-      if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+      if (rewardsCatalogReady) renderGrid();
       return true;
     }).catch(() => {
-      REWARDS_SCORE_READY = false;
-      if (REWARD_LIST.length) renderGrid(REWARD_LIST);
+      if (rewardsCatalogReady) renderGrid();
       return false;
     });
 
@@ -351,7 +315,9 @@ async function refreshRewardsPage() {
     }));
     list.sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0) || a.sort_index - b.sort_index);
     REWARD_LIST = list;
-    renderGrid(REWARD_LIST);
+    rewardsCatalogReady = true;
+    document.getElementById('rewardControls').classList.remove('d-none');
+    renderGrid();
     grid.classList.remove('d-none');
     return true;
   }).catch(() => false).finally(() => skel.classList.add('d-none'));
@@ -364,24 +330,66 @@ async function refreshRewardsPage() {
 /* ===============================
    RENDER GRID
 ================================ */
-function renderGrid(list) {
-  const wrap = document.getElementById('rewardGrid');
-  if (!wrap) return;
+const rewardControls = document.getElementById('rewardControls');
+rewardControls.addEventListener('click', event => {
+  const filter = event.target.closest('button[data-filter]');
+  if (!filter || filter.dataset.filter === rewardFilter) return;
+  rewardFilter = filter.dataset.filter;
+  const url = new URL(location.href);
+  if (rewardFilter === 'affordable') url.searchParams.set('filter', rewardFilter);
+  else url.searchParams.delete('filter');
+  history.replaceState(history.state, '', url);
+  renderGrid();
+});
 
-  if (!Array.isArray(list) || list.length === 0) {
-    wrap.innerHTML = `<div class="col-12 text-center text-muted mt-5">ยังไม่มีของรางวัลที่เปิดให้แลก</div>`;
+function getRewardAction(reward, pending) {
+  if (pending) return { label: 'ตรวจรายการเดิม', disabled: false };
+  if (reward.stock <= 0) return { label: RoyalStatus.get('reward', 'sold_out').label, disabled: true };
+  if (!REWARDS_SCORE_READY) return { label: 'รอตรวจคะแนน', disabled: true };
+  const shortage = reward.cost - CURRENT_SCORE;
+  if (shortage > 0) {
+    return { label: `ขาดอีก ${formatRewardPoints.format(shortage)} คะแนน`, disabled: true, shortage: true };
+  }
+  return { label: 'แลกรางวัล', disabled: false };
+}
+
+function renderGrid() {
+  const wrap = document.getElementById('rewardGrid');
+  const affordableOnly = rewardFilter === 'affordable';
+  const wallet = document.getElementById('rewardWalletBalance');
+  const balance = REWARDS_SCORE_READY ? formatRewardPoints.format(CURRENT_SCORE) : '—';
+  if (wallet.textContent !== balance) wallet.textContent = balance;
+  rewardControls.querySelectorAll('button[data-filter]').forEach(button => {
+    const selected = button.dataset.filter === rewardFilter;
+    button.setAttribute('aria-pressed', String(selected));
+    button.classList.toggle('active', selected);
+  });
+
+  const uid = getUid();
+  const pendingIds = new Set(REWARD_LIST.filter(reward => window.RoyalSpend.pending(uid, reward.id)).map(reward => reward.id));
+  document.getElementById('rewardPendingLink').classList.toggle('d-none', !affordableOnly || pendingIds.size === 0);
+  const list = affordableOnly
+    ? REWARD_LIST.filter(reward => REWARDS_SCORE_READY && reward.stock > 0 && reward.cost <= CURRENT_SCORE && !pendingIds.has(reward.id))
+    : REWARD_LIST;
+
+  const preview = document.getElementById('rewardPreviewModal');
+  if (preview.classList.contains('show')) {
+    const reward = REWARD_LIST.find(item => String(item.id) === preview.dataset.rewardId);
+    if (reward) updateRewardPreview(reward);
+  }
+
+  if (list.length === 0) {
+    const message = !affordableOnly ? 'ยังไม่มีของรางวัลที่เปิดให้แลก'
+      : REWARDS_SCORE_READY ? 'ตอนนี้ยังไม่มีของรางวัลที่แลกได้ด้วยคะแนนของคุณ'
+      : 'รายการที่แลกได้จะแสดงเมื่อตรวจคะแนนสำเร็จ';
+    wrap.innerHTML = `<p class="text-center text-muted py-4 m-0" style="grid-column: 1 / -1" role="status">${message}</p>`;
     return;
   }
   
   wrap.innerHTML = list.map(r => {
     const isSoldOut = r.stock <= 0;
-    const isLocked = !isSoldOut && REWARDS_SCORE_READY && CURRENT_SCORE < r.cost;
-    const pending = Boolean(window.RoyalSpend.pending(getUid(), r.id));
-
-    // สร้างคลาส
-    let cls = 'reward-card';
-    if (isSoldOut && !pending) cls += ' soldout';
-    else if (isLocked && !pending) cls += ' locked';
+    const pending = pendingIds.has(r.id);
+    const action = getRewardAction(r, pending);
 
     const id = escapeHtml(r.id);
     const name = escapeHtml(r.name || 'ของรางวัล');
@@ -391,25 +399,22 @@ function renderGrid(list) {
     const stockMax = Number(r.stock_max || 0);
 
     return `
-    <div class="${cls}" id="card-${id}" data-reward-id="${id}" data-cost="${cost}" data-stock="${stock}" data-stock-max="${stockMax}">
+    <div class="reward-card${isSoldOut && !pending ? ' soldout' : ''}" data-reward-id="${id}">
       <img src="${img}" alt="${name}" loading="lazy" data-reward-image>
-      <div class="reward-cost">${cost} pt</div>
-      
-      <div class="reward-stock" id="stock-${id}"
-           data-stock="${stock}"
-           data-max="${stockMax}">
-        ${isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax}` : `เหลือ ${stock} ชิ้น`)}
+      <div class="reward-meta">
+        <span class="reward-cost">${formatRewardPoints.format(cost)} คะแนน</span>
+        ${isSoldOut ? RoyalStatus.badge('reward', 'sold_out') : `<span class="reward-stock">เหลือ ${stockMax > 0 ? `${stock}/${stockMax}` : stock} ชิ้น</span>`}
       </div>
 
       <div class="reward-name">${name}</div>
-      <div class="reward-footer">
+      ${!isSoldOut || pending ? `<div class="reward-footer">
         <button
           type="button"
-          class="btn btn-sm btn-success w-100 rounded-pill fw-bold"
-          ${!pending && (!REWARDS_SCORE_READY || isSoldOut || isLocked) ? 'disabled' : ''}>
-          ${pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : !REWARDS_SCORE_READY ? 'รอตรวจคะแนน' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล'}
+          class="btn btn-sm btn-success w-100 rounded-pill fw-bold${action.shortage ? ' reward-shortage' : ''}"
+          ${action.disabled ? 'disabled' : ''}>
+          ${action.label}
         </button>
-      </div>
+      </div>` : ''}
     </div>
   `}).join('');
   bindRewardImageFallbacks(wrap);
@@ -428,38 +433,38 @@ document.getElementById('rewardGrid')?.addEventListener('click', (event) => {
     return;
   }
 
-  openRewardPreview(reward, card);
+  const modal = updateRewardPreview(reward);
+  bootstrap.Modal.getOrCreateInstance(modal).show();
 });
 
-function openRewardPreview(reward, card) {
+function updateRewardPreview(reward) {
   const modalEl = document.getElementById('rewardPreviewModal');
-  if (!modalEl || !reward) return;
+  modalEl.dataset.rewardId = String(reward.id);
 
   const cost = Number(reward.cost || 0);
   const stock = Number(reward.stock || 0);
   const stockMax = Number(reward.stock_max || 0);
   const isSoldOut = stock <= 0;
-  const isLocked = !isSoldOut && REWARDS_SCORE_READY && CURRENT_SCORE < cost;
-  const pending = Boolean(window.RoyalSpend.pending(getUid(), reward.id));
+  const action = getRewardAction(reward, window.RoyalSpend.pending(getUid(), reward.id));
 
   document.getElementById('rewardPreviewImg').src = reward.img || 'https://placehold.co/300x300?text=No+Image';
   document.getElementById('rewardPreviewName').textContent = reward.name || 'ของรางวัล';
-  document.getElementById('rewardPreviewCost').textContent = `${cost} pt`;
-  document.getElementById('rewardPreviewStock').textContent = isSoldOut ? 'หมดแล้ว' : (stockMax > 0 ? `เหลือ ${stock}/${stockMax}` : `เหลือ ${stock} ชิ้น`);
+  document.getElementById('rewardPreviewCost').textContent = `${formatRewardPoints.format(cost)} คะแนน`;
+  document.getElementById('rewardPreviewStock').textContent = isSoldOut ? RoyalStatus.get('reward', 'sold_out').label : (stockMax > 0 ? `เหลือ ${stock}/${stockMax} ชิ้น` : `เหลือ ${stock} ชิ้น`);
 
   const redeemBtn = document.getElementById('rewardPreviewRedeemBtn');
   if (redeemBtn) {
-    redeemBtn.disabled = !pending && (!REWARDS_SCORE_READY || isSoldOut || isLocked);
-    redeemBtn.textContent = pending ? 'ตรวจรายการเดิม' : isSoldOut ? 'หมดแล้ว' : !REWARDS_SCORE_READY ? 'รอตรวจคะแนน' : isLocked ? 'คะแนนไม่พอ' : 'แลกรางวัล';
+    redeemBtn.disabled = action.disabled;
+    redeemBtn.textContent = action.label;
     redeemBtn.onclick = async () => {
       if (redeemBtn.disabled) return;
       bootstrap.Modal.getInstance(modalEl)?.hide();
-      const cardButton = card?.querySelector('button');
+      const cardButton = document.querySelector(`.reward-card[data-reward-id="${CSS.escape(reward.id)}"] button`);
       await redeemReward(reward.id, reward.name, cost, reward.img, cardButton || redeemBtn);
     };
   }
 
-  bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  return modalEl;
 }
 
 /* ===============================
@@ -485,7 +490,7 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
   // 2. Popup ยืนยันสวยๆ (เหมือนหน้าหลัก)
   const confirm = await Swal.fire({
     title: pending ? 'ส่งคำขอแลกรางวัลเดิมอีกครั้ง?' : 'ยืนยันการแลก?',
-    html: `ต้องการแลก <b>${escapeHtml(rewardName)}</b><br>จะใช้คะแนน <b>${cost}</b> pt`,
+    html: `ต้องการแลก <b>${escapeHtml(rewardName)}</b><br>ใช้ <b>${formatRewardPoints.format(cost)}</b> คะแนน`,
     icon: 'question',
     showCancelButton: true,
     confirmButtonText: pending ? 'ส่งคำขอเดิม' : 'แลกเลย',
@@ -513,20 +518,30 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
     if (spendResult?.status !== 'success') throw spendResult || new Error('spend_failed');
     window.RoyalSpend.finish(uid, rewardId);
     if (spendResult.duplicate) {
-      await loadAllRewards();
       const status = spendResult.redemption?.status === 'cancelled_refunded' ? 'รายการเดิมถูกยกเลิกและคืนคะแนนแล้ว' : 'พบรายการแลกเดิมในประวัติ';
-      return Swal.fire(status, `เลขรายการ ${spendResult.redemption.id}`, 'info');
+      const result = await Swal.fire({
+        title: status, text: `เลขรายการ ${spendResult.redemption.id}`, icon: 'info',
+        showCancelButton: true, confirmButtonText: 'ดูหลักฐาน', cancelButtonText: 'ปิด'
+      });
+      if (result.isConfirmed) return openPickupEvidence(spendResult.redemption.id);
+      await loadAllRewards();
+      return;
     }
 
     // 4. ตัดคะแนนในตัวแปร และ LocalStorage ทันที
     CURRENT_SCORE = Number.isFinite(Number(spendResult?.balance)) ? Number(spendResult.balance) : Math.max(0, CURRENT_SCORE - cost);
-    localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE);
+    try { localStorage.setItem(`RP_SCORE:${uid}`, CURRENT_SCORE); } catch {}
     
     // 5. อัปเดต UI (ตัดสต็อก + ล็อกปุ่มรางวัลอื่นถ้าคะแนนไม่พอแล้ว)
-    updateUiAfterSpend(rewardId, cost);
+    const reward = REWARD_LIST.find(item => String(item.id) === String(rewardId));
+    if (reward) {
+      reward.stock = Math.max(0, reward.stock - 1);
+      REWARD_LIST.sort((a, b) => Number(a.stock <= 0) - Number(b.stock <= 0) || a.sort_index - b.sort_index);
+    }
+    renderGrid();
 
     // 6. Popup สำเร็จ (มีรูป)
-    await Swal.fire({
+    const result = await Swal.fire({
         title: "แลกสำเร็จ! 🎉",
         imageUrl: rewardImg || undefined,
         imageWidth: 150,
@@ -534,23 +549,28 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
         imageAlt: String(rewardName || 'ของรางวัล'),
         html: `
           <h5 class="fw-bold text-dark mt-2">${escapeHtml(rewardName)}</h5>
-          <div class="mb-3 text-muted">ใช้ไป <span class="badge bg-danger rounded-pill">${cost} pt</span></div>
+          <div class="mb-3">${RoyalStatus.badge('redemption', 'approved')}</div>
+          <div class="mb-3 text-muted">ใช้ ${formatRewardPoints.format(cost)} คะแนน</div>
           <div class="alert alert-success small p-2 text-start">
              สามารถเข้ารับของได้ที่ส่วนงาน SHE โดยแสดงหลักฐานรายการแลกแก่ จป.วิชาชีพ<br>
              หากต้องการตรวจสอบว่า จป. อยู่ที่โต๊ะหรือไม่ กรุณาโทรผ่านโทรศัพท์ภายในบริษัทที่ <span class="fw-bold">1199 หรือ 1919</span>
           </div>
-          ${spendResult?.redemption?.id ? `<div class="small text-muted">เลขรายการ: ${escapeHtml(spendResult.redemption.id)}</div>` : ''}
+          ${spendResult?.redemption?.id ? `<div class="small text-muted text-break">เลขรายการ: ${escapeHtml(spendResult.redemption.id)}</div>` : ''}
         `,
-        confirmButtonText: "ตกลง",
+        confirmButtonText: 'ดูหลักฐานรับของ',
+        showCancelButton: true,
+        cancelButtonText: 'ปิด',
         confirmButtonColor: "#22c55e"
     });
+    if (result.isConfirmed && spendResult.redemption?.id) return openPickupEvidence(spendResult.redemption.id);
 
     try { await loadAllRewards(); } catch {}
 
   } catch (err) {
     console.error(err);
     window.RoyalSpend.finish(uid, rewardId, err?.message || 'spend_failed');
-    Swal.fire('ผิดพลาด', friendlySpendError(err), 'error');
+    if (rewardFilter === 'affordable' && window.RoyalSpend.pending(uid, rewardId)) renderGrid();
+    Swal.fire('ผิดพลาด', RoyalStatus.spendError(err), 'error');
   } finally {
     REDEEMING = false;
     if (button && document.body.contains(button)) {
@@ -560,51 +580,8 @@ async function redeemReward(rewardId, rewardName, cost, rewardImg, button) {
   }
 }
 
-// อัปเดต UI หน้าจอหลังแลกสำเร็จ (ตัดสต็อก / รีเรนเดอร์ปุ่มล็อค)
-function updateUiAfterSpend(rewardId, cost) {
-    // ตัดสต็อกตัวที่แลก
-    const stockEl = document.getElementById(`stock-${rewardId}`);
-    const cardEl = document.getElementById(`card-${rewardId}`);
-    const btnEl = cardEl?.querySelector('button');
-
-    if (stockEl) {
-        let currentStock = parseInt(stockEl.getAttribute('data-stock') || '0');
-        let maxStock = stockEl.getAttribute('data-max');
-        let newStock = currentStock - 1;
-        stockEl.setAttribute('data-stock', newStock);
-
-        if (newStock <= 0) {
-            stockEl.textContent = "หมดแล้ว";
-            cardEl.classList.add('soldout');
-            if(cardEl.classList.contains('locked')) cardEl.classList.remove('locked'); // เอา locked ออกถ้า soldout แล้ว
-            if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'แลกรางวัล'; }
-        } else {
-            stockEl.textContent = (maxStock > 0) ? `เหลือ ${newStock}/${maxStock}` : `เหลือ ${newStock} ชิ้น`;
-        }
-    }
-
-    // วนลูปเช็ครางวัลอื่น: ถ้าคะแนนเหลือน้อยกว่าราคาของ ให้ขึ้น Locked ทันที
-    const allCards = document.querySelectorAll('.reward-card');
-    allCards.forEach(card => {
-        // ข้ามตัวที่หมดแล้ว
-        if (card.classList.contains('soldout')) return;
-
-        // ดึงราคาจาก DOM (แกะจาก text "XX pt" หรือต้องเก็บ data-cost ไว้)
-        // เพื่อความง่าย เราจะดึงจาก HTML ที่ render ไว้ (แนะนำให้เก็บ data-cost ไว้ที่ card ตอน renderGrid)
-        // แต่ในโค้ด renderGrid ข้างบน ผมไม่ได้ใส่ data-cost ไว้ที่ card element หลัก
-        // ดังนั้นเราจะใช้วิธี re-render หรือปรับ class ปุ่มเอา
-        
-        // วิธีง่ายสุด: ดูราคาจาก .reward-cost
-        const costEl = card.querySelector('.reward-cost');
-        if (costEl) {
-            const thisCost = parseInt(costEl.textContent);
-            const btn = card.querySelector('button');
-            if (CURRENT_SCORE < thisCost) {
-                card.classList.add('locked');
-                if (btn) { btn.disabled = true; btn.textContent = 'คะแนนไม่พอ'; }
-            }
-        }
-    });
+function openPickupEvidence(redemptionId) {
+  window.location.href = `/?redemption_id=${encodeURIComponent(redemptionId)}`;
 }
 
 function goBack(e) {
