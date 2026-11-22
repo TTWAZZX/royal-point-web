@@ -18,10 +18,59 @@ const {
   buildRedemptionReceivedMessage,
   buildRecoveryApprovedMessage,
   buildRecoverySuccessMessage,
+  retryLineNotification,
   userCouponUrl,
   userRedemptionUrl,
   userRecoveryUrl
 } = require('../lib/line-messaging')
+
+test('birthday retry records only a genuine LINE acceptance and preserves the accepted request ID', async t => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const oldToken = process.env.LINE_CHANNEL_ACCESS_TOKEN
+  t.after(() => {
+    if (oldToken === undefined) delete process.env.LINE_CHANNEL_ACCESS_TOKEN
+    else process.env.LINE_CHANNEL_ACCESS_TOKEN = oldToken
+  })
+  process.env.LINE_CHANNEL_ACCESS_TOKEN = 'fixture'
+  let row = {
+    id: 'test-notification', message_kind: 'birthday_reward', status: 'pending',
+    retry_key: 'fixture-key', recipient_uid: 'U_FIXTURE', payload: {}, created_at: new Date().toISOString()
+  }
+  t.mock.method(supabaseAdmin, 'from', () => {
+    let patch
+    const query = {
+      eq() { return query },
+      neq(field, value) { assert.equal(field, 'status'); assert.equal(value, 'sent'); return query },
+      update(value) { patch = value; return query },
+      select() { return query },
+      async maybeSingle() {
+        if (patch) row = { ...row, ...patch }
+        return { data: row, error: null }
+      }
+    }
+    return query
+  })
+  let headers = { 'x-line-request-id': 'failed-attempt' }
+  const push = t.mock.method(global, 'fetch', async (_url, options) => {
+    assert.equal(options.headers['X-Line-Retry-Key'], 'fixture-key')
+    return new Response(null, { status: 409, headers })
+  })
+  const failed = await retryLineNotification(row.id, 'birthday_reward')
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.sent_at, undefined)
+  headers = { 'x-line-request-id': 'retry-attempt', 'x-line-accepted-request-id': 'accepted-first-time' }
+  const recovered = await retryLineNotification(row.id, 'birthday_reward')
+  assert.equal(recovered.status, 'sent')
+  assert.equal(recovered.line_request_id, 'accepted-first-time')
+  assert.equal(recovered.line_acceptance_recovered, true)
+  assert.ok(Number.isFinite(Date.parse(recovered.sent_at)))
+  await retryLineNotification(row.id, 'birthday_reward')
+  assert.equal(push.mock.callCount(), 2)
+  row = { ...row, status: 'failed', created_at: new Date(Date.now() - 86400001).toISOString() }
+  const expired = await retryLineNotification(row.id, 'birthday_reward')
+  assert.match(expired.last_error, /24 ชั่วโมง/)
+  assert.equal(push.mock.callCount(), 2)
+})
 
 const req = { headers: { host: 'royal.example', 'x-forwarded-proto': 'https' } }
 const helpCase = {

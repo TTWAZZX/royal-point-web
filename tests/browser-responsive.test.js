@@ -321,6 +321,8 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   }))
   let role = 'super_admin'
   let birthdayStatus = 'pending'
+  const futureBirthday = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)
+  let birthdayRetryAccepted = false
   let profile = { name: 'สมาชิกทดสอบ', room: 'SHE', dob: '1990-11-22', tel: '0800000000', passport: null }
   let profileWrites = 0
   let memberScore = 100
@@ -355,11 +357,23 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
     const params = new URL(route.request().url()).searchParams
     const action = params.get('action')
+    if (action === 'birthday_upcoming') {
+      return route.fulfill({ json: { status: 'success', data: [{ run_date: futureBirthday, scheduled_members: 1 }] } })
+    }
     if (action === 'birthday_runs') {
       assert.match(params.get('date'), /^\d{4}-\d{2}-\d{2}$/)
+      if (params.get('date') === futureBirthday) {
+        return route.fulfill({ json: { status: 'success', data: {
+          upcoming: true, total: 1, awarded: 0, notAwarded: 1,
+          items: [{ name: 'สมาชิกรอแจก', dob: '1990-11-22', state: 'not_awarded' }]
+        } } })
+      }
+      const delivery = birthdayRetryAccepted
+        ? { line_status: 'sent', line_request_id: 'line-confirmed-fixture', line_confirmed_at: '2026-11-22T08:30:00Z', line_acceptance_recovered: false }
+        : { line_status: 'failed', notification_id: 'birthday-report-test', line_queued_at: new Date().toISOString() }
       return route.fulfill({ json: { status: 'success', data: {
-        run: { reward_count: 1 }, total: 2, awarded: 1, previouslyAwarded: 0, notAwarded: 1, lineSent: 0,
-        items: [{ name: 'เกิดวันนี้', state: 'awarded', line_status: 'failed' }, { name: 'สมาชิกอีกคน', state: 'not_awarded' }]
+        run: { reward_count: 1 }, total: 2, awarded: 1, previouslyAwarded: 0, notAwarded: 1, lineSent: birthdayRetryAccepted ? 1 : 0,
+        items: [{ name: 'เกิดวันนี้', dob: '1990-11-22', state: 'awarded', delivery }, { name: 'สมาชิกอีกคน', dob: null, state: 'not_awarded' }]
       } } })
     }
     if (action === 'member_profile') {
@@ -406,6 +420,11 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.route('**/api/admin-actions', async route => {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
     const { action, notificationId, targetUid, checkinDate, status, redemptionId } = route.request().postDataJSON()
+    if (action === 'birthday_notification_retry') {
+      assert.equal(notificationId, 'birthday-report-test')
+      birthdayRetryAccepted = true
+      return route.fulfill({ json: { status: 'success', data: { status: 'sent' } } })
+    }
     if (action === 'member_profile_update') {
       const payload = route.request().postDataJSON()
       assert.equal(targetUid, 'U_MEMBER')
@@ -451,7 +470,15 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.locator('#tabBirthdayBtn').click()
   await page.locator('#birthdayRunResult').getByText('ประมวลผลคะแนนสำเร็จ', { exact: true }).waitFor()
   await page.locator('#birthdayRunResult').getByText('ส่ง LINE ไม่สำเร็จ', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('วันเกิด 22 พฤศจิกายน พ.ศ. 2533', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('ไม่ระบุวันเกิด', { exact: true }).waitFor()
   await page.locator('#birthdayRunResult').getByText('ยังไม่พบคะแนน', { exact: true }).last().waitFor()
+  await page.getByRole('button', { name: 'ส่ง LINE ซ้ำ', exact: true }).click()
+  await page.locator('#birthdayRunMembers').getByText(/เวลาที่ LINE ตอบรับ.*15:30:00/).waitFor()
+  await page.locator('#birthdayRunMembers').getByText(/line-confirmed-fixture/).waitFor()
+  await page.locator('#birthdayUpcomingList').getByRole('button', { name: /รอแจก 1 คน/ }).click()
+  await page.locator('#birthdayRunResult').getByText('รอแจกคะแนนตามกำหนด', { exact: true }).waitFor()
+  assert.equal(await page.locator('#birthdayRunDate').inputValue(), futureBirthday)
   assert.equal(pendingWorkReads, 0)
   const pendingWorkTab = page.getByRole('tab', { name: 'งานค้าง' })
   if (viewport.width < 500) await pendingWorkTab.tap()

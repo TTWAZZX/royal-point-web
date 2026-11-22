@@ -118,7 +118,7 @@ function loadAdminTabData(target) {
     else if (cleanTarget === '#pills-coupons') loader = () => loadCoupons();
     else if (cleanTarget === '#pills-ads') loader = () => loadAdBanners();
     else if (cleanTarget === '#pills-history') loader = loadRedemptionHistory;
-    else if (cleanTarget === '#pills-birthday') loader = () => window.loadBirthdayRuns?.();
+    else if (cleanTarget === '#pills-birthday') loader = () => window.loadBirthdayOverview?.();
     else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
     else if (cleanTarget === '#pills-audit') loader = loadAuditLogs;
     else if (cleanTarget === '#pills-safety') loader = () => loadAdminTabData(

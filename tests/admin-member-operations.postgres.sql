@@ -8,7 +8,10 @@ create table public.users(
 );
 create table public.birthday_reward_runs(run_date date primary key, reward_count integer);
 create table public.birthday_reward_awards(user_id uuid, reward_year integer, run_date date, notification_id uuid, primary key(user_id,reward_year));
-create table public.line_notification_outbox(id uuid primary key, status text);
+create table public.line_notification_outbox(
+  id uuid primary key, status text, sent_at timestamptz, line_request_id text,
+  updated_at timestamptz, last_error text, created_at timestamptz default now()
+);
 create table public.point_transactions(id uuid primary key default gen_random_uuid(), user_id uuid, type text, amount integer, created_at timestamptz);
 create table public.redemptions(id uuid primary key default gen_random_uuid(), user_id uuid, reward_id uuid, status text, created_at timestamptz);
 create table public.rewards(id uuid primary key, name text);
@@ -20,6 +23,7 @@ create table public.audit_logs(
 );
 
 \ir ../supabase_admin_member_operations_migration.sql
+\ir ../supabase_birthday_report_dob_migration.sql
 
 do $$
 declare
@@ -36,7 +40,7 @@ begin
     (other_id,'U_OTHER','Other member',null,'1990-11-22',null,null),
     (invalid_id,'U_INVALID','Invalid day',null,'invalid date',null,null);
   insert into public.birthday_reward_runs values ('2026-11-22',1);
-  insert into public.line_notification_outbox values (line_id,'failed');
+  insert into public.line_notification_outbox(id,status) values (line_id,'failed');
   insert into public.birthday_reward_awards values (member_id,2026,'2026-11-22',line_id);
   insert into public.point_transactions(user_id,type,amount,created_at) values
     (member_id,'BIRTHDAY_REWARD',100,'2026-11-22T01:00Z'),
@@ -66,6 +70,27 @@ begin
   if report->>'total' is distinct from '2' or report->>'awarded' is distinct from '1'
     or report->>'notAwarded' is distinct from '1' or report->>'lineSent' is distinct from '0' then
     raise exception 'Unexpected birthday summary: %', report;
+  end if;
+  if not exists (
+    select 1 from jsonb_array_elements(report->'items') row
+    where row->>'name' = 'New name' and row->>'dob' = '1991-10-01' and not row ? 'id'
+      and row #>> '{delivery,notification_id}' = line_id::text
+  ) or has_function_privilege('authenticated','public.admin_birthday_members(date,integer)','execute') then
+    raise exception 'Birthday should come from the current member profile and remain admin-only';
+  end if;
+  update public.line_notification_outbox set status='sent', line_request_id='accepted-fixture',
+    sent_at='2026-11-22T01:06:30Z', line_acceptance_recovered=false where id=line_id;
+  report := public.admin_birthday_members('2026-11-22',0);
+  if report->>'lineSent' is distinct from '1' or not exists (
+    select 1 from jsonb_array_elements(report->'items') row
+    where row #>> '{delivery,line_request_id}' = 'accepted-fixture'
+      and (row #>> '{delivery,line_confirmed_at}')::timestamptz = '2026-11-22T01:06:30Z'::timestamptz
+  ) then raise exception 'Missing LINE proof'; end if;
+  if (select scheduled_members from public.admin_birthday_upcoming('2026-10-01',1)) <> 0
+    or (select scheduled_members from public.admin_birthday_upcoming('2026-11-22',1)) <> 1
+    or (select scheduled_members from public.admin_birthday_upcoming('2027-10-01',1)) <> 1
+    or has_function_privilege('authenticated','public.admin_birthday_upcoming(date,integer)','execute') then
+    raise exception 'Upcoming count or access is invalid';
   end if;
   if (select count(*) from public.admin_member_activity('U_TEST','all','infinity',0)) <> 6
     or (select count(*) from public.admin_member_activity('U_TEST','rewards','infinity',0)) <> 1

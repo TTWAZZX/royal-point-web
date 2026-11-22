@@ -201,6 +201,7 @@ test('privileged routes require a LINE token and use the verified role', async (
     [adminActions, { adminUid: 'U-admin', action: 'member_profile' }],
     [adminActions, { adminUid: 'U-admin', action: 'member_activity' }],
     [adminActions, { adminUid: 'U-admin', action: 'birthday_runs' }],
+    [adminActions, { adminUid: 'U-admin', action: 'birthday_upcoming' }],
     [require('../api/admin-coupons'), { adminUid: 'U-admin' }],
     [require('../api/all-scores'), { adminUid: 'U-admin' }],
     [require('../api/rewards'), { include: '1' }]
@@ -236,10 +237,11 @@ test('privileged routes require a LINE token and use the verified role', async (
   assert.equal(blocked.statusCode, 403)
   const blockedPending = await call(adminActions, { action: 'pending_work' }, 'valid-token')
   assert.equal(blockedPending.statusCode, 403)
-  for (const action of ['member_profile', 'member_activity', 'birthday_runs']) {
+  for (const action of ['member_profile', 'member_activity', 'birthday_runs', 'birthday_upcoming']) {
     assert.equal((await call(adminActions, { action }, 'valid-token')).statusCode, 403)
   }
   assert.equal((await call(adminActions, {}, 'valid-token', 'POST', { action: 'member_profile_update' })).statusCode, 403)
+  assert.equal((await call(adminActions, {}, 'valid-token', 'POST', { action: 'birthday_notification_retry' })).statusCode, 403)
 })
 
 test('profile update rejects identity changes and binds the write to the LINE-verified administrator', async (t) => {

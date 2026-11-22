@@ -532,8 +532,14 @@
             <button type="button" class="btn btn-outline-secondary" id="birthdayRunLine">ดูการแจ้งเตือนวันเกิดใน LINE</button>
           </div>
         </div>
+        <section class="m-card" aria-labelledby="birthdayUpcomingTitle">
+          <h3 class="h6" id="birthdayUpcomingTitle">งานวันเกิดล่วงหน้า 7 วัน</h3>
+          <div id="birthdayUpcomingList" class="d-flex flex-wrap gap-2 rp-status-actions" aria-live="polite"></div>
+        </section>
         <p class="small text-muted px-1">รายชื่ออ้างอิงวันเกิดปัจจุบันและหลักฐานการแจกคะแนนของรอบที่เลือก</p>
+        <p class="small text-muted px-1">เวลาที่แสดงเป็นเวลาไทย สถานะ LINE ยืนยันว่า LINE รับคำขอ การรับหรือเปิดอ่านของสมาชิกอาจต่างจากเวลานี้</p>
         <div id="birthdayRunResult" aria-live="polite"></div>
+        <p class="small px-1" id="birthdayRetryStatus" role="status"></p>
         <button type="button" class="btn btn-outline-primary mb-4" id="birthdayRunMore" hidden>โหลดสมาชิกเพิ่มเติม</button>
       </section>
 
@@ -1107,8 +1113,8 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="loader.js?v=line-token-v1-progressive-load"></script>
   <script src="/ui-status.js?v=1"></script>
-  <script src="admin.js?v=member-operations"></script>
-  <script src="admin.page.js?v=member-operations"></script>
+  <script src="admin.js?v=birthday-upcoming"></script>
+  <script src="admin.page.js?v=birthday-upcoming"></script>
 
   <script>
     const getMyUid = () => {

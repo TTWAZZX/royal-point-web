@@ -200,8 +200,15 @@ function bindEvents() {
   qs('#memberHistoryCategory').addEventListener('change', () => loadMemberHistory());
   qs('#memberHistoryMore').addEventListener('click', () => loadMemberHistory(true));
   qs('#birthdayRunDate').addEventListener('change', () => loadBirthdayRuns());
-  qs('#birthdayRunRefresh').addEventListener('click', () => loadBirthdayRuns());
+  qs('#birthdayRunRefresh').addEventListener('click', loadBirthdayOverview);
   qs('#birthdayRunMore').addEventListener('click', () => loadBirthdayRuns(true));
+  qs('#birthdayUpcomingList').addEventListener('click', event => {
+    const day = event.target.closest('button[data-birthday-date]')?.dataset.birthdayDate;
+    if (!day) return;
+    qs('#birthdayRunDate').value = day;
+    void loadBirthdayRuns();
+  });
+  qs('#birthdayRunResult').addEventListener('click', retryBirthdayNotification);
   qs('#birthdayRunLine').addEventListener('click', () => {
     qs('#lineNotificationKind').value = 'birthday_reward';
     qs('#lineNotificationStatus').value = 'all';
@@ -776,15 +783,87 @@ async function loadMemberHistory(append = false) {
 
 let birthdayReportOffset = 0;
 let birthdayReportVersion = 0;
+const birthdayDateFormat = new Intl.DateTimeFormat('th-TH', {
+    day: 'numeric', month: 'long', year: 'numeric', era: 'short', timeZone: 'UTC'
+});
+const birthdayRunDayFormat = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+const birthdayDeliveryTimeFormat = new Intl.DateTimeFormat('th-TH', {
+    dateStyle: 'short', timeStyle: 'medium', timeZone: 'Asia/Bangkok'
+});
+
+async function loadBirthdayOverview() {
+    const upcoming = qs('#birthdayUpcomingList');
+    upcoming.textContent = 'กำลังโหลดคิวล่วงหน้า';
+    await Promise.all([loadBirthdayRuns(), (async () => {
+        try {
+            const { data } = await readMemberOperation('birthday_upcoming');
+            upcoming.innerHTML = data.map(day => `<button type="button" class="btn btn-sm btn-outline-primary" data-birthday-date="${escapeHtml(day.run_date)}">${birthdayRunDayFormat.format(new Date(`${day.run_date}T00:00:00Z`))} · รอแจก ${fmt(day.scheduled_members)} คน</button>`).join('');
+        } catch {
+            upcoming.textContent = 'โหลดคิวล่วงหน้าไม่สำเร็จ กรุณากดโหลดผลรอบนี้อีกครั้ง';
+        }
+    })()]);
+}
+
+function birthdayDeliveryMarkup(delivery) {
+    if (!delivery) return RoyalStatus.badge('delivery', 'missing');
+    if (delivery.line_status === 'sent') {
+        const confirmed = delivery.line_confirmed_at && new Date(delivery.line_confirmed_at);
+        const recovered = delivery.line_acceptance_recovered;
+        const timeLabel = recovered === false ? 'เวลาที่ LINE ตอบรับ' : recovered ? 'เวลาที่ระบบยืนยันผล' : 'เวลาที่บันทึกไว้';
+        return `<div class="small">
+          <span class="rp-status rp-status--success">${recovered == null ? 'บันทึกว่าส่ง LINE แล้ว' : 'LINE รับคำขอแล้ว'}</span>
+          ${confirmed && Number.isFinite(confirmed.getTime()) ? `<div class="mt-1">${timeLabel} ${birthdayDeliveryTimeFormat.format(confirmed)} น.</div>` : ''}
+          ${delivery.line_request_id ? `<div class="text-muted text-break">เลขอ้างอิง LINE ${escapeHtml(delivery.line_request_id)}</div>` : ''}
+        </div>`;
+    }
+    const retryable = ['pending', 'failed'].includes(delivery.line_status) && delivery.notification_id;
+    const expired = Date.now() - Date.parse(delivery.line_queued_at) >= 86400000;
+    return `<div class="small">
+      ${RoyalStatus.badge('delivery', delivery.line_status || 'missing')}
+      ${delivery.line_last_error ? `<div class="text-danger mt-1">${escapeHtml(delivery.line_last_error)}</div>` : ''}
+      ${retryable && expired ? '<div class="text-muted mt-1">เกินช่วงส่งซ้ำ 24 ชั่วโมง กรุณาตรวจสอบกับผู้รับ</div>' : ''}
+      ${retryable && !expired ? `<div class="rp-status-actions"><button type="button" class="btn btn-sm btn-outline-danger mt-1" data-birthday-retry="${escapeHtml(delivery.notification_id)}">${delivery.line_status === 'failed' ? 'ส่ง LINE ซ้ำ' : 'ส่ง LINE ตอนนี้'}</button></div>` : ''}
+    </div>`;
+}
+
+async function retryBirthdayNotification(event) {
+    const button = event.target.closest('button[data-birthday-retry]');
+    if (!button || button.disabled) return;
+    const date = qs('#birthdayRunDate').value;
+    const notice = qs('#birthdayRetryStatus');
+    button.disabled = true;
+    notice.textContent = 'กำลังส่งข้อความไปที่ LINE';
+    try {
+        const data = await adminAction({ action: 'birthday_notification_retry', notificationId: button.dataset.birthdayRetry });
+        if (qs('#birthdayRunDate').value !== date) return;
+        await loadBirthdayRuns();
+        if (qs('#birthdayRunDate').value === date) notice.textContent = data.status === 'sent' ? 'LINE รับคำขอแล้ว' : data.last_error || 'ส่ง LINE ไม่สำเร็จ';
+    } catch {
+        if (qs('#birthdayRunDate').value === date) notice.textContent = 'ยังยืนยันผลการส่งไม่ได้ กรุณาโหลดผลรอบนี้อีกครั้ง';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function formatMemberBirthday(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'ไม่ระบุวันเกิด';
+    const date = new Date(`${value}T00:00:00Z`);
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) return 'ไม่ระบุวันเกิด';
+    return `วันเกิด ${birthdayDateFormat.format(date)}`;
+}
 
 async function loadBirthdayRuns(append = false) {
     const date = qs('#birthdayRunDate');
-    date.max = todayBangkokInputValue();
-    if (!date.value) date.value = date.max;
+    const today = todayBangkokInputValue();
+    const latest = new Date(`${today}T00:00:00Z`);
+    latest.setUTCDate(latest.getUTCDate() + 30);
+    date.max = latest.toISOString().slice(0, 10);
+    if (!date.value) date.value = today;
     const resultArea = qs('#birthdayRunResult');
     const more = qs('#birthdayRunMore');
     const version = ++birthdayReportVersion;
     if (!append) {
+        qs('#birthdayRetryStatus').textContent = '';
         birthdayReportOffset = 0;
         resultArea.textContent = 'กำลังโหลดผลรอบวันเกิด';
     }
@@ -794,7 +873,7 @@ async function loadBirthdayRuns(append = false) {
         if (version !== birthdayReportVersion) return;
         if (!append) {
             const attempt = data.lastAttempt;
-            const heading = data.run ? 'ประมวลผลคะแนนสำเร็จ'
+            const heading = data.upcoming ? 'รอแจกคะแนนตามกำหนด' : data.run ? 'ประมวลผลคะแนนสำเร็จ'
                 : attempt?.event_type === 'birthday_reward_failed' ? 'ประมวลผลคะแนนไม่สำเร็จ' : 'ยังไม่พบผลการรัน';
             const tone = data.run ? 'success' : attempt?.event_type === 'birthday_reward_failed' ? 'danger' : 'waiting';
             resultArea.innerHTML = `<section class="m-card mb-3">
@@ -804,9 +883,9 @@ async function loadBirthdayRuns(append = false) {
                 <div class="col-6 col-md-3"><dt>สมาชิกในรอบนี้</dt><dd>${fmt(data.total)}</dd></div>
                 <div class="col-6 col-md-3"><dt>แจกสำเร็จในรอบนี้</dt><dd>${data.run ? fmt(data.run.reward_count) : '—'}</dd></div>
                 <div class="col-6 col-md-3"><dt>พบคะแนนจากประวัติ</dt><dd>${fmt(data.previouslyAwarded)}</dd></div>
-                <div class="col-6 col-md-3"><dt>ยังไม่พบคะแนน</dt><dd>${fmt(data.notAwarded)}</dd></div>
+                <div class="col-6 col-md-3"><dt>${data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่พบคะแนน'}</dt><dd>${fmt(data.notAwarded)}</dd></div>
               </dl>
-              ${data.awarded ? `<p class="small mb-0">ส่ง LINE สำเร็จ ${fmt(data.lineSent)} จาก ${fmt(data.awarded)} รายการ</p>` : ''}
+              ${data.awarded ? `<p class="small mb-0">บันทึกว่าส่ง LINE แล้ว ${fmt(data.lineSent)} จาก ${fmt(data.awarded)} รายการ</p>` : ''}
             </section><div id="birthdayRunMembers"></div>`;
         }
         const members = qs('#birthdayRunMembers');
@@ -814,9 +893,13 @@ async function loadBirthdayRuns(append = false) {
             const awarded = member.state === 'awarded';
             const history = member.state === 'previously_awarded';
             return `<article class="m-card d-flex flex-wrap align-items-center justify-content-between gap-2 text-break">
-                <div><div class="fw-bold">${escapeHtml(member.name || 'ไม่ระบุชื่อ')}</div><div class="small text-muted">${escapeHtml(member.room || 'ไม่ระบุหน่วยงาน')}</div></div>
-                <div class="d-flex flex-wrap gap-1"><span class="rp-status rp-status--${awarded ? 'success' : history ? 'info' : 'waiting'}">${awarded ? 'ได้รับคะแนนแล้ว' : history ? 'พบคะแนนจากประวัติ' : 'ยังไม่พบคะแนน'}</span>
-                ${awarded ? RoyalStatus.badge('delivery', member.line_status || 'missing') : ''}</div></article>`;
+                <div>
+                  <div class="fw-bold">${escapeHtml(member.name || 'ไม่ระบุชื่อ')}</div>
+                  <div class="small text-muted">${escapeHtml(member.room || 'ไม่ระบุหน่วยงาน')}</div>
+                  <div class="small mt-1">${escapeHtml(formatMemberBirthday(member.dob))}</div>
+                </div>
+                <div class="d-flex flex-wrap align-items-start gap-2"><span class="rp-status rp-status--${awarded ? 'success' : history ? 'info' : 'waiting'}">${awarded ? 'ได้รับคะแนนแล้ว' : history ? 'พบคะแนนจากประวัติ' : data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่พบคะแนน'}</span>
+                ${awarded ? birthdayDeliveryMarkup(member.delivery) : ''}</div></article>`;
         }).join(''));
         birthdayReportOffset += data.items.length;
         if (!birthdayReportOffset) members.textContent = 'ไม่พบสมาชิกที่มีวันเกิดหรือได้รับคะแนนในรอบนี้';

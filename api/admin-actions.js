@@ -219,8 +219,8 @@ function bangkokDate(offsetDays = 0) {
   return `${year}-${month}-${day}`
 }
 
-function validMemberDate(value) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '0001-01-01' || value > bangkokDate()) return false
+function validMemberDate(value, max = bangkokDate()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '0001-01-01' || value > max) return false
   const date = new Date(`${value}T00:00:00Z`)
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
 }
@@ -740,13 +740,18 @@ module.exports = async (req, res) => {
 
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
   if (req.method === 'GET') {
-    if (['member_profile', 'member_activity', 'birthday_runs'].includes(req.query.action)) {
+    if (['member_profile', 'member_activity', 'birthday_runs', 'birthday_upcoming'].includes(req.query.action)) {
       if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
       const target = String(req.query.targetUid || '').trim()
       const offset = Number(req.query.offset || 0)
       const badRequest = () => res.status(400).json({ status: 'error', message: 'ข้อมูลที่ใช้ค้นหาไม่ถูกต้อง' })
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > 2147483622) return badRequest()
       try {
+        if (req.query.action === 'birthday_upcoming') {
+          const { data, error } = await supabaseAdmin.rpc('admin_birthday_upcoming', { p_start: bangkokDate(1), p_days: 7 })
+          if (error) throw error
+          return res.status(200).json({ status: 'success', data })
+        }
         if (req.query.action === 'member_profile') {
           if (!target || target.length > 120) return badRequest()
           const { data, error } = await supabaseAdmin.from('users').select('name,room,dob,tel,passport').eq('uid', target).maybeSingle()
@@ -766,7 +771,12 @@ module.exports = async (req, res) => {
           return res.status(200).json({ status: 'success', data: data.slice(0, 25), before, hasMore: data.length > 25 })
         }
         const date = String(req.query.date || bangkokDate())
-        if (!validMemberDate(date)) return badRequest()
+        if (!validMemberDate(date, bangkokDate(30))) return badRequest()
+        if (date > bangkokDate()) {
+          const { data, error } = await supabaseAdmin.rpc('admin_birthday_members', { p_run_date: date, p_offset: offset })
+          if (error) throw error
+          return res.status(200).json({ status: 'success', data: { ...data, upcoming: true } })
+        }
         const results = await Promise.all([
           supabaseAdmin.from('birthday_reward_runs').select('reward_count').eq('run_date', date).maybeSingle(),
           supabaseAdmin.from('audit_logs').select('event_type,created_at,correlation_id').in('event_type', ['birthday_reward_run', 'birthday_reward_failed'])
@@ -1552,17 +1562,22 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: 'success', data: notification })
     }
 
-    if (action === 'line_notification_retry') {
+    if (action === 'line_notification_retry' || action === 'birthday_notification_retry') {
       const cleanNotificationId = String(notificationId || '').trim()
       if (!UUID_RE.test(cleanNotificationId)) return res.status(400).json({ status: 'error', message: 'notification_id_required' })
-      const notification = await retryLineNotification(cleanNotificationId)
+      const birthday = action === 'birthday_notification_retry'
+      const notification = await retryLineNotification(cleanNotificationId, birthday ? 'birthday_reward' : null)
+      if (!notification) return res.status(404).json({ status: 'error', message: 'ไม่พบการแจ้งเตือนวันเกิด' })
       await auditEvent(supabaseAdmin, {
         type: 'line_notification_retry', actorUid: adminUid, targetUid: notification.recipient_uid,
         entityType: 'line_notification_outbox', entityId: notification.id,
         status: notification.status === 'sent' ? 'success' : 'error',
         detail: { messageKind: notification.message_kind, error: notification.last_error || null }
       })
-      return res.status(200).json({ status: 'success', data: notification })
+      return res.status(200).json({ status: 'success', data: birthday ? {
+        status: notification.status, last_error: notification.last_error, sent_at: notification.sent_at,
+        line_request_id: notification.line_request_id
+      } : notification })
     }
 
     if (action === 'redemption_receive' || action === 'redemption_cancel_refund') {
