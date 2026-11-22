@@ -264,11 +264,14 @@ test('profile update rejects identity changes and binds the write to the LINE-ve
   }
   assert.equal((await update({ uid: 'invalid' }, { uid: 'U_MEMBER' })).code, 400)
   assert.equal((await update({ dob: '1990-02-30' }, { dob: null })).code, 400)
+  assert.equal((await update({ room: 'Not in the master list' }, { room: null })).code, 400)
   assert.equal(rpc.mock.callCount(), 0)
   assert.equal((await update({ name: ' Fixture member ' }, { name: 'Before', passport: 'not needed' })).code, 200)
   assert.deepEqual(rpc.mock.calls[0].arguments, ['admin_update_member_profile', {
     p_uid: 'U_MEMBER', p_admin_uid: 'U-admin', p_patch: { name: 'Fixture member' }, p_expected: { name: 'Before' }
   }])
+  assert.equal((await update({ room: 'R&D' }, { room: 'Legacy room' })).code, 200)
+  assert.deepEqual(rpc.mock.calls[1].arguments[1].p_patch, { room: 'R&D' })
 })
 
 test('LINE registration retries cannot overwrite an existing profile', async (t) => {

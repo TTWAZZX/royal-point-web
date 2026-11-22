@@ -662,6 +662,7 @@ async function loadMemberProfile() {
     try {
         const { data } = await readMemberOperation('member_profile', { targetUid: TARGET_USER.uid });
         if (version !== memberProfileVersion) return;
+        RoyalRooms.fill(form.elements.namedItem('room'), data.room || '');
         const shown = {};
         for (const field of Object.keys(MEMBER_PROFILE_LABELS)) {
             const input = form.elements.namedItem(field);
@@ -688,7 +689,7 @@ async function saveMemberProfile(event) {
     const fields = qs('#memberProfileFields');
     if (fields.disabled) return;
     const { data, shown } = memberProfileSnapshot;
-    const patch = Object.fromEntries([...new FormData(form)].filter(([key, value]) => value.trim() !== shown[key]));
+    const patch = Object.fromEntries([...new FormData(form)].filter(([key, value]) => value !== shown[key] && value.trim() !== shown[key]));
     const status = qs('#memberProfileStatus');
     if (!Object.keys(patch).length) {
         status.textContent = 'ยังไม่มีข้อมูลที่เปลี่ยนแปลง';

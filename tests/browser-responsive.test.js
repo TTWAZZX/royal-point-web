@@ -258,6 +258,9 @@ async function runPickupTracking(browser, baseUrl, viewport) {
 
   try {
     await page.goto(`${baseUrl}/index.html`)
+    const signupRooms = await page.locator('#regRoom option:not([value=""])').evaluateAll(options => options.map(option => option.value))
+    assert.equal(signupRooms.length, 33)
+    assert.ok(['C&FA', 'R&D', 'SHE', 'TSH CENTER'].every(room => signupRooms.includes(room)))
     await page.locator('#systemBootOverlay').waitFor({ state: 'hidden' })
     const start = page.getByRole('button', { name: 'แลก รางวัลทดสอบ' })
     if (viewport.width < 500) await start.tap()
@@ -323,7 +326,8 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   let birthdayStatus = 'pending'
   const futureBirthday = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)
   let birthdayRetryAccepted = false
-  let profile = { name: 'สมาชิกทดสอบ', room: 'SHE', dob: '1990-11-22', tel: '0800000000', passport: null }
+  const legacyRoom = ' Legacy room '
+  let profile = { name: 'สมาชิกทดสอบ', room: legacyRoom, dob: '1990-11-22', tel: '0800000000', passport: null }
   let profileWrites = 0
   let memberScore = 100
   let couponBatch = null
@@ -428,8 +432,13 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     if (action === 'member_profile_update') {
       const payload = route.request().postDataJSON()
       assert.equal(targetUid, 'U_MEMBER')
-      assert.deepEqual(payload.profile, { name: 'สมาชิกแก้ไขแล้ว', dob: '1991-11-22' })
-      assert.equal(payload.expected.dob, '1990-11-22')
+      if (profileWrites === 0) {
+        assert.deepEqual(payload.profile, { name: 'สมาชิกแก้ไขแล้ว', dob: '1991-11-22' })
+        assert.equal(payload.expected.dob, '1990-11-22')
+      } else {
+        assert.deepEqual(payload.profile, { room: 'R&D' })
+        assert.deepEqual(payload.expected, { room: legacyRoom })
+      }
       profileWrites++
       profile = { ...profile, ...payload.profile }
       return route.fulfill({ json: { status: 'success', data: { changed: true } } })
@@ -570,11 +579,19 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.getByRole('button', { name: 'จัดการสมาชิก' }).click()
   await page.locator('#memberProfileToggle').click()
   await page.locator('#memberProfileName').fill('สมาชิกแก้ไขแล้ว')
+  const roomSelect = page.getByRole('combobox', { name: 'หน่วยงาน / ห้อง', exact: true })
+  assert.equal(await roomSelect.inputValue(), legacyRoom)
+  assert.ok(await roomSelect.getByRole('option', { name: /Legacy room.*ค่าเดิม/ }).count())
   await page.locator('#memberProfileDob').fill('1991-11-22')
   await page.getByRole('button', { name: 'บันทึกข้อมูลส่วนตัว', exact: true }).click()
   await page.locator('#memberProfileStatus').getByText('บันทึกข้อมูลส่วนตัวแล้ว', { exact: true }).waitFor()
   await page.locator('#adminTableBody').getByText('สมาชิกแก้ไขแล้ว', { exact: true }).waitFor()
   assert.equal(profileWrites, 1)
+  await roomSelect.selectOption('R&D')
+  await page.getByRole('button', { name: 'บันทึกข้อมูลส่วนตัว', exact: true }).click()
+  await page.locator('#memberProfileStatus').getByText('บันทึกข้อมูลส่วนตัวแล้ว', { exact: true }).waitFor()
+  assert.equal(await roomSelect.inputValue(), 'R&D')
+  assert.equal(profileWrites, 2)
 
   await page.locator('#genPoints').fill('25')
   await page.locator('#genCount').fill('2')

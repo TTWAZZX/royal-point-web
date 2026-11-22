@@ -368,42 +368,9 @@
 
         <!-- Section -->
         <div class="mb-3">
-          <label for="regRoom" class="form-label">Section</label>
-          <select class="form-control" id="regRoom" name="room" required>
-            <option value="" disabled selected>เลือก</option>
-            <option value="ACC">ACC</option>
-            <option value="C&amp;FA">C&amp;FA</option>
-            <option value="CS">CS</option>
-            <option value="CIC">CIC</option>
-            <option value="DIR">DIR</option>
-            <option value="ENG">ENG</option>
-            <option value="FIN">FIN</option>
-            <option value="GR">GR</option>
-            <option value="HP">HP</option>
-            <option value="HCM">HCM</option>
-            <option value="HRD">HRD</option>
-            <option value="HRM">HRM</option>
-            <option value="IT">IT</option>
-            <option value="L&amp;S">L&amp;S</option>
-            <option value="MTN">MTN</option>
-            <option value="MKT">MKT</option>
-            <option value="MC">MC</option>
-            <option value="OS">OS</option>
-            <option value="PD">PD</option>
-            <option value="PD1">PD1</option>
-            <option value="PD2">PD2</option>
-            <option value="PC">PC</option>
-            <option value="PE">PE</option>
-            <option value="PUR">PUR</option>
-            <option value="QA">QA</option>
-            <option value="QC">QC</option>
-            <option value="RDPP">RDPP</option>
-            <option value="R&amp;D">R&amp;D</option>
-            <option value="SHE">SHE</option>
-            <option value="SCM">SCM</option>
-            <option value="SYS-ENG">SYS-ENG</option>
-            <option value="TSH CENTER">TSH CENTER</option>
-            <option value="WH">WH</option>
+          <label for="regRoom" class="form-label">หน่วยงาน / ห้อง</label>
+          <select class="form-select" id="regRoom" name="room" required>
+            <option value="" disabled selected>เลือกหน่วยงาน / ห้อง</option>
           </select>
         </div>
 
@@ -444,6 +411,8 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <script src="/loader.js?v=line-token-v1-redemption-tracker"></script>
+<script src="/room-options.js?v=1"></script>
+<script>RoyalRooms.fill(document.getElementById('regRoom'));</script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
 <script src="/ui-status.js?v=1" defer></script>

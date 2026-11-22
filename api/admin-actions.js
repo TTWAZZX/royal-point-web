@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { supabaseAdmin, getRedis, clearScoreCache } = require('../lib/supabase')
+const { has: isRegisteredRoom } = require('../room-options')
 const { auditEvent, retryAuditFailure } = require('../lib/audit')
 const { safeRewardImageUrl } = require('../lib/reward-image')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
@@ -1202,6 +1203,9 @@ module.exports = async (req, res) => {
           return res.status(400).json({ status: 'error', message: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
         }
         clean[key] = value.trim() || null
+        if (key === 'room' && clean.room && !isRegisteredRoom(clean.room)) {
+          return res.status(400).json({ status: 'error', message: 'กรุณาเลือกหน่วยงาน / ห้องจากรายการ' })
+        }
         if ((key === 'name' && !clean[key]) || (key === 'dob' && clean[key] && !validMemberDate(clean[key]))) {
           return res.status(400).json({ status: 'error', message: 'กรุณาระบุชื่อและตรวจสอบวันเกิด' })
         }

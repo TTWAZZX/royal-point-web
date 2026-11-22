@@ -895,7 +895,9 @@
                   <input type="date" class="form-control" id="memberProfileDob" name="dob" aria-describedby="memberLegacyDob">
                   <small id="memberLegacyDob" class="text-muted"></small>
                   <label class="form-label mt-2" for="memberProfileRoom">หน่วยงาน / ห้อง</label>
-                  <input class="form-control" id="memberProfileRoom" name="room" maxlength="100">
+                  <select class="form-select" id="memberProfileRoom" name="room">
+                    <option value="">ไม่ระบุหน่วยงาน / ห้อง</option>
+                  </select>
                   <label class="form-label mt-2" for="memberProfileTel">เบอร์โทรศัพท์</label>
                   <input type="tel" class="form-control" id="memberProfileTel" name="tel" maxlength="40">
                   <label class="form-label mt-2" for="memberProfilePassport">เลขพาสปอร์ต / เลขประจำตัว</label>
@@ -1115,7 +1117,8 @@
   <script src="loader.js?v=line-token-v1-progressive-load"></script>
   <script src="/ui-status.js?v=1"></script>
   <script src="admin.js?v=birthday-upcoming"></script>
-  <script src="admin.page.js?v=birthday-report-labels"></script>
+  <script src="/room-options.js?v=1"></script>
+  <script src="admin.page.js?v=room-options"></script>
 
   <script>
     const getMyUid = () => {
