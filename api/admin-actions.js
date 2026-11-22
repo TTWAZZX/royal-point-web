@@ -219,6 +219,12 @@ function bangkokDate(offsetDays = 0) {
   return `${year}-${month}-${day}`
 }
 
+function validMemberDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value < '0001-01-01' || value > bangkokDate()) return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
 function normalizeSafetyOptions(options) {
   const source = Array.isArray(options) && options.length ? options : SAFETY_DEFAULT_OPTIONS
   return [0, 1, 2].map((index) => {
@@ -734,6 +740,49 @@ module.exports = async (req, res) => {
 
   // GET /api/admin-actions?uid=... → ตรวจว่าเป็น admin หรือไม่ (ใช้โดย checkAdminFromServer)
   if (req.method === 'GET') {
+    if (['member_profile', 'member_activity', 'birthday_runs'].includes(req.query.action)) {
+      if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
+      const target = String(req.query.targetUid || '').trim()
+      const offset = Number(req.query.offset || 0)
+      const badRequest = () => res.status(400).json({ status: 'error', message: 'ข้อมูลที่ใช้ค้นหาไม่ถูกต้อง' })
+      if (!Number.isSafeInteger(offset) || offset < 0 || offset > 2147483622) return badRequest()
+      try {
+        if (req.query.action === 'member_profile') {
+          if (!target || target.length > 120) return badRequest()
+          const { data, error } = await supabaseAdmin.from('users').select('name,room,dob,tel,passport').eq('uid', target).maybeSingle()
+          if (error) throw error
+          if (!data) return res.status(404).json({ status: 'error', message: 'ไม่พบสมาชิก' })
+          return res.status(200).json({ status: 'success', data })
+        }
+        if (req.query.action === 'member_activity') {
+          const category = String(req.query.category || 'all')
+          const before = String(req.query.before || new Date().toISOString())
+          if (!target || target.length > 120 || !Number.isFinite(Date.parse(before)) ||
+              !['all', 'points', 'rewards', 'coupons', 'safety', 'audit'].includes(category)) return badRequest()
+          const { data, error } = await supabaseAdmin.rpc('admin_member_activity', {
+            p_uid: target, p_category: category, p_before: before, p_offset: offset
+          })
+          if (error) throw error
+          return res.status(200).json({ status: 'success', data: data.slice(0, 25), before, hasMore: data.length > 25 })
+        }
+        const date = String(req.query.date || bangkokDate())
+        if (!validMemberDate(date)) return badRequest()
+        const results = await Promise.all([
+          supabaseAdmin.from('birthday_reward_runs').select('reward_count').eq('run_date', date).maybeSingle(),
+          supabaseAdmin.from('audit_logs').select('event_type,created_at,correlation_id').in('event_type', ['birthday_reward_run', 'birthday_reward_failed'])
+            .gte('created_at', `${date}T00:00:00+07:00`).lte('created_at', `${date}T23:59:59.999999+07:00`)
+            .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+          supabaseAdmin.rpc('admin_birthday_members', { p_run_date: date, p_offset: offset })
+        ])
+        for (const result of results) if (result.error) throw result.error
+        return res.status(200).json({ status: 'success', data: {
+          ...results[2].data, run: results[0].data, lastAttempt: results[1].data
+        } })
+      } catch (error) {
+        console.error('[admin-actions] member operations read:', req.query.action, error.code)
+        return res.status(500).json({ status: 'error', message: 'โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่' })
+      }
+    }
     if (req.query.action === 'pending_work') {
       if (!hasAdminAccess(adminUid, 'full')) return forbidden(res)
       const queues = [
@@ -1126,6 +1175,41 @@ module.exports = async (req, res) => {
   try {
     let rpcName = ''
     let rpcParams = {}
+
+    if (action === 'member_profile_update') {
+      const uid = String(targetUid || '').trim()
+      const patch = req.body.profile
+      const expected = req.body.expected
+      const limits = { name: 200, room: 100, dob: 10, tel: 40, passport: 100 }
+      if (!uid || uid.length > 120 || !patch || !expected || Array.isArray(patch) || Array.isArray(expected) ||
+          typeof patch !== 'object' || typeof expected !== 'object' || !Object.keys(patch).length) {
+        return res.status(400).json({ status: 'error', message: 'ข้อมูลที่ส่งมาไม่ครบ' })
+      }
+      const clean = {}
+      for (const [key, value] of Object.entries(patch)) {
+        if (!Object.hasOwn(limits, key) || !Object.hasOwn(expected, key) || typeof value !== 'string' || value.length > limits[key] ||
+            (expected[key] !== null && (typeof expected[key] !== 'string' || expected[key].length > 1000))) {
+          return res.status(400).json({ status: 'error', message: 'ข้อมูลที่ส่งมาไม่ถูกต้อง' })
+        }
+        clean[key] = value.trim() || null
+        if ((key === 'name' && !clean[key]) || (key === 'dob' && clean[key] && !validMemberDate(clean[key]))) {
+          return res.status(400).json({ status: 'error', message: 'กรุณาระบุชื่อและตรวจสอบวันเกิด' })
+        }
+      }
+      const { data, error } = await supabaseAdmin.rpc('admin_update_member_profile', {
+        p_uid: uid, p_admin_uid: adminUid, p_patch: clean,
+        p_expected: Object.fromEntries(Object.keys(clean).map(key => [key, expected[key]]))
+      })
+      if (error?.message === 'PROFILE_CONFLICT') {
+        return res.status(409).json({ status: 'error', message: 'ข้อมูลนี้เพิ่งถูกแก้ไข กรุณาโหลดข้อมูลล่าสุดก่อนบันทึกอีกครั้ง' })
+      }
+      if (error?.message === 'MEMBER_NOT_FOUND') return res.status(404).json({ status: 'error', message: 'ไม่พบสมาชิก' })
+      if (error) {
+        console.error('[admin-actions] member profile update:', error.code)
+        return res.status(500).json({ status: 'error', message: 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่' })
+      }
+      return res.status(200).json({ status: 'success', data })
+    }
 
     if (action === 'safety_checkin_points_recover') {
       const memberUid = String(targetUid || '').trim()

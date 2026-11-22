@@ -2319,13 +2319,13 @@ function renderRedemptionTracker() {
   tracker.classList.toggle('d-none', !pendingRewards.length && !pickupRedemptions.length && !pickupLoadFailed);
   document.getElementById('pendingRedemptionList').innerHTML = pendingRewards.map(rewardId => {
     const name = REWARDS_CACHE.find(reward => reward.id === rewardId)?.name || 'คำขอแลกรางวัล';
-    return `<div class="border rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+    return `<div class="rp-redemption-item rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div class="text-break"><div class="fw-semibold mb-1">${h(name)}</div>${RoyalStatus.badge('redemption', 'pending')}</div>
       <button type="button" class="btn btn-sm btn-outline-primary py-2" data-check-redemption="${h(rewardId)}">ตรวจรายการเดิม</button>
     </div>`;
   }).join('');
   document.getElementById('pickupRedemptionList').innerHTML = pickupRedemptions.map(item => `
-    <div class="border rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="rp-redemption-item rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div class="text-break"><div class="fw-semibold mb-1">${h(item.reward_name)}</div>${RoyalStatus.badge('redemption', 'approved')} <small class="text-muted">${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</small></div>
       <button type="button" class="btn btn-sm btn-outline-success py-2" data-open-redemption="${h(item.id)}">ดูหลักฐานรับของ</button>
     </div>`).join('') + (pickupLoadFailed ? '<p class="small text-muted mb-0">โหลดรายการรอรับรางวัลไม่สำเร็จ <button type="button" class="btn btn-sm btn-link" data-retry-pickup>ลองใหม่</button></p>' : '');

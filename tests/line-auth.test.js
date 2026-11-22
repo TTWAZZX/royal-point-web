@@ -198,6 +198,9 @@ test('privileged routes require a LINE token and use the verified role', async (
   const routes = [
     [adminActions, { adminUid: 'U-admin' }],
     [adminActions, { adminUid: 'U-admin', action: 'pending_work' }],
+    [adminActions, { adminUid: 'U-admin', action: 'member_profile' }],
+    [adminActions, { adminUid: 'U-admin', action: 'member_activity' }],
+    [adminActions, { adminUid: 'U-admin', action: 'birthday_runs' }],
     [require('../api/admin-coupons'), { adminUid: 'U-admin' }],
     [require('../api/all-scores'), { adminUid: 'U-admin' }],
     [require('../api/rewards'), { include: '1' }]
@@ -233,6 +236,57 @@ test('privileged routes require a LINE token and use the verified role', async (
   assert.equal(blocked.statusCode, 403)
   const blockedPending = await call(adminActions, { action: 'pending_work' }, 'valid-token')
   assert.equal(blockedPending.statusCode, 403)
+  for (const action of ['member_profile', 'member_activity', 'birthday_runs']) {
+    assert.equal((await call(adminActions, { action }, 'valid-token')).statusCode, 403)
+  }
+  assert.equal((await call(adminActions, {}, 'valid-token', 'POST', { action: 'member_profile_update' })).statusCode, 403)
+})
+
+test('profile update rejects identity changes and binds the write to the LINE-verified administrator', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  process.env.ADMIN_UID = 'U-admin'
+  mockLine({ uid: 'U-admin' })
+  const rpc = t.mock.method(supabaseAdmin, 'rpc', async () => ({ data: { changed: true }, error: null }))
+  const handler = require('../api/admin-actions')
+  async function update(profile, expected) {
+    const result = {}
+    await handler({
+      ...request('valid-token'), method: 'POST', query: {},
+      body: { action: 'member_profile_update', targetUid: 'U_MEMBER', profile, expected }
+    }, {
+      setHeader() {},
+      status(code) { result.code = code; return this },
+      json(data) { result.data = data; return this }
+    })
+    return result
+  }
+  assert.equal((await update({ uid: 'invalid' }, { uid: 'U_MEMBER' })).code, 400)
+  assert.equal((await update({ dob: '1990-02-30' }, { dob: null })).code, 400)
+  assert.equal(rpc.mock.callCount(), 0)
+  assert.equal((await update({ name: ' Fixture member ' }, { name: 'Before', passport: 'not needed' })).code, 200)
+  assert.deepEqual(rpc.mock.calls[0].arguments, ['admin_update_member_profile', {
+    p_uid: 'U_MEMBER', p_admin_uid: 'U-admin', p_patch: { name: 'Fixture member' }, p_expected: { name: 'Before' }
+  }])
+})
+
+test('LINE registration retries cannot overwrite an existing profile', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const originalFrom = supabaseAdmin.from
+  const record = { uid: 'U-user-1', name: 'Admin-corrected name' }
+  const write = t.mock.fn(async (row, options) => {
+    assert.equal(row.uid, record.uid)
+    if (!options.ignoreDuplicates) Object.assign(record, row)
+    return { error: null }
+  })
+  t.mock.method(supabaseAdmin, 'from', table => table === 'users' ? { upsert: write } : originalFrom(table))
+  const result = {}
+  await require('../api/register')({ ...request('valid-token'), method: 'POST', body: { uid: record.uid, name: 'Old name' } }, {
+    status(code) { result.code = code; return this },
+    json(data) { result.data = data; return this }
+  })
+  assert.equal(result.code, 200)
+  assert.equal(write.mock.callCount(), 1)
+  assert.equal(record.name, 'Admin-corrected name')
 })
 
 test('pending work returns exact counts and isolates unavailable queues', async (t) => {

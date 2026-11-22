@@ -19,7 +19,6 @@ const pageOverlay = {
 /* ---------- CONFIG ---------- */
 const API_LIST    = "/api/all-scores";     
 const API_ACTIONS = "/api/admin-actions";  
-const API_HISTORY = "/api/score-history";
 
 let MY_UID_PAGE = null;
 let rows     = [];  
@@ -40,7 +39,7 @@ function debounce(fn, ms=300){ let t; return (...a)=>{ clearTimeout(t); t=setTim
 function escapeHtml(s){ return String(s??"").replace(/[&<>"']/g, m=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[m])); }
 function formatDateTime(ts) {
   const d = new Date(ts); if (isNaN(d)) return "";
-  return d.toLocaleString('th-TH', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
+  return d.toLocaleString('th-TH', { timeZone:'Asia/Bangkok', day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
 }
 
 function isRecoveryActive(auth) {
@@ -122,10 +121,10 @@ function renderTable(totalPages) {
                 <div class="small text-muted" style="font-size:0.75rem;">คะแนน</div>
              </div>
              <div class="d-flex gap-1 bg-light rounded-pill p-1 border">
-                <button class="btn btn-sm text-secondary rounded-circle" style="width:34px; height:34px;" onclick="openHistoryModal('${r.uid}')">
+                <button class="btn btn-sm text-secondary rounded-circle" style="width:44px; height:44px;" aria-label="ดูประวัติกิจกรรม" onclick="openHistoryModal(${escapeHtml(JSON.stringify(r.uid))})">
                    <i class="fa-solid fa-clock-rotate-left"></i>
                 </button>
-                <button class="btn btn-sm btn-white text-primary shadow-sm rounded-circle" style="width:34px; height:34px;" onclick="openActionModal('${r.uid}')">
+                <button class="btn btn-sm btn-white text-primary shadow-sm rounded-circle" style="width:44px; height:44px;" aria-label="จัดการสมาชิก" onclick="openActionModal(${escapeHtml(JSON.stringify(r.uid))})">
                    <i class="fa-solid fa-sliders"></i>
                 </button>
              </div>
@@ -192,6 +191,25 @@ function bindEvents() {
   qs("#btnOpenAuthRecovery")?.addEventListener("click", openAuthRecovery);
   qs("#btnCloseAuthRecovery")?.addEventListener("click", closeAuthRecovery);
   qs('#btnRecoverSafetyPoints')?.addEventListener('click', recoverSafetyCheckinPoints);
+  qs('#memberProfileToggle').parentElement.addEventListener('toggle', event => {
+    if (event.currentTarget.open && !memberProfileSnapshot) void loadMemberProfile();
+  });
+  qs('#memberProfileReload').addEventListener('click', loadMemberProfile);
+  qs('#memberProfileForm').addEventListener('submit', saveMemberProfile);
+  qs('#actionModal').addEventListener('hidden.bs.modal', resetMemberProfile);
+  qs('#memberHistoryCategory').addEventListener('change', () => loadMemberHistory());
+  qs('#memberHistoryMore').addEventListener('click', () => loadMemberHistory(true));
+  qs('#birthdayRunDate').addEventListener('change', () => loadBirthdayRuns());
+  qs('#birthdayRunRefresh').addEventListener('click', () => loadBirthdayRuns());
+  qs('#birthdayRunMore').addEventListener('click', () => loadBirthdayRuns(true));
+  qs('#birthdayRunLine').addEventListener('click', () => {
+    qs('#lineNotificationKind').value = 'birthday_reward';
+    qs('#lineNotificationStatus').value = 'all';
+    qs('#lineNotificationSearch').value = '';
+    const dateFilter = qs('#lineNotificationDate');
+    if (dateFilter) dateFilter.value = '';
+    bootstrap.Tab.getOrCreateInstance(qs('#tabLineNotificationsBtn')).show();
+  });
   qs("#authHelpSearch")?.addEventListener("input", debounce(renderAuthHelpCases, 250));
   qs("#authHelpStatusFilter")?.addEventListener("change", () => loadAdminTabData('#pills-auth-help'));
   qs("#btnRefreshAuthHelp")?.addEventListener("click", loadAuthHelpCases);
@@ -407,6 +425,7 @@ window.openActionModal = (uid) => {
     const u = rows.find(x => x.uid === uid);
     if (!u) return;
     TARGET_USER = u;
+    resetMemberProfile();
     qs("#actionUserName").textContent = u.name;
     qs("#actionUserUID").textContent = u.uid;
     renderAuthRecoveryState(u);
@@ -588,29 +607,228 @@ async function submitAdjust() {
     finally { pageOverlay.hide(); }
 }
 
-window.openHistoryModal = async (uid) => {
-    const tbody = qs("#historyTableBody");
-    tbody.innerHTML = '<tr><td colspan="3" class="text-center py-3">กำลังโหลด...</td></tr>';
-    new bootstrap.Modal(qs('#historyModal')).show();
+async function readMemberOperation(action, params = {}) {
+    const query = new URLSearchParams({ action, adminUid: getCurrentAdminUid(), ...params });
+    const response = await fetch(`${API_ACTIONS}?${query}`, { cache: 'no-store' });
+    const result = await response.json();
+    if (!response.ok || result.status !== 'success') throw new Error('read_failed');
+    return result;
+}
 
+const MEMBER_PROFILE_LABELS = {
+    name: 'ชื่อ–นามสกุล', room: 'หน่วยงาน / ห้อง', dob: 'วันเกิด', tel: 'เบอร์โทรศัพท์', passport: 'เลขพาสปอร์ต / เลขประจำตัว'
+};
+
+function formatMemberProfileFields(fields) {
+    return Array.isArray(fields) ? fields.filter(key => Object.hasOwn(MEMBER_PROFILE_LABELS, key)).map(key => MEMBER_PROFILE_LABELS[key]).join(' · ') : '';
+}
+
+let memberProfileSnapshot;
+let memberProfileVersion = 0;
+
+function resetMemberProfile() {
+    memberProfileVersion++;
+    memberProfileSnapshot = null;
+    qs('#memberProfileToggle').parentElement.open = false;
+    qs('#memberProfileForm').reset();
+    qs('#memberProfileForm').hidden = true;
+    qs('#memberProfileFields').disabled = false;
+    qs('#memberProfileReload').hidden = true;
+    qs('#memberProfileStatus').textContent = '';
+    qs('#memberLegacyDob').textContent = '';
+}
+
+async function loadMemberProfile() {
+    if (!TARGET_USER) return;
+    const version = ++memberProfileVersion;
+    const form = qs('#memberProfileForm');
+    const status = qs('#memberProfileStatus');
+    const reload = qs('#memberProfileReload');
+    form.hidden = true;
+    qs('#memberProfileFields').disabled = false;
+    status.textContent = 'กำลังโหลดข้อมูลส่วนตัว';
+    reload.hidden = true;
     try {
-      const res = await fetch(`${API_HISTORY}?uid=${uid}&limit=20`);
-      const j = await res.json();
-      const items = (Array.isArray(j) ? j : j.data) || [];
-      
-      tbody.innerHTML = items.length ? items.map(it => {
-          const amt = Number(it.amount||it.point||0);
-          const cls = amt >= 0 ? "text-success fw-bold" : "text-danger fw-bold";
-          const sgn = amt > 0 ? "+" : "";
-          return `
-            <tr>
-              <td class="ps-3 text-muted" style="font-size:0.8rem;">${formatDateTime(it.created_at || it.ts)}</td>
-              <td style="font-size:0.9rem;">${escapeHtml(it.type||it.activity||'-')}</td>
-              <td class="text-end pe-3 ${cls}">${sgn}${amt}</td>
-            </tr>`;
-      }).join("") : `<tr><td colspan="3" class="text-center text-muted py-3">ไม่มีประวัติ</td></tr>`;
-    } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="3" class="text-center text-danger">โหลดไม่สำเร็จ</td></tr>`;
+        const { data } = await readMemberOperation('member_profile', { targetUid: TARGET_USER.uid });
+        if (version !== memberProfileVersion) return;
+        const shown = {};
+        for (const field of Object.keys(MEMBER_PROFILE_LABELS)) {
+            const input = form.elements.namedItem(field);
+            input.value = data[field] || '';
+            shown[field] = input.value;
+        }
+        const dob = form.elements.namedItem('dob');
+        dob.max = todayBangkokInputValue();
+        qs('#memberLegacyDob').textContent = data.dob && !dob.value ? `ข้อมูลเดิม: ${data.dob} หากต้องการแก้ไข ให้เลือกวันเกิดจากปฏิทิน` : '';
+        memberProfileSnapshot = { data, shown };
+        status.textContent = '';
+        form.hidden = false;
+    } catch {
+        if (version !== memberProfileVersion) return;
+        status.textContent = 'โหลดข้อมูลส่วนตัวไม่สำเร็จ กรุณาลองใหม่';
+        reload.hidden = false;
+    }
+}
+
+async function saveMemberProfile(event) {
+    event.preventDefault();
+    if (!memberProfileSnapshot || !TARGET_USER) return;
+    const form = event.currentTarget;
+    const fields = qs('#memberProfileFields');
+    if (fields.disabled) return;
+    const { data, shown } = memberProfileSnapshot;
+    const patch = Object.fromEntries([...new FormData(form)].filter(([key, value]) => value.trim() !== shown[key]));
+    const status = qs('#memberProfileStatus');
+    if (!Object.keys(patch).length) {
+        status.textContent = 'ยังไม่มีข้อมูลที่เปลี่ยนแปลง';
+        return;
+    }
+    const version = memberProfileVersion;
+    fields.disabled = true;
+    status.textContent = 'กำลังบันทึกข้อมูลส่วนตัว';
+    try {
+        const response = await fetch(API_ACTIONS, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'member_profile_update', adminUid: getCurrentAdminUid(),
+                targetUid: TARGET_USER.uid, profile: patch,
+                expected: Object.fromEntries(Object.keys(patch).map(key => [key, data[key]])) })
+        });
+        const result = await response.json();
+        if (version !== memberProfileVersion) return;
+        if (!response.ok || result.status !== 'success') {
+            status.textContent = result.message || 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่';
+            if (response.status === 409) qs('#memberProfileReload').hidden = false;
+            return;
+        }
+        if (patch.name) qs('#actionUserName').textContent = patch.name.trim();
+        void loadPageUsers();
+        const refreshVersion = memberProfileVersion + 1;
+        await loadMemberProfile();
+        if (memberProfileVersion === refreshVersion && !form.hidden) status.textContent = 'บันทึกข้อมูลส่วนตัวแล้ว';
+    } catch {
+        if (version === memberProfileVersion) status.textContent = 'ยังยืนยันผลการบันทึกไม่ได้ กรุณาลองบันทึกอีกครั้ง';
+    } finally {
+        if (version === memberProfileVersion) fields.disabled = false;
+    }
+}
+
+const MEMBER_ACTIVITY_LABELS = {
+    BIRTHDAY_REWARD: 'คะแนนวันเกิด', DAILY_CHECKIN: 'คะแนนเช็กอิน', WEEKLY_SAFETY_MISSION: 'โบนัสเช็กอินรายสัปดาห์',
+    COUPON_REDEEM: 'คะแนนจากคูปอง', SPEND_REWARD: 'ใช้คะแนนแลกรางวัล', REDEMPTION_REFUND: 'คืนคะแนนจากการแลกรางวัล',
+    ADMIN_ADJUST: 'ผู้ดูแลปรับคะแนน', ADMIN_GIVE: 'แจกคะแนน', reward_redemption: 'แลกรางวัล',
+    coupon_assigned: 'ได้รับคูปอง', coupon_redeemed: 'ใช้คูปอง', coupon_cancelled: 'ยกเลิกคูปอง', safety_checkin: 'เช็กอินความปลอดภัย'
+};
+let memberHistory = { uid: '', offset: 0, before: '', version: 0 };
+
+window.openHistoryModal = (uid) => {
+    const member = rows.find(row => row.uid === uid);
+    qs('#memberHistoryTitle').textContent = member?.name ? `ประวัติกิจกรรม · ${member.name}` : 'ประวัติกิจกรรมสมาชิก';
+    qs('#memberHistoryCategory').value = 'all';
+    memberHistory.uid = uid;
+    new bootstrap.Modal(qs('#historyModal')).show();
+    return loadMemberHistory();
+};
+
+async function loadMemberHistory(append = false) {
+    if (!memberHistory.uid) return;
+    const version = ++memberHistory.version;
+    const items = qs('#memberHistoryItems');
+    const status = qs('#memberHistoryStatus');
+    const more = qs('#memberHistoryMore');
+    if (!append) {
+        items.replaceChildren();
+        memberHistory.offset = 0;
+        memberHistory.before = '';
+    }
+    more.hidden = true;
+    status.textContent = 'กำลังโหลดประวัติกิจกรรม';
+    try {
+        const result = await readMemberOperation('member_activity', {
+            targetUid: memberHistory.uid, category: qs('#memberHistoryCategory').value,
+            offset: memberHistory.offset, before: memberHistory.before
+        });
+        if (version !== memberHistory.version) return;
+        items.insertAdjacentHTML('beforeend', result.data.map(item => {
+            const title = MEMBER_ACTIVITY_LABELS[item.activity] || AUDIT_EVENT_META[item.activity]?.label || (item.category === 'points' ? 'เปลี่ยนแปลงคะแนน' : 'กิจกรรมในระบบ');
+            const state = item.category === 'rewards' ? RoyalStatus.badge('redemption', item.state)
+                : item.category === 'safety' && item.state && item.state !== 'none' ? RoyalStatus.badge('safety', item.state) : '';
+            const detail = [item.label, formatMemberProfileFields(item.fields)].filter(Boolean).join(' · ');
+            const points = item.points === null ? '' : `${Number(item.points) > 0 ? '+' : ''}${fmt(item.points)} คะแนน`;
+            return `<article class="list-group-item px-0 d-flex align-items-start justify-content-between flex-wrap gap-2">
+                <div class="text-break"><div class="fw-bold">${escapeHtml(title)}</div>
+                  <div class="small text-muted">${escapeHtml(formatDateTime(item.happened_at))}</div>
+                  ${detail ? `<div class="small">${escapeHtml(detail)}</div>` : ''}
+                </div><div>${state}${points ? `<span class="fw-bold">${points}</span>` : ''}</div>
+              </article>`;
+        }).join(''));
+        memberHistory.before = result.before;
+        memberHistory.offset += result.data.length;
+        status.textContent = memberHistory.offset ? '' : 'ไม่มีประวัติกิจกรรมในหมวดนี้';
+        more.textContent = 'โหลดเพิ่มเติม';
+        more.hidden = !result.hasMore;
+    } catch {
+        if (version !== memberHistory.version) return;
+        status.textContent = 'โหลดประวัติไม่สำเร็จ กรุณาลองใหม่';
+        more.textContent = 'ลองใหม่';
+        more.hidden = false;
+    }
+}
+
+let birthdayReportOffset = 0;
+let birthdayReportVersion = 0;
+
+async function loadBirthdayRuns(append = false) {
+    const date = qs('#birthdayRunDate');
+    date.max = todayBangkokInputValue();
+    if (!date.value) date.value = date.max;
+    const resultArea = qs('#birthdayRunResult');
+    const more = qs('#birthdayRunMore');
+    const version = ++birthdayReportVersion;
+    if (!append) {
+        birthdayReportOffset = 0;
+        resultArea.textContent = 'กำลังโหลดผลรอบวันเกิด';
+    }
+    more.hidden = true;
+    try {
+        const { data } = await readMemberOperation('birthday_runs', { date: date.value, offset: birthdayReportOffset });
+        if (version !== birthdayReportVersion) return;
+        if (!append) {
+            const attempt = data.lastAttempt;
+            const heading = data.run ? 'ประมวลผลคะแนนสำเร็จ'
+                : attempt?.event_type === 'birthday_reward_failed' ? 'ประมวลผลคะแนนไม่สำเร็จ' : 'ยังไม่พบผลการรัน';
+            const tone = data.run ? 'success' : attempt?.event_type === 'birthday_reward_failed' ? 'danger' : 'waiting';
+            resultArea.innerHTML = `<section class="m-card mb-3">
+              <span class="rp-status rp-status--${tone}">${heading}</span>
+              ${attempt ? `<p class="small mt-2 mb-0">บันทึกล่าสุด ${escapeHtml(formatDateTime(attempt.created_at))}${attempt.event_type === 'birthday_reward_failed' ? ' · พบข้อผิดพลาด' : ''}${attempt.correlation_id ? ` · เลขอ้างอิง ${escapeHtml(attempt.correlation_id)}` : ''}</p>` : ''}
+              <dl class="row g-2 mt-2 mb-0">
+                <div class="col-6 col-md-3"><dt>สมาชิกในรอบนี้</dt><dd>${fmt(data.total)}</dd></div>
+                <div class="col-6 col-md-3"><dt>แจกสำเร็จในรอบนี้</dt><dd>${data.run ? fmt(data.run.reward_count) : '—'}</dd></div>
+                <div class="col-6 col-md-3"><dt>พบคะแนนจากประวัติ</dt><dd>${fmt(data.previouslyAwarded)}</dd></div>
+                <div class="col-6 col-md-3"><dt>ยังไม่พบคะแนน</dt><dd>${fmt(data.notAwarded)}</dd></div>
+              </dl>
+              ${data.awarded ? `<p class="small mb-0">ส่ง LINE สำเร็จ ${fmt(data.lineSent)} จาก ${fmt(data.awarded)} รายการ</p>` : ''}
+            </section><div id="birthdayRunMembers"></div>`;
+        }
+        const members = qs('#birthdayRunMembers');
+        members.insertAdjacentHTML('beforeend', data.items.map(member => {
+            const awarded = member.state === 'awarded';
+            const history = member.state === 'previously_awarded';
+            return `<article class="m-card d-flex flex-wrap align-items-center justify-content-between gap-2 text-break">
+                <div><div class="fw-bold">${escapeHtml(member.name || 'ไม่ระบุชื่อ')}</div><div class="small text-muted">${escapeHtml(member.room || 'ไม่ระบุหน่วยงาน')}</div></div>
+                <div class="d-flex flex-wrap gap-1"><span class="rp-status rp-status--${awarded ? 'success' : history ? 'info' : 'waiting'}">${awarded ? 'ได้รับคะแนนแล้ว' : history ? 'พบคะแนนจากประวัติ' : 'ยังไม่พบคะแนน'}</span>
+                ${awarded ? RoyalStatus.badge('delivery', member.line_status || 'missing') : ''}</div></article>`;
+        }).join(''));
+        birthdayReportOffset += data.items.length;
+        if (!birthdayReportOffset) members.textContent = 'ไม่พบสมาชิกที่มีวันเกิดหรือได้รับคะแนนในรอบนี้';
+        more.textContent = 'โหลดสมาชิกเพิ่มเติม';
+        more.hidden = birthdayReportOffset >= data.total;
+    } catch {
+        if (version !== birthdayReportVersion) return;
+        if (!append) resultArea.textContent = 'โหลดผลรอบวันเกิดไม่สำเร็จ กรุณากดโหลดผลรอบนี้อีกครั้ง';
+        else {
+            more.textContent = 'ลองโหลดสมาชิกเพิ่มเติมอีกครั้ง';
+            more.hidden = false;
+        }
     }
 }
 

@@ -274,6 +274,11 @@ async function runPickupTracking(browser, baseUrl, viewport) {
     await check.waitFor({ state: 'detached' })
     const evidence = page.locator('#redemptionTracker [data-open-redemption]')
     await page.locator('#pickupRedemptionList .rp-status--waiting').getByText('รอรับรางวัล', { exact: true }).waitFor()
+    const tracker = page.locator('#redemptionTracker')
+    assert.equal(await tracker.evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(248, 255, 251)')
+    assert.equal(await tracker.locator('h2').evaluate(element => getComputedStyle(element).color), 'rgb(20, 41, 31)')
+    assert.equal(await tracker.locator('.rp-redemption-item').evaluate(element => getComputedStyle(element).backgroundColor), 'rgb(255, 255, 255)')
+    assert.ok(await evidence.evaluate(element => element.getBoundingClientRect().height >= 44))
     await Promise.all([
       page.waitForResponse(response => new URL(response.url()).searchParams.get('redemptionId') === redemptionId),
       evidence.click()
@@ -316,6 +321,8 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   }))
   let role = 'super_admin'
   let birthdayStatus = 'pending'
+  let profile = { name: 'สมาชิกทดสอบ', room: 'SHE', dob: '1990-11-22', tel: '0800000000', passport: null }
+  let profileWrites = 0
   let memberScore = 100
   let couponBatch = null
   let pendingWorkReads = 0
@@ -342,12 +349,30 @@ async function runAdminViewport(browser, baseUrl, viewport) {
     return route.fulfill({ json: { status: 'success', created: 2, data: { ...couponBatch, repeated: true } } })
   })
   await page.route('**/api/all-scores?**', async route => {
-    await route.fulfill({ json: { status: 'success', data: [{ uid: 'U_MEMBER', name: 'สมาชิกทดสอบ', tel: '0800000000', score: memberScore }] } })
+    await route.fulfill({ json: { status: 'success', data: [{ uid: 'U_MEMBER', name: profile.name, tel: profile.tel, score: memberScore }] } })
   })
   await page.route('**/api/admin-actions?**', async route => {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
     const params = new URL(route.request().url()).searchParams
     const action = params.get('action')
+    if (action === 'birthday_runs') {
+      assert.match(params.get('date'), /^\d{4}-\d{2}-\d{2}$/)
+      return route.fulfill({ json: { status: 'success', data: {
+        run: { reward_count: 1 }, total: 2, awarded: 1, previouslyAwarded: 0, notAwarded: 1, lineSent: 0,
+        items: [{ name: 'เกิดวันนี้', state: 'awarded', line_status: 'failed' }, { name: 'สมาชิกอีกคน', state: 'not_awarded' }]
+      } } })
+    }
+    if (action === 'member_profile') {
+      assert.equal(params.get('targetUid'), 'U_MEMBER')
+      return route.fulfill({ json: { status: 'success', data: profile } })
+    }
+    if (action === 'member_activity') {
+      assert.equal(params.get('targetUid'), 'U_MEMBER')
+      const data = params.get('category') === 'rewards'
+        ? [{ category: 'rewards', activity: 'reward_redemption', state: 'approved', label: 'ของทดสอบ', points: null }]
+        : [{ category: 'points', activity: 'BIRTHDAY_REWARD', points: 100 }, { category: 'safety', activity: 'safety_checkin', points: null }]
+      return route.fulfill({ json: { status: 'success', before: '2026-11-22T00:00:00Z', hasMore: false, data } })
+    }
     if (action === 'pending_work') {
       pendingWorkReads++
       return route.fulfill({ json: { status: 'success', data: {
@@ -381,6 +406,15 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   await page.route('**/api/admin-actions', async route => {
     assert.equal(route.request().headers().authorization, 'Bearer admin-test-token')
     const { action, notificationId, targetUid, checkinDate, status, redemptionId } = route.request().postDataJSON()
+    if (action === 'member_profile_update') {
+      const payload = route.request().postDataJSON()
+      assert.equal(targetUid, 'U_MEMBER')
+      assert.deepEqual(payload.profile, { name: 'สมาชิกแก้ไขแล้ว', dob: '1991-11-22' })
+      assert.equal(payload.expected.dob, '1990-11-22')
+      profileWrites++
+      profile = { ...profile, ...payload.profile }
+      return route.fulfill({ json: { status: 'success', data: { changed: true } } })
+    }
     if (action === 'get_history') {
       assert.equal(status, 'approved')
       return route.fulfill({ json: { status: 'success', data: pickupStatus === 'approved'
@@ -414,6 +448,10 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   assert.equal(await page.evaluate(() => window.RoyalAdminReady()), true)
   assert.equal(await page.evaluate(() => window.RoyalAdminInitialTabReady()), '#pills-auth-help')
   assert.equal(await page.locator('#adminContent').evaluate(element => element.hidden), false)
+  await page.locator('#tabBirthdayBtn').click()
+  await page.locator('#birthdayRunResult').getByText('ประมวลผลคะแนนสำเร็จ', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('ส่ง LINE ไม่สำเร็จ', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('ยังไม่พบคะแนน', { exact: true }).last().waitFor()
   assert.equal(pendingWorkReads, 0)
   const pendingWorkTab = page.getByRole('tab', { name: 'งานค้าง' })
   if (viewport.width < 500) await pendingWorkTab.tap()
@@ -478,6 +516,19 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   assert.equal(memberScore, 115)
   await page.locator('#searchInput').fill('0800000000')
   await page.locator('#adminTableBody').getByText('0800000000').waitFor()
+  await page.getByRole('button', { name: 'ดูประวัติกิจกรรม' }).click()
+  await page.locator('#memberHistoryItems').getByText('คะแนนวันเกิด', { exact: true }).waitFor()
+  await page.locator('#memberHistoryItems').getByText('เช็กอินความปลอดภัย', { exact: true }).waitFor()
+  await page.locator('#memberHistoryCategory').selectOption('rewards')
+  await page.locator('#memberHistoryItems').getByText('รอรับรางวัล', { exact: true }).waitFor()
+  await page.getByRole('button', { name: 'จัดการสมาชิก' }).click()
+  await page.locator('#memberProfileToggle').click()
+  await page.locator('#memberProfileName').fill('สมาชิกแก้ไขแล้ว')
+  await page.locator('#memberProfileDob').fill('1991-11-22')
+  await page.getByRole('button', { name: 'บันทึกข้อมูลส่วนตัว', exact: true }).click()
+  await page.locator('#memberProfileStatus').getByText('บันทึกข้อมูลส่วนตัวแล้ว', { exact: true }).waitFor()
+  await page.locator('#adminTableBody').getByText('สมาชิกแก้ไขแล้ว', { exact: true }).waitFor()
+  assert.equal(profileWrites, 1)
 
   await page.locator('#genPoints').fill('25')
   await page.locator('#genCount').fill('2')

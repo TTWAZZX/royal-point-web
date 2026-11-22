@@ -19,7 +19,7 @@ module.exports = async (req, res) => {
       tel: (tel||'').trim() || null
     }
 
-    const { error } = await supabaseAdmin.from('users').upsert(row, { onConflict:'uid' })
+    const { error } = await supabaseAdmin.from('users').upsert(row, { onConflict:'uid', ignoreDuplicates:true })
     if (error) return res.status(500).json({ status:'error', message:'db_error' })
 
     res.status(200).json({ status:'success' })

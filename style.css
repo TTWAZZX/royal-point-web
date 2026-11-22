@@ -622,6 +622,22 @@ body{
   box-shadow:0 10px 28px rgba(22,163,74,.08);
 }
 
+#redemptionTracker {
+  background: #f8fffb;
+  border-color: #cdeadd;
+  color: #14291f;
+}
+
+#redemptionTracker .rp-redemption-item {
+  background: #fff;
+  border: 1px solid #d9eae2;
+  overflow-wrap: anywhere;
+}
+
+#redemptionTracker button {
+  min-height: 44px;
+}
+
 /* ===== Profile Card ===== */
 .rp-profile-card{
   display:grid; grid-template-columns:auto 1fr; gap:16px; align-items:center;

@@ -118,6 +118,7 @@ function loadAdminTabData(target) {
     else if (cleanTarget === '#pills-coupons') loader = () => loadCoupons();
     else if (cleanTarget === '#pills-ads') loader = () => loadAdBanners();
     else if (cleanTarget === '#pills-history') loader = loadRedemptionHistory;
+    else if (cleanTarget === '#pills-birthday') loader = () => window.loadBirthdayRuns?.();
     else if (cleanTarget === '#pills-line-notifications') loader = () => loadLineNotifications();
     else if (cleanTarget === '#pills-audit') loader = loadAuditLogs;
     else if (cleanTarget === '#pills-safety') loader = () => loadAdminTabData(
@@ -1815,6 +1816,7 @@ const AUDIT_EVENT_META = {
   redemption_cancelled_refunded:{ label: 'ยกเลิกและคืนคะแนนรายการแลก',      icon: 'fa-rotate-left',     tone: 'info' },
   line_notification_retry:      { label: 'ส่งข้อความ LINE ใหม่',              icon: 'fa-paper-plane',     tone: 'primary' },
   birthday_reward_run:          { label: 'ประมวลผลคะแนนวันเกิด',             icon: 'fa-cake-candles',   tone: 'info' },
+  member_profile_updated:      { label: 'แก้ไขข้อมูลส่วนตัวสมาชิก',          icon: 'fa-user-pen',       tone: 'info' },
   birthday_reward_failed:       { label: 'ประมวลผลคะแนนวันเกิดไม่สำเร็จ',    icon: 'fa-cake-candles',   tone: 'danger' },
   ad_banner_created:            { label: 'เพิ่มการ์ดประชาสัมพันธ์',            icon: 'fa-image',           tone: 'success' },
   ad_banner_updated:            { label: 'แก้ไขการ์ดประชาสัมพันธ์',            icon: 'fa-pen',             tone: 'primary' },
@@ -1885,6 +1887,8 @@ function formatAuditDetail(eventType, detail) {
       return [d.rewardName, `คืน ${Number(d.points || 0).toLocaleString('th-TH')} คะแนน`, d.reason, `LINE: ${d.lineStatus || '-'}`].filter(Boolean).join(' · ');
     case 'line_notification_retry':
       return [d.messageKind, d.error].filter(Boolean).join(' · ');
+    case 'member_profile_updated':
+      return formatMemberProfileFields(d.fields);
     case 'birthday_reward_run':
       return [d.runDate, `สมาชิก ${d.processed} คน`, `ส่ง LINE รอบนี้ ${d.sent} ข้อความ`, `รอส่ง ${d.outstanding} ข้อความ`, d.repeated ? 'เรียกงานซ้ำ' : ''].filter(Boolean).join(' · ');
     case 'birthday_reward_failed':
