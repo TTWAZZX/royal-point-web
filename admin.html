@@ -528,7 +528,8 @@
           <h2 class="h5">ผลการแจกคะแนนวันเกิด</h2>
           <div class="d-flex flex-wrap align-items-end gap-2 rp-status-actions">
             <div><label class="form-label" for="birthdayRunDate">วันที่ตามเวลาไทย</label><input type="date" class="form-control" id="birthdayRunDate"></div>
-            <button type="button" class="btn btn-outline-primary" id="birthdayRunRefresh">โหลดผลรอบนี้</button>
+            <button type="button" class="btn btn-primary" id="birthdayRunToday">กลับมาดูรอบวันนี้</button>
+            <button type="button" class="btn btn-outline-primary" id="birthdayRunRefresh">โหลดผลวันที่เลือก</button>
             <button type="button" class="btn btn-outline-secondary" id="birthdayRunLine">ดูการแจ้งเตือนวันเกิดใน LINE</button>
           </div>
         </div>
@@ -1114,7 +1115,7 @@
   <script src="loader.js?v=line-token-v1-progressive-load"></script>
   <script src="/ui-status.js?v=1"></script>
   <script src="admin.js?v=birthday-upcoming"></script>
-  <script src="admin.page.js?v=birthday-upcoming"></script>
+  <script src="admin.page.js?v=birthday-report-labels"></script>
 
   <script>
     const getMyUid = () => {

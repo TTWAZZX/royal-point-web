@@ -468,17 +468,36 @@ async function runAdminViewport(browser, baseUrl, viewport) {
   assert.equal(await page.evaluate(() => window.RoyalAdminInitialTabReady()), '#pills-auth-help')
   assert.equal(await page.locator('#adminContent').evaluate(element => element.hidden), false)
   await page.locator('#tabBirthdayBtn').click()
-  await page.locator('#birthdayRunResult').getByText('ประมวลผลคะแนนสำเร็จ', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('รอบแจกคะแนนทำงานสำเร็จ', { exact: true }).waitFor()
+  const todayBirthday = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok' }).format(new Date())
+  assert.equal(await page.locator('#birthdayRunDate').inputValue(), todayBirthday)
   await page.locator('#birthdayRunResult').getByText('ส่ง LINE ไม่สำเร็จ', { exact: true }).waitFor()
   await page.locator('#birthdayRunResult').getByText('วันเกิด 22 พฤศจิกายน พ.ศ. 2533', { exact: true }).waitFor()
   await page.locator('#birthdayRunResult').getByText('ไม่ระบุวันเกิด', { exact: true }).waitFor()
-  await page.locator('#birthdayRunResult').getByText('ยังไม่พบคะแนน', { exact: true }).last().waitFor()
+  await page.locator('#birthdayRunMembers').getByText('ยังไม่มีบันทึกว่าได้รับคะแนน', { exact: true }).waitFor()
+  const unrecordedCount = page.locator('#birthdayRunResult dl > div').filter({ hasText: 'ยังไม่มีบันทึกว่าได้รับคะแนน' })
+  assert.equal(await unrecordedCount.locator('dd').textContent(), '1 คน')
   await page.getByRole('button', { name: 'ส่ง LINE ซ้ำ', exact: true }).click()
   await page.locator('#birthdayRunMembers').getByText(/เวลาที่ LINE ตอบรับ.*15:30:00/).waitFor()
   await page.locator('#birthdayRunMembers').getByText(/line-confirmed-fixture/).waitFor()
   await page.locator('#birthdayUpcomingList').getByRole('button', { name: /รอแจก 1 คน/ }).click()
-  await page.locator('#birthdayRunResult').getByText('รอแจกคะแนนตามกำหนด', { exact: true }).waitFor()
+  await page.locator('#birthdayRunResult').getByText('ยังไม่ถึงวันแจกคะแนน', { exact: true }).waitFor()
   assert.equal(await page.locator('#birthdayRunDate').inputValue(), futureBirthday)
+  const birthdayRequestFor = date => request => {
+    const params = new URL(request.url()).searchParams
+    return params.get('action') === 'birthday_runs' && params.get('date') === date
+  }
+  await Promise.all([
+    page.waitForRequest(birthdayRequestFor(futureBirthday)),
+    page.getByRole('button', { name: 'โหลดผลวันที่เลือก', exact: true }).click()
+  ])
+  const todayButton = page.getByRole('button', { name: 'กลับมาดูรอบวันนี้', exact: true })
+  await Promise.all([
+    page.waitForRequest(birthdayRequestFor(todayBirthday)),
+    viewport.width < 500 ? todayButton.tap() : todayButton.click()
+  ])
+  await page.locator('#birthdayRunResult').getByText('รอบแจกคะแนนทำงานสำเร็จ', { exact: true }).waitFor()
+  assert.equal(await page.locator('#birthdayRunDate').inputValue(), todayBirthday)
   assert.equal(pendingWorkReads, 0)
   const pendingWorkTab = page.getByRole('tab', { name: 'งานค้าง' })
   if (viewport.width < 500) await pendingWorkTab.tap()

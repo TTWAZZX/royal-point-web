@@ -200,6 +200,10 @@ function bindEvents() {
   qs('#memberHistoryCategory').addEventListener('change', () => loadMemberHistory());
   qs('#memberHistoryMore').addEventListener('click', () => loadMemberHistory(true));
   qs('#birthdayRunDate').addEventListener('change', () => loadBirthdayRuns());
+  qs('#birthdayRunToday').addEventListener('click', () => {
+    qs('#birthdayRunDate').value = todayBangkokInputValue();
+    void loadBirthdayRuns();
+  });
   qs('#birthdayRunRefresh').addEventListener('click', loadBirthdayOverview);
   qs('#birthdayRunMore').addEventListener('click', () => loadBirthdayRuns(true));
   qs('#birthdayUpcomingList').addEventListener('click', event => {
@@ -799,7 +803,7 @@ async function loadBirthdayOverview() {
             const { data } = await readMemberOperation('birthday_upcoming');
             upcoming.innerHTML = data.map(day => `<button type="button" class="btn btn-sm btn-outline-primary" data-birthday-date="${escapeHtml(day.run_date)}">${birthdayRunDayFormat.format(new Date(`${day.run_date}T00:00:00Z`))} · รอแจก ${fmt(day.scheduled_members)} คน</button>`).join('');
         } catch {
-            upcoming.textContent = 'โหลดคิวล่วงหน้าไม่สำเร็จ กรุณากดโหลดผลรอบนี้อีกครั้ง';
+            upcoming.textContent = 'โหลดคิวล่วงหน้าไม่สำเร็จ กรุณากดโหลดผลวันที่เลือกอีกครั้ง';
         }
     })()]);
 }
@@ -839,7 +843,7 @@ async function retryBirthdayNotification(event) {
         await loadBirthdayRuns();
         if (qs('#birthdayRunDate').value === date) notice.textContent = data.status === 'sent' ? 'LINE รับคำขอแล้ว' : data.last_error || 'ส่ง LINE ไม่สำเร็จ';
     } catch {
-        if (qs('#birthdayRunDate').value === date) notice.textContent = 'ยังยืนยันผลการส่งไม่ได้ กรุณาโหลดผลรอบนี้อีกครั้ง';
+        if (qs('#birthdayRunDate').value === date) notice.textContent = 'ยังยืนยันผลการส่งไม่ได้ กรุณาโหลดผลวันที่เลือกอีกครั้ง';
     } finally {
         button.disabled = false;
     }
@@ -873,17 +877,17 @@ async function loadBirthdayRuns(append = false) {
         if (version !== birthdayReportVersion) return;
         if (!append) {
             const attempt = data.lastAttempt;
-            const heading = data.upcoming ? 'รอแจกคะแนนตามกำหนด' : data.run ? 'ประมวลผลคะแนนสำเร็จ'
-                : attempt?.event_type === 'birthday_reward_failed' ? 'ประมวลผลคะแนนไม่สำเร็จ' : 'ยังไม่พบผลการรัน';
+            const heading = data.upcoming ? 'ยังไม่ถึงวันแจกคะแนน' : data.run ? 'รอบแจกคะแนนทำงานสำเร็จ'
+                : attempt?.event_type === 'birthday_reward_failed' ? 'ระบบแจกคะแนนรอบนี้ไม่สำเร็จ' : 'ยังไม่มีบันทึกผลรอบนี้';
             const tone = data.run ? 'success' : attempt?.event_type === 'birthday_reward_failed' ? 'danger' : 'waiting';
             resultArea.innerHTML = `<section class="m-card mb-3">
               <span class="rp-status rp-status--${tone}">${heading}</span>
-              ${attempt ? `<p class="small mt-2 mb-0">บันทึกล่าสุด ${escapeHtml(formatDateTime(attempt.created_at))}${attempt.event_type === 'birthday_reward_failed' ? ' · พบข้อผิดพลาด' : ''}${attempt.correlation_id ? ` · เลขอ้างอิง ${escapeHtml(attempt.correlation_id)}` : ''}</p>` : ''}
+              ${attempt ? `<p class="small mt-2 mb-0">บันทึกผลรอบแจกคะแนนล่าสุด ${escapeHtml(formatDateTime(attempt.created_at))} น.${attempt.event_type === 'birthday_reward_failed' ? ' · พบข้อผิดพลาด' : ''}${attempt.correlation_id ? ` · เลขอ้างอิง ${escapeHtml(attempt.correlation_id)}` : ''}</p>` : ''}
               <dl class="row g-2 mt-2 mb-0">
-                <div class="col-6 col-md-3"><dt>สมาชิกในรอบนี้</dt><dd>${fmt(data.total)}</dd></div>
-                <div class="col-6 col-md-3"><dt>แจกสำเร็จในรอบนี้</dt><dd>${data.run ? fmt(data.run.reward_count) : '—'}</dd></div>
-                <div class="col-6 col-md-3"><dt>พบคะแนนจากประวัติ</dt><dd>${fmt(data.previouslyAwarded)}</dd></div>
-                <div class="col-6 col-md-3"><dt>${data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่พบคะแนน'}</dt><dd>${fmt(data.notAwarded)}</dd></div>
+                <div class="col-6 col-md-3"><dt>สมาชิกในรายงาน</dt><dd>${fmt(data.total)} คน</dd></div>
+                <div class="col-6 col-md-3"><dt>ได้รับคะแนนในรอบนี้</dt><dd>${data.run ? `${fmt(data.run.reward_count)} คน` : '—'}</dd></div>
+                <div class="col-6 col-md-3"><dt>ได้รับคะแนนวันเกิดไปแล้วในปีนี้</dt><dd>${fmt(data.previouslyAwarded)} คน</dd></div>
+                <div class="col-6 col-md-3"><dt>${data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่มีบันทึกว่าได้รับคะแนน'}</dt><dd>${fmt(data.notAwarded)} คน</dd></div>
               </dl>
               ${data.awarded ? `<p class="small mb-0">บันทึกว่าส่ง LINE แล้ว ${fmt(data.lineSent)} จาก ${fmt(data.awarded)} รายการ</p>` : ''}
             </section><div id="birthdayRunMembers"></div>`;
@@ -898,7 +902,7 @@ async function loadBirthdayRuns(append = false) {
                   <div class="small text-muted">${escapeHtml(member.room || 'ไม่ระบุหน่วยงาน')}</div>
                   <div class="small mt-1">${escapeHtml(formatMemberBirthday(member.dob))}</div>
                 </div>
-                <div class="d-flex flex-wrap align-items-start gap-2"><span class="rp-status rp-status--${awarded ? 'success' : history ? 'info' : 'waiting'}">${awarded ? 'ได้รับคะแนนแล้ว' : history ? 'พบคะแนนจากประวัติ' : data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่พบคะแนน'}</span>
+                <div class="d-flex flex-wrap align-items-start gap-2"><span class="rp-status rp-status--${awarded ? 'success' : history ? 'info' : 'waiting'}">${awarded ? 'ได้รับคะแนนในรอบนี้' : history ? 'ได้รับคะแนนวันเกิดไปแล้วในปีนี้' : data.upcoming ? 'รอแจกคะแนน' : 'ยังไม่มีบันทึกว่าได้รับคะแนน'}</span>
                 ${awarded ? birthdayDeliveryMarkup(member.delivery) : ''}</div></article>`;
         }).join(''));
         birthdayReportOffset += data.items.length;
@@ -907,7 +911,7 @@ async function loadBirthdayRuns(append = false) {
         more.hidden = birthdayReportOffset >= data.total;
     } catch {
         if (version !== birthdayReportVersion) return;
-        if (!append) resultArea.textContent = 'โหลดผลรอบวันเกิดไม่สำเร็จ กรุณากดโหลดผลรอบนี้อีกครั้ง';
+        if (!append) resultArea.textContent = 'โหลดผลรอบวันเกิดไม่สำเร็จ กรุณากดโหลดผลวันที่เลือกอีกครั้ง';
         else {
             more.textContent = 'ลองโหลดสมาชิกเพิ่มเติมอีกครั้ง';
             more.hidden = false;
