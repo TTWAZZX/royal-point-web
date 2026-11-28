@@ -1,6 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { selectSmartSafetyQuestion } = require('../lib/safety-question-rotation')
+const crypto = require('node:crypto')
+const { selectSmartSafetyQuestion, stableQuestionScore } = require('../lib/safety-question-rotation')
 
 const questions = [
   { id: 'q1' },
@@ -52,4 +53,17 @@ test('ignores history for questions that are no longer active', () => {
   )
   assert.equal(result.mode, 'unseen')
   assert.equal(result.unseenCount, 4)
+})
+
+test('keeps the previous selection and hashes each candidate only once', (t) => {
+  const uid = 'member-test'
+  const day = '2026-11-28'
+  const candidates = Array.from({ length: 120 }, (_, index) => ({ id: `q-${index}` }))
+  const expected = [...candidates].sort((left, right) => (
+    stableQuestionScore(uid, day, left.id).localeCompare(stableQuestionScore(uid, day, right.id)) ||
+    left.id.localeCompare(right.id)
+  ))[0]
+  const hash = t.mock.method(crypto, 'createHash')
+  assert.equal(selectSmartSafetyQuestion(candidates, [], uid, day).question, expected)
+  assert.equal(hash.mock.callCount(), candidates.length)
 })

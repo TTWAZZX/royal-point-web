@@ -67,6 +67,12 @@ function resolveCurrentUid() {
   );
 }
 
+function memberReadKey(uid) {
+  const auth = window.RoyalAuth;
+  const recovery = Boolean(auth?.isRecoveryMode?.());
+  return JSON.stringify([uid, recovery, recovery ? '' : auth?.getAccessToken?.() || '']);
+}
+
 
 // ===== Admin allowlist (UID ถูกย้ายไปตรวจที่ server-side แล้ว) =====
 const ADMIN_UIDS = [];
@@ -113,8 +119,11 @@ let UID = "";
 let html5qrcode = null;
 let prevScore = 0;
 let prevLevel = "";
+let scoreRequestVersion = 0;
 let DAILY_CHECKIN_IN_FLIGHT = false;
 let DAILY_CHECKIN_STATUS = null;
+let dailyCheckinStatusUid = '';
+let dailyCheckinLoad = null;
 const DAILY_SAFETY_QUESTIONS = [
   {
     id: 'ppe_ready',
@@ -262,8 +271,6 @@ function setAppLoading(on){
 }
 
 // ==== Admin FAB control — ตรวจสิทธิ์ผ่าน server เท่านั้น ====
-const LOCAL_ADMIN_UIDS = [];
-
 // ตัวช่วย: ตรวจสิทธิ์จาก server ถ้ามี endpoint ให้ใช้ (optional)
 async function checkAdminFromServer(uid) {
   if (!window.RoyalAuth?.hasToken?.() || window.RoyalAuth.isRecoveryMode?.()) return false;
@@ -279,18 +286,17 @@ async function checkAdminFromServer(uid) {
 }
 
 // ฟังก์ชันหลัก: แสดง/ซ่อนปุ่ม Admin
-async function showAdminFabIfAuthorized() {
+async function showAdminFabIfAuthorized(adminStatus) {
   const btn = document.getElementById('btnAdmin');
   if (!btn) return;
 
-  const uid = window.__UID || sessionStorage.getItem('uid') || '';
-  if (!uid) { btn.classList.add('d-none'); return; }
-
-  // 1) เช็คจาก whitelist ในไฟล์ก่อน
-  let ok = LOCAL_ADMIN_UIDS.includes(uid);
-
-  // 2) ถ้าไม่ผ่าน whitelist ลองขอจาก server (ถ้ามี)
-  if (!ok) ok = await checkAdminFromServer(uid);
+  const uid = resolveCurrentUid();
+  if (!uid || !window.RoyalAuth?.hasToken?.() || window.RoyalAuth.isRecoveryMode?.()) {
+    btn.classList.add('d-none');
+    return;
+  }
+  const ok = typeof adminStatus === 'boolean' ? adminStatus : await checkAdminFromServer(uid);
+  if (uid !== resolveCurrentUid() || window.RoyalAuth.isRecoveryMode?.()) return;
 
   // 3) แสดง/ซ่อนปุ่ม
   if (ok) {
@@ -362,7 +368,7 @@ async function initApp(ctx = {}) {
     }
 
     // 3) preflight check
-    const GET_SCORE = (u) => `${API_GET_SCORE}?uid=${encodeURIComponent(u)}&includeRewards=0`;
+    const GET_SCORE = (u) => `${API_GET_SCORE}?uid=${encodeURIComponent(u)}&includeRewards=0&includeAdmin=1`;
     let payload = ctx.scorePayload || null;
     if (!payload && !ctx.openCouponFirst) {
       const resp = await fetch(GET_SCORE(uid), { method: 'GET', cache: 'no-store' });
@@ -394,17 +400,17 @@ async function initApp(ctx = {}) {
 
     if (payload) await refreshUserScore({ initialPayload: payload, initialUid: uid });
     window.SystemBoot?.hide?.();
-    await handleCouponDeepLink();
+    const scoreLoadedFromCoupon = await handleCouponDeepLink();
 
-    if (!payload) await refreshUserScore({ initialUid: uid });
+    if (!payload && !scoreLoadedFromCoupon) await refreshUserScore({ initialUid: uid });
     void refreshDailyCheckinStatus();
-    void loadRewards({ uid });
+    void loadRewards();
     void loadPickupRedemptions();
 
     await handleTransactionDeepLinks();
 
     // แสดงปุ่มแอดมิน (ถ้ามีฟังก์ชันนี้)
-    if (!recoveryMode && typeof showAdminFabIfAuthorized === 'function') showAdminFabIfAuthorized();
+    void showAdminFabIfAuthorized(payload?.isAdmin);
 
   } catch (err) {
     console.error('[initApp] error:', err);
@@ -430,12 +436,7 @@ async function hydrateAfterRegister(uid) {
       await refreshDailyCheckinStatus();
     }
 
-    // 2) โหลดของรางวัลทั้งหมด (รวม inactive)
-    if (typeof loadRewards === 'function') {
-      // ถ้าฟังก์ชัน loadRewards รองรับ options
-      try { await loadRewards({ include: 0 }); }
-      catch { await loadRewards(); }
-    }
+    await loadRewards();
 
     // 3) เรนเดอร์ของรางวัลทันทีด้วยคะแนนปัจจุบัน
     if (typeof renderRewards === 'function') {
@@ -592,20 +593,8 @@ function bindUI(){
       } catch {}
 
       try {
-        // ⭐ แก้ไข: ดึงคะแนนล่าสุดมาเก็บไว้ในตัวแปรทันที
-        const latestScore = await refreshUserScore({ bust: true, poll: false });
-        
-        // ⭐ บังคับอัปเดตตัวแปร Global ทุกตัวให้ตรงกัน (กันเหนียว)
-        window.prevScore = latestScore;
-        window.__userBalance = latestScore;
-
-        // โหลดข้อมูลของรางวัล
-        await loadRewards?.();
-        
-        // ⭐ บังคับวาดการ์ดใหม่ด้วยคะแนนที่ได้มาตะกี้ (Direct Injection)
-        if (typeof renderRewards === 'function') {
-             renderRewards(latestScore);
-        }
+        await refreshUserScore({ bust: true });
+        await loadRewards({ reload: true });
 
       } catch (e) { 
           console.warn('refresh failed', e); 
@@ -997,20 +986,38 @@ async function refreshDailyCheckinStatus() {
     return null;
   }
 
+  const key = memberReadKey(uid);
+  if (dailyCheckinLoad?.key === key) return dailyCheckinLoad.promise;
+  if (dailyCheckinStatusUid !== uid) {
+    dailyCheckinStatusUid = uid;
+    DAILY_CHECKIN_STATUS = null;
+  }
+  const load = { key };
+  dailyCheckinLoad = load;
+  load.promise = loadDailyCheckinStatus(uid, load).finally(() => {
+    if (dailyCheckinLoad === load) dailyCheckinLoad = null;
+  });
+  return load.promise;
+}
+
+async function loadDailyCheckinStatus(uid, load) {
+  const isCurrent = () => dailyCheckinLoad === load && uid === resolveCurrentUid();
   setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
 
   try {
     const res = await fetch(`${API_DAILY_CHECKIN}?uid=${encodeURIComponent(uid)}`, { cache: 'no-store' });
     const json = await res.json().catch(() => null);
+    if (!isCurrent()) return null;
     if (!res.ok || json?.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
     const data = json?.data || {};
     if (data?.checkinRule?.enabled && !data.checkinRule.allowed && !data.checkedIn) {
-      data.meta = `Open ${data.checkinRule.startTime}-${data.checkinRule.endTime}`;
+      data.meta = `เปิดให้เช็กอินเวลา ${data.checkinRule.startTime}–${data.checkinRule.endTime} น.`;
     }
     DAILY_CHECKIN_STATUS = data;
     setDailyCheckinUi({ ...data, disabled: Boolean(data.checkedIn) });
     return data;
   } catch (e) {
+    if (!isCurrent()) return null;
     console.warn('[daily-checkin] status failed', e);
     setDailyCheckinUi({
       unavailable: true,
@@ -1179,37 +1186,41 @@ async function performDailyCheckin() {
 
   const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
-  const latestStatus = await refreshDailyCheckinStatus();
-  if (latestStatus?.checkedIn) {
-    void refreshUserScore({ bust: true });
-    return toastOk('วันนี้เช็กอินแล้ว');
-  }
-  if (latestStatus?.checkinRule?.enabled && !latestStatus.checkinRule.allowed) {
-    return toastErr(`Open ${latestStatus.checkinRule.startTime}-${latestStatus.checkinRule.endTime}`);
-  }
-  const safetyPayload = await askDailySafetyCheckin(latestStatus?.safetyQuestion || DAILY_CHECKIN_STATUS?.safetyQuestion);
-  if (!safetyPayload) return;
-
-  const prevStreak = Number(latestStatus?.streak || DAILY_CHECKIN_STATUS?.streak || 0);
-
   DAILY_CHECKIN_IN_FLIGHT = true;
-  setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
 
   try {
+    const latestStatus = await refreshDailyCheckinStatus();
+    if (uid !== resolveCurrentUid()) return;
+    if (latestStatus?.checkedIn) {
+      void refreshUserScore({ bust: true });
+      return toastOk('วันนี้เช็กอินแล้ว');
+    }
+    if (latestStatus?.checkinRule?.enabled && !latestStatus.checkinRule.allowed) {
+      return toastErr(`เปิดให้เช็กอินเวลา ${latestStatus.checkinRule.startTime}–${latestStatus.checkinRule.endTime} น.`);
+    }
+    const safetyPayload = await askDailySafetyCheckin(latestStatus?.safetyQuestion || DAILY_CHECKIN_STATUS?.safetyQuestion);
+    if (!safetyPayload || uid !== resolveCurrentUid()) return;
+
+    const prevStreak = Number(latestStatus?.streak || DAILY_CHECKIN_STATUS?.streak || 0);
+    setDailyCheckinUi({ loading: true, disabled: true, meta: '' });
+    const versionBeforeCheckin = scoreRequestVersion;
     const res = await fetch(API_DAILY_CHECKIN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uid, ...safetyPayload })
     });
     const json = await res.json().catch(() => null);
+    if (uid !== resolveCurrentUid()) return;
     const data = json?.data || {};
 
     if (res.status === 409 || json?.message === 'already_checked_in') {
+      dailyCheckinLoad = null;
       if (json?.message === 'safety_question_expired') {
         if (data?.safetyQuestion) DAILY_CHECKIN_STATUS = { ...(DAILY_CHECKIN_STATUS || {}), ...data };
         setDailyCheckinUi({ ...data, checkedIn: false, disabled: false });
         return toastErr('คำถามมีการเปลี่ยนแปลง กรุณากดเช็กอินใหม่อีกครั้ง');
       }
+      DAILY_CHECKIN_STATUS = { ...data, checkedIn: true };
       setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
       void refreshUserScore({ bust: true });
       return toastOk('วันนี้เช็กอินแล้ว');
@@ -1224,12 +1235,15 @@ async function performDailyCheckin() {
     }
 
     const points = Number(data.totalAdded ?? data.points ?? 5);
-    optimisticAdd(points);
+    dailyCheckinLoad = null;
+    DAILY_CHECKIN_STATUS = { ...data, checkedIn: true };
+    const syncFreshScore = versionBeforeCheckin !== scoreRequestVersion;
+    if (!syncFreshScore) optimisticAdd(points);
     showScoreDelta(points);
     setDailyCheckinUi({ ...data, checkedIn: true, disabled: true });
 
-    try { await refreshUserScore({ bust: true }); } catch {}
-    try { await loadRewards?.({ include: 0, uid }); } catch {}
+    try { await refreshUserScore({ bust: true, fresh: syncFreshScore }); } catch {}
+    try { await loadRewards(); } catch {}
     try { renderRewards?.(Number(window.__userBalance || window.prevScore || 0)); } catch {}
 
     if (typeof confetti === 'function') {
@@ -1280,6 +1294,7 @@ async function performDailyCheckin() {
       ? `บันทึกสถานะความปลอดภัยแล้ว ได้รับ +${data.points || 5} คะแนน และโบนัส Weekly Mission +${data.weeklyMission?.bonus || 10}`
       : `บันทึกสถานะความปลอดภัยแล้ว ได้รับ +${points} คะแนน`);
   } catch (e) {
+    if (uid !== resolveCurrentUid()) return;
     const msg = String(e?.message || e);
     const map = {
       user_not_found: 'ไม่พบผู้ใช้นี้ในระบบ',
@@ -1295,16 +1310,13 @@ async function performDailyCheckin() {
 
 // ฟังก์ชันโหลดคะแนน (ฉบับแก้ไข: ห้ามรีเซ็ตเป็น 0 ถ้าโหลดพลาด)
 async function refreshUserScore(opts = {}) {
-  const { bust=false, poll=false, pollTries=5, initialPayload=null, initialUid='' } = opts;
-
-  const uid =
-    initialUid || (typeof UID !== 'undefined' && UID) ||
-    window.__UID ||
-    localStorage.getItem('uid') ||
-    '';
+  const { bust=false, fresh=false, initialPayload=null, initialUid='' } = opts;
+  const uid = initialUid || resolveCurrentUid();
 
   // ถ้าไม่มี UID จริงๆ ถึงจะยอมให้เป็น 0
-  if (!uid) return 0;
+  if (!uid) return fresh ? null : 0;
+  const version = ++scoreRequestVersion;
+  const fallback = () => fresh ? null : (window.__userBalance ?? 0);
 
   // helper: ดึง score จาก payload หลายทรง
   const pickScore = (o) => {
@@ -1314,6 +1326,7 @@ async function refreshUserScore(opts = {}) {
       o?.data?.score, o?.data?.points, o?.data?.balance, o?.data?.total
     ];
     for (const v of cands) {
+      if (v == null || v === '') continue;
       const n = Number(v);
       if (Number.isFinite(n)) return n;
     }
@@ -1321,30 +1334,29 @@ async function refreshUserScore(opts = {}) {
   };
 
   let data = initialPayload;
-  const bustQS = bust ? `&_=${Date.now()}` : '';
+  const bustQS = fresh ? '&fresh=1' : bust ? `&_=${Date.now()}` : '';
   const url = `${API_GET_SCORE}?uid=${encodeURIComponent(uid)}&includeRewards=0${bustQS}`;
 
   if (!data) {
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = fresh
+        ? await fetchWithActionTimeout(url, { cache: 'no-store' }, 5000)
+        : await fetch(url, { cache: 'no-store' });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json || json.status === 'error') throw new Error(json?.message || `HTTP ${res.status}`);
       data = json;
     } catch (e) {
       console.warn('[refreshUserScore] fetch failed, keeping previous score', e);
-      return typeof window.__userBalance === 'number' ? window.__userBalance : 0;
+      return fallback();
     }
   }
 
-  let newScore = pickScore(data);
-  
-  // ⭐ [จุดแก้สำคัญ 3] ถ้าค่าที่ได้มาไม่ใช่ตัวเลข (undefined/null) ให้ใช้ค่าเดิม
-  if (newScore === null || isNaN(newScore)) {
-      if (typeof window.__userBalance === 'number') return window.__userBalance;
-      newScore = 0;
-  }
+  if (version !== scoreRequestVersion || uid !== resolveCurrentUid()) return fallback();
+  const newScore = pickScore(data);
+  if (newScore === null) return fallback();
 
   // --- commit state ---
+  ++scoreRequestVersion;
   window.__userBalance = newScore;
   window.prevScore = newScore;
   try { cacheScore?.(uid, newScore); } catch {}
@@ -1378,12 +1390,6 @@ async function refreshUserScore(opts = {}) {
   if (pair) pair.textContent = `${cur} / ${max} คะแนน`;
 
   try { window.setLastUpdated?.(Date.now(), false); } catch {}
-
-  // ถ้าขอ poll เพื่อตามคะแนนจริงหลังทำธุรกรรม
-  if (poll) {
-    // ลดความถี่การ Poll ลงนิดนึงเพื่อกัน Server รับภาระหนักเกินไป (เป็น 1 วินาที)
-    try { await pollScoreUntil(uid, newScore, pollTries, 1000); } catch {}
-  }
 
   return newScore;
 }
@@ -1623,30 +1629,34 @@ function hideRewardSkeletons(){
 window.hideRewardSkeletons = hideRewardSkeletons;
 window.hideRewardsSkeletons = hideRewardSkeletons;
 
-// โหลดของรางวัล + cache
-async function loadRewards(opts = {}) {
-  const include = opts.include ?? 0;
-  const uid     = opts.uid || window.__UID || '';
-  const qs      = new URLSearchParams();
-  if (include != null) qs.set('include', String(include));
-  if (uid) qs.set('uid', uid);
+let rewardCatalogLoad = null;
+let rewardCatalogVersion = 0;
 
-  const url = `/api/rewards${qs.toString() ? `?${qs}` : ''}`;
+function loadRewards({ reload = false } = {}) {
+  if (rewardCatalogLoad && !reload) return rewardCatalogLoad;
+  const version = ++rewardCatalogVersion;
+  rewardCatalogLoad = fetchRewardCatalog(version).finally(() => {
+    if (version === rewardCatalogVersion) rewardCatalogLoad = null;
+  });
+  return rewardCatalogLoad;
+}
 
+async function fetchRewardCatalog(version) {
   try {
-    const res  = await fetch(url, { cache: 'no-store' });
+    const res = await fetch('/api/rewards?include=0', { cache: 'no-store' });
     const json = await res.json();
-    if (json?.status !== 'success') throw new Error('bad payload');
+    if (version !== rewardCatalogVersion) return;
+    if (!res.ok || json?.status !== 'success') throw new Error('bad payload');
 
-  const list = (json.items || json.data || []).map(x => ({
-    id        : x.id ?? x.reward_id ?? '',
-    name      : x.name ?? x.title ?? `Reward`,
-    cost      : Number(x.cost ?? x.point_cost ?? x.points ?? 0),
-    img       : x.img ?? x.image ?? x.image_url ?? '',
-    stock     : Number(x.stock ?? 0),
-    stock_max : Number(x.stock_max ?? 0),
-    sort_index: Number(x.sort_index ?? 9999)
-  }));
+    const list = (json.items || json.data || []).map(x => ({
+      id        : x.id ?? x.reward_id ?? '',
+      name      : x.name ?? x.title ?? 'Reward',
+      cost      : Number(x.cost ?? x.point_cost ?? x.points ?? 0),
+      img       : x.img ?? x.image ?? x.image_url ?? '',
+      stock     : Number(x.stock ?? 0),
+      stock_max : Number(x.stock_max ?? 0),
+      sort_index: Number(x.sort_index ?? 9999)
+    }));
 
     const ordered = orderRewardsBySequence(list, COST_ORDER);
 
@@ -1659,6 +1669,7 @@ async function loadRewards(opts = {}) {
       renderRewards(score);
     }
   } catch (e) {
+    if (version !== rewardCatalogVersion) return;
     console.error('loadRewards error:', e);
     REWARDS_CACHE = buildFallbackRewards(COST_ORDER);
     try { cacheRewards(REWARDS_CACHE); } catch {}
@@ -1667,7 +1678,9 @@ async function loadRewards(opts = {}) {
       renderRewards(score);
     }
   } finally {
-    try { hideRewardSkeletons && hideRewardSkeletons(); } catch {}
+    if (version === rewardCatalogVersion) {
+      try { hideRewardSkeletons && hideRewardSkeletons(); } catch {}
+    }
   }
 }
 
@@ -1914,6 +1927,7 @@ async function redeemReward(reward, btn){
 
   try{
     const redeemRequestId = window.RoyalSpend.start(curUid, id);
+    const versionBeforeSpend = scoreRequestVersion;
     const res = await fetch(API_SPEND, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1929,20 +1943,15 @@ async function redeemReward(reward, btn){
     }
 
     window.RoyalSpend.finish(curUid, id);
-    void loadPickupRedemptions();
+    void loadPickupRedemptions({ afterMutation: true });
+    const catalogUpdate = loadRewards({ reload: true });
     if (payload.duplicate) {
       UiOverlay.hide();
       await refreshUserScore({ bust: true });
-      try { await loadRewards({ include: 0, uid: curUid }); } catch {}
+      await catalogUpdate;
       const status = payload.redemption?.status === 'cancelled_refunded' ? 'รายการเดิมถูกยกเลิกและคืนคะแนนแล้ว' : 'พบรายการแลกเดิมในประวัติ';
       return showRedemptionResult(payload.redemption.id, status, `เลขรายการ ${payload.redemption.id}`);
     }
-
-    // 2. คำนวณแต้มใหม่ และอัปเดตตัวแปรทั้งหมดให้ตรงกัน (แก้บั๊กแต้มหาย)
-    const nextScore = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Math.max(0, scoreNow - cost);
-    window.__userBalance = nextScore;
-    window.prevScore = nextScore; // ⭐ สำคัญมาก: ต้องอัปเดตตัวนี้ด้วย ไม่งั้น loadRewards จะเห็นเป็น 0
-    if (typeof prevScore !== 'undefined') prevScore = nextScore; // อัปเดตตัวแปร local ถ้ามี
 
     // ตัดสต็อกใน Cache ทันที
     if (Array.isArray(window.REWARDS_CACHE)) {
@@ -1953,8 +1962,10 @@ async function redeemReward(reward, btn){
         }
     }
 
-    // อัปเดต UI (ตัวเลขแต้ม)
-    try { setPoints(nextScore); } catch {}
+    const nextScore = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Math.max(0, scoreNow - cost);
+    void refreshUserScore(versionBeforeSpend === scoreRequestVersion
+      ? { initialPayload: { balance: nextScore }, initialUid: curUid }
+      : { fresh: true, initialUid: curUid });
 
     // อัปเดตการ์ดสต็อก (DOM)
     const card = document.querySelector(`.rp-reward-card[data-id="${id}"]`);
@@ -2007,8 +2018,7 @@ async function redeemReward(reward, btn){
       alert(`แลก ${name} สำเร็จ!`);
     }
 
-    // โหลดแค่อัปเดตสต็อกของรางวัลก็พอ (ตอนนี้ window.prevScore ถูกต้องแล้ว ไม่ต้องกลัวบั๊ก)
-    try { await loadRewards({ include: 0, uid: curUid }); } catch {}
+    await catalogUpdate;
 
   }catch(err){
     console.error(err);
@@ -2076,7 +2086,7 @@ async function redeemAssignedCoupon(payload) {
   }
 }
 
-// ===== Redeem code (unified) — overlay เฉพาะ SCAN + optimistic + poll baseline ที่ถูกต้อง =====
+// ===== Redeem code (manual, scanner and LINE coupon link) =====
 async function redeemCode(input, source = 'manual') {
   const sourceType = String(source || '').toUpperCase();
   const isAssignedLink = sourceType === 'ASSIGNED_LINK';
@@ -2085,21 +2095,14 @@ async function redeemCode(input, source = 'manual') {
   ).trim();
   if (!code) return toastErr(isAssignedLink ? 'ไม่พบข้อมูลคูปองจาก LINE' : 'กรุณากรอกรหัสคูปอง');
 
-  const uid =
-    (typeof UID !== 'undefined' && UID) ||
-    window.__UID ||
-    localStorage.getItem('uid') || '';
+  const uid = resolveCurrentUid();
   if (!uid) return toastErr('ยังไม่พบ UID ของผู้ใช้');
 
   // ใช้ overlay เฉพาะโฟลว์สแกน
   const usingScan = sourceType === 'SCAN';
   if (usingScan || isAssignedLink) UiOverlay.show('กำลังยืนยันคูปอง…');
 
-  // เก็บยอดก่อนหน้าไว้เทียบ หาก backend ไม่ส่ง amount
-  if (!isAssignedLink) {
-    try { await refreshUserScore({ bust: true }); } catch {}
-  }
-  const before = Number(window.__userBalance || 0);
+  const versionBeforeRedeem = scoreRequestVersion;
 
   const payload = isAssignedLink
     ? { uid, couponTicket: code, source: 'LINE_PERSONAL_COUPON' }
@@ -2139,55 +2142,28 @@ async function redeemCode(input, source = 'manual') {
     return;
   }
 
-  // The personal coupon API has completed. Remove the action overlay before
-  // optional score synchronization so a slow refresh cannot look like a failed
-  // redemption on LINE's in-app browser.
-  if (isAssignedLink) UiOverlay.hide();
-
-  // ===== สำเร็จ: คำนวณแต้มที่ได้ (fallback เป็นส่วนต่าง before/after) =====
-  const pickAmount = (o) => {
-    if (!o || typeof o !== 'object') return null;
-    const keys = [
-      'amount','delta','added','increment','points','point','score',
-      'data.amount','data.delta','data.points','data.point'
-    ];
-    for (const k of keys) {
-      const v = k.includes('.') ? k.split('.').reduce((a,c)=>a?.[c], o) : o[k];
-      const n = Number(v);
-      if (Number.isFinite(n)) return n;
-    }
-    return null;
-  };
-
-  let added = pickAmount(json);
-
-  // รีเฟรชอีกครั้งแบบ bust เพื่อดึงยอด “จริงล่าสุดจากเซิร์ฟเวอร์”
-  try { await withTimeout(refreshUserScore({ bust: true }), 5000, null); } catch {}
-  const after = Number(window.__userBalance || before);
-  if (added === null) added = after - before;
-
-  // เก็บ baseline "ก่อน" optimistic ไว้ใช้กับ poll
-  const baselineBeforeOptimistic = Number(window.__userBalance || 0);
-
   if (usingScan || isAssignedLink) UiOverlay.hide();
+  if (uid !== resolveCurrentUid()) return;
 
-  // 1) โชว์ผล + อัปเดตจอแบบ optimistic
-  if (added > 0) {
+  // A concurrent score read or mutation may be newer than the RPC snapshot.
+  const hasCurrentBalance = Number.isSafeInteger(json.balance) && versionBeforeRedeem === scoreRequestVersion;
+  const score = await refreshUserScore(hasCurrentBalance
+    ? { initialPayload: { balance: json.balance }, initialUid: uid }
+    : { fresh: true, initialUid: uid });
+  if (uid !== resolveCurrentUid()) return;
+
+  const added = Number(json.added || 0);
+  if (json.duplicate) {
+    toastOk('คูปองนี้ได้รับคะแนนแล้ว');
+  } else if (added > 0) {
     toastOk(`รับ +${added} คะแนน`);
     try { showScoreDelta?.(added); } catch {}
-    optimisticAdd(added);
   } else {
     toastOk('แลกคูปองสำเร็จ');
   }
 
-  // 2) ตามคะแนนจริงจากเซิร์ฟเวอร์ (โพลจน "แตกต่าง" จาก baseline ก่อน optimistic)
-  try {
-    const uidNow = (typeof UID !== 'undefined' && UID) || window.__UID || localStorage.getItem('uid') || '';
-    await pollScoreUntil(uidNow, baselineBeforeOptimistic, 5, 650);
-  } catch {}
-
   // เคลียร์ช่องกรอกเมื่อเป็นโฟลว์กรอกมือ
-  if (String(source || '').toUpperCase() === 'MANUAL') {
+  if (sourceType === 'MANUAL') {
     const inp = document.getElementById('couponInput') || els?.secretInput;
     if (inp) { inp.value = ''; inp.focus?.(); }
   }
@@ -2198,6 +2174,7 @@ async function redeemCode(input, source = 'manual') {
     window.history.replaceState({}, '', url.toString());
     sessionStorage.removeItem('royal_coupon_ticket');
   }
+  return score !== null;
 }
 
 async function handleCouponDeepLink() {
@@ -2229,7 +2206,7 @@ async function handleCouponDeepLink() {
   if (!confirmed) {
     return;
   }
-  await redeemCode(ticket, 'ASSIGNED_LINK');
+  return redeemCode(ticket, 'ASSIGNED_LINK');
 }
 
 async function handleTransactionDeepLinks() {
@@ -2265,7 +2242,7 @@ async function openRedemptionEvidence(redemptionId) {
   try {
     const item = await fetchRedemptionEvidence({ redemptionId });
     if (item.redemptionStatus !== 'approved' && pickupRedemptions.some(row => row.id === item.id)) {
-      void loadPickupRedemptions();
+      void loadPickupRedemptions({ afterMutation: true });
     }
     return await showRedemptionEvidence(item);
   } catch (error) {
@@ -2310,13 +2287,17 @@ async function showRedemptionEvidence(item) {
 
 let pickupRedemptions = [];
 let pickupLoadFailed = false;
-let pickupLoadVersion = 0;
+let pickupStateUid = '';
+let pickupLoad = null;
 
 function renderRedemptionTracker() {
   const tracker = document.getElementById('redemptionTracker');
   if (!tracker) return;
-  const pendingRewards = window.RoyalSpend?.pendingRewards(resolveCurrentUid()) || [];
-  tracker.classList.toggle('d-none', !pendingRewards.length && !pickupRedemptions.length && !pickupLoadFailed);
+  const uid = resolveCurrentUid();
+  const pendingRewards = window.RoyalSpend?.pendingRewards(uid) || [];
+  const items = pickupStateUid === uid ? pickupRedemptions : [];
+  const failed = pickupStateUid === uid && pickupLoadFailed;
+  tracker.classList.toggle('d-none', !pendingRewards.length && !items.length && !failed);
   document.getElementById('pendingRedemptionList').innerHTML = pendingRewards.map(rewardId => {
     const name = REWARDS_CACHE.find(reward => reward.id === rewardId)?.name || 'คำขอแลกรางวัล';
     return `<div class="rp-redemption-item rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -2324,28 +2305,45 @@ function renderRedemptionTracker() {
       <button type="button" class="btn btn-sm btn-outline-primary py-2" data-check-redemption="${h(rewardId)}">ตรวจรายการเดิม</button>
     </div>`;
   }).join('');
-  document.getElementById('pickupRedemptionList').innerHTML = pickupRedemptions.map(item => `
+  document.getElementById('pickupRedemptionList').innerHTML = items.map(item => `
     <div class="rp-redemption-item rounded-3 p-2 mb-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
       <div class="text-break"><div class="fw-semibold mb-1">${h(item.reward_name)}</div>${RoyalStatus.badge('redemption', 'approved')} <small class="text-muted">${Number(item.cost || 0).toLocaleString('th-TH')} คะแนน</small></div>
       <button type="button" class="btn btn-sm btn-outline-success py-2" data-open-redemption="${h(item.id)}">ดูหลักฐานรับของ</button>
-    </div>`).join('') + (pickupLoadFailed ? '<p class="small text-muted mb-0">โหลดรายการรอรับรางวัลไม่สำเร็จ <button type="button" class="btn btn-sm btn-link" data-retry-pickup>ลองใหม่</button></p>' : '');
+    </div>`).join('') + (failed ? '<p class="small text-muted mb-0">โหลดรายการรอรับรางวัลไม่สำเร็จ <button type="button" class="btn btn-sm btn-link" data-retry-pickup>ลองใหม่</button></p>' : '');
 }
 
-async function loadPickupRedemptions() {
+async function loadPickupRedemptions({ afterMutation = false } = {}) {
   const uid = resolveCurrentUid();
   if (!uid || !document.getElementById('redemptionTracker')) return;
-  const version = ++pickupLoadVersion;
+  const key = memberReadKey(uid);
+  if (!afterMutation && pickupLoad?.key === key) return pickupLoad.promise;
+  if (pickupStateUid !== uid) {
+    pickupStateUid = uid;
+    pickupRedemptions = [];
+    pickupLoadFailed = false;
+  }
+
+  const load = { key };
+  pickupLoad = load;
+  load.promise = fetchPickupRedemptions(uid, load).finally(() => {
+    if (pickupLoad === load) pickupLoad = null;
+  });
+  return load.promise;
+}
+
+async function fetchPickupRedemptions(uid, load) {
+  const isCurrent = () => pickupLoad === load && uid === resolveCurrentUid();
   renderRedemptionTracker();
   try {
     const query = new URLSearchParams({ uid, limit: '3', pickup: 'pending' });
     const response = await fetchWithActionTimeout(`${API_REDEMPTIONS}?${query}`, { cache: 'no-store' });
     const payload = await safeJson(response);
     if (!response.ok || !Array.isArray(payload?.items)) throw new Error('pickup_load_failed');
-    if (version !== pickupLoadVersion || uid !== resolveCurrentUid()) return;
+    if (!isCurrent()) return;
     pickupRedemptions = payload.items.filter(item => item.status === 'approved');
     pickupLoadFailed = false;
   } catch {
-    if (version !== pickupLoadVersion || uid !== resolveCurrentUid()) return;
+    if (!isCurrent()) return;
     pickupRedemptions = [];
     pickupLoadFailed = true;
   }
@@ -2362,9 +2360,10 @@ async function checkPendingRedemption(rewardId) {
     if (!item) return toastErr('ยังไม่พบรายการที่บันทึกไว้ กรุณาลองตรวจอีกครั้ง หรือส่งคำขอเดิมจากการ์ดรางวัลเดิม');
     window.RoyalSpend.finish(uid, rewardId);
     renderRedemptionTracker();
-    void loadPickupRedemptions();
+    void loadPickupRedemptions({ afterMutation: true });
     await showRedemptionEvidence(item);
-    void refreshUserScore().then(() => loadRewards({ uid }));
+    void refreshUserScore();
+    void loadRewards({ reload: true });
   } catch (error) {
     return toastErr(error.message || 'ตรวจผลการแลกไม่สำเร็จ');
   }
@@ -2476,12 +2475,8 @@ function setHistoryUserName() {
 }
 
 /* ================= History (เปิดเร็ว โหลดทีหลัง) ================= */
-// ===== REPLACE WHOLE FUNCTION: openHistory =====
 async function openHistory(){
-  const uid =
-    (typeof UID !== 'undefined' && UID) ||
-    window.__UID ||
-    localStorage.getItem('uid') || '';
+  const uid = resolveCurrentUid();
   if (!uid) return toastErr('ไม่พบผู้ใช้');
 
   // ชื่อบนหัว
@@ -2498,18 +2493,27 @@ async function openHistory(){
   listEl && (listEl.innerHTML = '');
 
   try{
-    const [scoreResult, redeemResult] = await Promise.allSettled([
-      fetch(`${API_HISTORY}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' }).then(r => r.json()),
-      fetch(`${API_REDEMPTIONS}?uid=${encodeURIComponent(uid)}&limit=50`, { cache:'no-store' }).then(r => r.json())
-    ]);
-
-    const scoreJson = scoreResult.status === 'fulfilled' ? scoreResult.value : {};
-    const redeemJson = redeemResult.status === 'fulfilled' ? redeemResult.value : {};
-    const pointItems = Array.isArray(scoreJson) ? scoreJson
-      : Array.isArray(scoreJson.items) ? scoreJson.items
-      : Array.isArray(scoreJson.data)  ? scoreJson.data
-      : [];
-    const redemptionItems = Array.isArray(redeemJson.items) ? redeemJson.items : [];
+    const query = `uid=${encodeURIComponent(uid)}&limit=50`;
+    const response = await fetch(`${API_HISTORY}?${query}&kind=timeline`, { cache:'no-store' });
+    if (uid !== resolveCurrentUid()) return;
+    if (!response.ok) throw new Error('history_load_failed');
+    const history = await response.json();
+    let pointItems = history.pointItems ?? [];
+    let redemptionItems = history.redemptionItems ?? [];
+    // A previous deployment treats the new kind as the original points list.
+    if (history.status === 'success' && Array.isArray(history.items)) {
+      pointItems = history.items;
+      try {
+        const legacy = await fetch(`${API_REDEMPTIONS}?${query}`, { cache:'no-store' });
+        if (legacy.ok) {
+          const result = await legacy.json();
+          redemptionItems = result.items ?? [];
+        }
+      } catch (error) {
+        console.warn('[history] redemption history unavailable', error);
+      }
+    }
+    if (uid !== resolveCurrentUid()) return;
 
     const timeline = mergeHistoryTimeline(pointItems, redemptionItems).sort((a,b) => {
       const ta = new Date(a.created_at || 0).getTime();
@@ -2525,7 +2529,7 @@ async function openHistory(){
     // ปิด skeleton แล้วโชว์รายการ
     if (skelEl) skelEl.style.display = 'none';
     if (listWrap) listWrap.classList.remove('skeleton-hide-when-loading');
-    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    if (uid === resolveCurrentUid()) bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
 }
 
@@ -3248,7 +3252,7 @@ async function loadHomepageBanners() {
   const legacyItems = readLegacyAdItems();
   renderAdCarousel(legacyItems);
   try {
-    const response = await fetch(`/api/rewards?action=banners&t=${Date.now()}`, { cache:'no-store' });
+    const response = await fetch('/api/rewards?action=banners');
     const payload = await response.json();
     if (!response.ok || payload.status !== 'success') throw new Error(payload.message || 'banner_load_failed');
     const items = (Array.isArray(payload.items) ? payload.items : []).map(item => ({
@@ -3316,22 +3320,11 @@ function hydrateFromCache(uid) {
   } catch {}
 }
 
-// ===== Poll จนคะแนน "เปลี่ยน" (สั้น ๆ หลังธุรกรรม) =====
-async function pollScoreUntil(uid, baseline, tries = 5, interval = 600) {
-  for (let i = 0; i < tries; i++) {
-    await new Promise(r => setTimeout(r, interval));
-    const s = await refreshUserScore({ bust: true }); // บังคับดึงสด
-    if (Number(s) !== Number(baseline)) {
-      return s; // ได้คะแนนใหม่แล้ว
-    }
-  }
-  return baseline; // ไม่เปลี่ยนภายในเวลาที่กำหนด
-}
-
 // ===== อัปเดตแบบ Optimistic แล้วค่อยตามผลจริง =====
 function optimisticAdd(delta) {
   const cur = Number(window.__userBalance || 0);
   const next = cur + Number(delta || 0);
+  ++scoreRequestVersion;
   window.__userBalance = next;
   try { setPoints(next); } catch {}
 }

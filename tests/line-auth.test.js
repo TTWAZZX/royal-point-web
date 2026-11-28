@@ -90,6 +90,16 @@ function request(token = '') {
   return { headers: token ? { authorization: `Bearer ${token}` } : {} }
 }
 
+async function callApi(handler, req) {
+  const result = { status: 200, headers: {} }
+  await handler({ ...request(), method: 'GET', query: {}, ...req }, {
+    setHeader(name, value) { result.headers[name] = value },
+    status(code) { result.status = code; return this },
+    json(body) { result.body = body; return this }
+  })
+  return result
+}
+
 function mockLine({ uid = 'U-user-1', channelId = '2007053300', valid = true } = {}) {
   global.fetch = async (url) => {
     if (String(url).includes('/oauth2/v2.1/verify')) {
@@ -120,6 +130,176 @@ test.beforeEach(() => {
 test('allows a legacy user until their first verified visit', async () => {
   const auth = await authenticateRequest(request(), { claimedUid: 'U-user-1' })
   assert.deepEqual(auth, { uid: 'U-user-1', mode: 'legacy', migrated: false })
+})
+
+test('timeline authorizes once, scopes both queries to one user and keeps partial history', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const originalFrom = supabaseAdmin.from
+  const reads = []
+  let points = { data: [{ id: 'point', amount: 5 }] }
+  let redemptions = { data: [{ id: 'reward', cost: 3, status: 'approved' }] }
+  t.mock.method(supabaseAdmin, 'from', table => {
+    if (!['users', 'redemptions', 'point_transactions'].includes(table)) return originalFrom(table)
+    const filters = {}
+    const query = {
+      select() { return query },
+      eq(field, value) { filters[field] = value; return query },
+      order() { return query },
+      async single() { return { data: { id: 'internal-id' } } },
+      async range(offset, last) { assert.deepEqual([offset, last], [0, 49]); return points },
+      async limit(limit) { assert.equal(limit, 50); return redemptions }
+    }
+    reads.push({ table, filters })
+    return query
+  })
+  let verificationCalls = 0
+  const originalFetch = global.fetch
+  global.fetch = (...args) => {
+    if (String(args[0]).includes('/verify')) verificationCalls++
+    return originalFetch(...args)
+  }
+  t.after(() => { global.fetch = originalFetch })
+  const history = require('../api/score-history')
+  const query = { uid: 'U-user-1', limit: '50', kind: 'timeline' }
+  const load = () => callApi(history, { ...request('valid-token'), query })
+  const full = await load()
+  assert.equal(full.status, 200)
+  assert.equal(full.headers['Cache-Control'], 'private, no-store')
+  assert.equal(verificationCalls, 1)
+  assert.deepEqual(reads, [
+    { table: 'users', filters: { uid: 'U-user-1' } },
+    { table: 'point_transactions', filters: { user_id: 'internal-id' } },
+    { table: 'redemptions', filters: { user_id: 'internal-id' } }
+  ])
+  assert.equal(full.body.pointItems[0].id, 'point')
+  assert.equal(full.body.redemptionItems[0].id, 'reward')
+
+  reads.length = 0
+  const denied = await callApi(history, { ...request('valid-token'), query: { ...query, uid: 'U-other' } })
+  assert.equal(denied.status, 403)
+  assert.deepEqual(reads, [])
+
+  const pickup = await callApi(history, {
+    ...request('valid-token'), query: { ...query, kind: 'redemptions', pickup: 'pending' }
+  })
+  assert.deepEqual(pickup.body.items, full.body.redemptionItems)
+  assert.equal(reads.at(-1).filters.status, 'approved')
+  const originalPoints = await callApi(history, { ...request('valid-token'), query: { ...query, kind: '' } })
+  assert.deepEqual(originalPoints.body, { status: 'success', items: points.data, nextOffset: 1 })
+
+  points = { error: new Error('points unavailable') }
+  assert.deepEqual((await load()).body, { status: 'success', pointItems: null, redemptionItems: full.body.redemptionItems })
+  points = { data: full.body.pointItems }
+  redemptions = { error: new Error('redemptions unavailable') }
+  assert.deepEqual((await load()).body, { status: 'success', pointItems: full.body.pointItems, redemptionItems: null })
+  points = { error: new Error('points unavailable') }
+  assert.equal((await load()).status, 500)
+})
+
+test('catalog reads live stock while banner responses remain eligible for CDN cache', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  const tables = []
+  let stock = 2
+  t.mock.method(supabaseAdmin, 'from', table => {
+    tables.push(table)
+    return {
+      select() { return this },
+      eq(field, value) { assert.deepEqual([field, value], ['active', true]); return this },
+      is(field, value) { assert.deepEqual([field, value], ['deleted_at', null]); return this },
+      order() { return this },
+      then(resolve) {
+        return resolve({ data: table === 'rewards' ? [{ id: 'r1', name: 'รางวัล', stock }] : [] })
+      }
+    }
+  })
+  const handler = require('../api/rewards')
+  const read = query => callApi(handler, { query })
+  const initial = await read({ include: '0' })
+  assert.equal(initial.headers['Cache-Control'], 'private, no-store')
+  assert.equal(initial.body.items[0].stock, 2)
+  stock = 0
+  const refreshed = await read({ include: '0', uid: 'U_OLD_CLIENT' })
+  assert.equal(refreshed.body.items[0].stock, 0)
+  assert.equal(refreshed.headers['Cache-Control'], 'private, no-store')
+  const banners = await read({ action: 'banners' })
+  assert.equal(banners.headers['Cache-Control'], 'public, max-age=0, s-maxage=30')
+  assert.equal((await read({ include: '1' })).status, 401)
+  assert.deepEqual(tables, ['rewards', 'rewards', 'ad_banners'])
+})
+
+test('admin redemption history looks up notices only for displayed rows in batches', async (t) => {
+  const previousAdmin = process.env.ADMIN_UID
+  process.env.ADMIN_UID = 'U-admin'
+  t.after(() => {
+    if (previousAdmin === undefined) delete process.env.ADMIN_UID
+    else process.env.ADMIN_UID = previousAdmin
+  })
+  mockLine({ uid: 'U-admin' })
+  const { supabaseAdmin } = require('../lib/supabase')
+  const originalFrom = supabaseAdmin.from
+  const rows = Array.from({ length: 21 }, (_, index) => ({ id: `redemption-${index}`, status: 'approved' }))
+  const keyBatches = []
+  const notice = { id: 'old-notice', dedupe_key: 'redemption-created:redemption-20', status: 'sent' }
+  t.mock.method(supabaseAdmin, 'from', table => {
+    if (table === 'redemptions') {
+      return { select() { return this }, order() { return this }, async limit() { return { data: rows } } }
+    }
+    if (table === 'line_notification_outbox') {
+      return {
+        select() { return this },
+        in(field, values) {
+          if (field === 'message_kind') return this
+          assert.equal(field, 'dedupe_key')
+          keyBatches.push(values)
+          return Promise.resolve({ data: values.includes(notice.dedupe_key) ? [notice] : [] })
+        }
+      }
+    }
+    return originalFrom(table)
+  })
+  const response = await callApi(require('../api/admin-actions'), {
+    ...request('valid-token'), method: 'POST', body: { action: 'get_history' }
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(keyBatches.map(keys => keys.length), [80, 4])
+  assert.equal(response.body.data.length, 21)
+  assert.deepEqual(response.body.data.at(-1).created_notification, notice)
+  assert.equal(response.body.data[0].created_notification, null)
+})
+
+test('coupon redemption returns its authoritative balance on success and replay after authentication', async (t) => {
+  const { supabaseAdmin } = require('../lib/supabase')
+  let balance = 105
+  let wasDuplicate = false
+  const rpc = t.mock.method(supabaseAdmin, 'rpc', async () => ({ data: [{
+    coupon_code: 'SYNTHETIC', added_points: 5, balance, was_duplicate: wasDuplicate
+  }] }))
+  const redeem = require('../api/redeem')
+  async function submit(uid) {
+    const result = { headers: {} }
+    const res = {
+      setHeader(name, value) { result.headers[name] = value },
+      status(code) { result.status = code; return this },
+      json(payload) { result.payload = payload; return this }
+    }
+    await redeem({ ...request('valid-token'), method: 'POST', body: { uid, code: 'SYNTHETIC' } }, res)
+    return result
+  }
+
+  assert.equal((await submit('U-other')).status, 403)
+  assert.equal(rpc.mock.callCount(), 0)
+  const first = await submit('U-user-1')
+  assert.equal(first.status, 200)
+  assert.equal(first.headers['Cache-Control'], 'private, no-store')
+  assert.deepEqual(first.payload, { status: 'success', added: 5, duplicate: false, balance: 105 })
+  assert.deepEqual(rpc.mock.calls[0].arguments, [
+    'redeem_coupon_atomic', { p_uid: 'U-user-1', p_code: 'SYNTHETIC', p_ticket_hash: null }
+  ])
+
+  wasDuplicate = true
+  balance = 0
+  const replay = await submit('U-user-1')
+  assert.deepEqual(replay.payload, { status: 'success', added: 5, duplicate: true, balance: 0 })
 })
 
 test('spend rejects invalid or conflicting request IDs and returns a matching replay', async (t) => {

@@ -754,6 +754,279 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
   }
 }
 
+async function runPhaseOneRequestCounts(browser, baseUrl, viewport) {
+  const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
+  await page.addInitScript(() => {
+    window.Swal = { fire: async () => ({ isConfirmed: true }) }
+    window.bootstrap = {
+      Carousel: { getInstance: () => null, getOrCreateInstance: () => ({ cycle() {}, pause() {} }) }
+    }
+  })
+  for (const domain of ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'unpkg.com']) {
+    await page.route(`https://${domain}/**`, route => route.abort())
+  }
+  await page.route('https://static.line-scdn.net/**', route => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.liff={init:async()=>{},isLoggedIn:()=>true,getProfile:async()=>({userId:'U_PERF_TEST',displayName:'สมาชิกทดสอบ'}),getAccessToken:()=> 'test-token'};`
+  }))
+
+  let balance = 100
+  let scoreReads = 0
+  let checkinReads = 0
+  let pickupReads = 0
+  let pickupItems = []
+  let catalogReads = 0
+  let catalogStock = 2
+  let couponPosts = 0
+  let couponStatusReads = 0
+  let banner = null
+  let scoreReadHeaders
+  let returnCouponBalance = true
+  await page.route('**/api/**', async route => {
+    const request = route.request()
+    const url = new URL(request.url())
+    if (url.pathname === '/api/get-score') {
+      scoreReads++
+      scoreReadHeaders = request.headers()
+      return route.fulfill({ json: { status: 'success', data: { score: balance } } })
+    }
+    if (url.pathname === '/api/daily-checkin') checkinReads++
+    if (url.pathname === '/api/redemptions' && url.searchParams.get('pickup') === 'pending') {
+      pickupReads++
+      return route.fulfill({ json: { status: 'success', items: pickupItems } })
+    }
+    if (url.pathname === '/api/rewards' && url.searchParams.get('action') === 'banners') {
+      banner = { query: url.search, authorization: request.headers().authorization, recovery: request.headers()['x-royal-recovery'] }
+    }
+    if (url.pathname === '/api/rewards' && url.searchParams.get('include') === '0') {
+      catalogReads++
+      assert.equal(url.search, '?include=0')
+      assert.equal(request.headers().authorization, undefined)
+      return route.fulfill({
+        json: { status: 'success', items: [{ id: 'stock-test', name: 'รางวัล', cost: 10, stock: catalogStock }] }
+      })
+    }
+    if (url.pathname === '/api/redeem' && request.method() === 'GET') {
+      couponStatusReads++
+      assert.equal(url.searchParams.get('action'), 'status')
+      return route.fulfill({ json: { status: 'success', data: { state: 'redeemed', added: 5 } } })
+    }
+    if (url.pathname === '/api/redeem' && request.method() === 'POST') {
+      couponPosts++
+      balance += 5
+      const payload = { status: 'success', added: 5, duplicate: false }
+      if (returnCouponBalance) payload.balance = balance
+      return route.fulfill({ json: payload })
+    }
+    return route.fulfill({ json: { status: 'success', items: [], data: {} } })
+  })
+
+  try {
+    await page.goto(`${baseUrl}/index.html`)
+    await page.locator('#systemBootOverlay').waitFor({ state: 'hidden' })
+    await page.waitForLoadState('networkidle')
+    const initialCheckinReads = checkinReads
+    const initialPickupReads = pickupReads
+    const initialScoreReads = scoreReads
+    await page.evaluate(() => Promise.all([
+      refreshDailyCheckinStatus(), refreshDailyCheckinStatus(),
+      loadPickupRedemptions(), loadPickupRedemptions()
+    ]))
+    await page.evaluate(() => redeemCode('SYNTHETIC_CODE', 'MANUAL'))
+    const results = {
+      checkinReads: checkinReads - initialCheckinReads,
+      pickupReads: pickupReads - initialPickupReads,
+      scoreReads: scoreReads - initialScoreReads,
+      banner
+    }
+    console.log(`phase 1 ${viewport.width}px ${JSON.stringify(results)}`)
+    assert.deepEqual(results, {
+      checkinReads: 1, pickupReads: 1, scoreReads: 0,
+      banner: { query: '?action=banners', authorization: undefined, recovery: undefined }
+    })
+    assert.equal(scoreReadHeaders.authorization, 'Bearer test-token')
+    assert.equal(await page.evaluate(() => window.__userBalance), 105)
+
+    returnCouponBalance = false
+    const fallbackRead = page.waitForRequest(request => {
+      const url = new URL(request.url())
+      return url.pathname === '/api/get-score' && url.searchParams.get('fresh') === '1'
+    })
+    await Promise.all([fallbackRead, page.evaluate(() => redeemCode('SYNTHETIC_OLD_RESPONSE', 'MANUAL'))])
+    assert.equal(scoreReads - initialScoreReads, 1)
+    assert.equal(couponPosts, 2)
+    assert.equal(await page.evaluate(() => window.__userBalance), 110)
+
+    let releaseOldRead
+    const holdOldRead = new Promise(resolve => { releaseOldRead = resolve })
+    await page.route('**/api/get-score?*', async route => {
+      await holdOldRead
+      return route.fulfill({ json: { status: 'success', data: { score: 110 } } })
+    }, { times: 1 })
+    returnCouponBalance = true
+    const oldReadStarted = page.waitForRequest(request => new URL(request.url()).pathname === '/api/get-score')
+    const oldRead = page.evaluate(() => refreshUserScore())
+    try {
+      await oldReadStarted
+      await page.evaluate(() => redeemCode('SYNTHETIC_CONCURRENT', 'MANUAL'))
+      assert.equal(await page.evaluate(() => window.__userBalance), 115)
+    } finally {
+      releaseOldRead()
+      await oldRead
+    }
+    assert.equal(await page.evaluate(() => window.__userBalance), 115)
+
+    let releaseOldPickup
+    const holdOldPickup = new Promise(resolve => { releaseOldPickup = resolve })
+    await page.route('**/api/redemptions?*', async route => {
+      await holdOldPickup
+      return route.fulfill({ json: { status: 'success', items: [] } })
+    }, { times: 1 })
+    const oldPickupStarted = page.waitForRequest(request => new URL(request.url()).pathname === '/api/redemptions')
+    const oldPickup = page.evaluate(() => loadPickupRedemptions())
+    try {
+      await oldPickupStarted
+      pickupItems = [{ id: 'test-pickup', status: 'approved', reward_name: 'รางวัลทดสอบ' }]
+      await page.evaluate(() => loadPickupRedemptions({ afterMutation: true }))
+    } finally {
+      releaseOldPickup()
+      await oldPickup
+    }
+    await page.locator('#pickupRedemptionList [data-open-redemption="test-pickup"]').waitFor({ state: 'visible' })
+
+    const scoreReadsBeforeDeepLink = scoreReads
+    await page.goto(`${baseUrl}/index.html?coupon_ticket=${'t'.repeat(40)}`)
+    await page.waitForFunction(() => window.__userBalance === 120 && !location.search.includes('coupon_ticket'))
+    await page.waitForLoadState('networkidle')
+    assert.equal(scoreReads, scoreReadsBeforeDeepLink)
+    assert.equal(couponPosts, 4)
+
+    balance = 125
+    await page.evaluate(async () => {
+      const fetchApi = window.fetch
+      window.fetch = (input, init) => input === '/api/redeem' && init?.method === 'POST'
+        ? Promise.reject(new DOMException('test timeout', 'AbortError'))
+        : fetchApi(input, init)
+      try {
+        await redeemCode('t'.repeat(40), 'ASSIGNED_LINK')
+      } finally {
+        window.fetch = fetchApi
+      }
+    })
+    assert.equal(couponStatusReads, 1)
+    assert.equal(couponPosts, 4)
+    assert.equal(scoreReads, scoreReadsBeforeDeepLink + 1)
+    assert.equal(await page.evaluate(() => window.__userBalance), 125)
+
+    const initialCatalogReads = catalogReads
+    await page.evaluate(() => Promise.all([loadRewards(), loadRewards()]))
+    assert.equal(catalogReads - initialCatalogReads, 1)
+
+    let releaseOldCatalog
+    const holdOldCatalog = new Promise(resolve => { releaseOldCatalog = resolve })
+    await page.route('**/api/rewards?include=0', async route => {
+      await holdOldCatalog
+      return route.fulfill({
+        json: { status: 'success', items: [{ id: 'stock-test', name: 'รางวัล', cost: 10, stock: 2 }] }
+      })
+    }, { times: 1 })
+    const oldCatalogStarted = page.waitForRequest(request => request.url().endsWith('/api/rewards?include=0'))
+    const oldCatalog = page.evaluate(() => loadRewards())
+    try {
+      await oldCatalogStarted
+      catalogStock = 0
+      await page.evaluate(() => loadRewards({ reload: true }))
+    } finally {
+      releaseOldCatalog()
+      await oldCatalog
+    }
+    const stockCard = page.locator('.rp-reward-card[data-id="stock-test"]')
+    assert.equal(await stockCard.getAttribute('data-stock'), '0')
+    assert.equal(await stockCard.locator('.rp-redeem-btn').isDisabled(), true)
+    console.log(`phase 3 ${viewport.width}px overlapping catalog reads 2 -> 1; superseded stock response ignored`)
+  } finally {
+    await page.close()
+  }
+}
+
+async function runHistoryViewport(browser, baseUrl, viewport) {
+  const page = await browser.newPage({ viewport, hasTouch: viewport.width < 500 })
+  await page.addInitScript(() => {
+    window.Swal = { fire: async () => ({}) }
+    window.bootstrap = {
+      Carousel: { getInstance: () => null, getOrCreateInstance: () => ({ cycle() {} }) },
+      Modal: { getOrCreateInstance: element => ({ show() { element.style.display = 'block' } }) }
+    }
+  })
+  for (const domain of ['cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com', 'unpkg.com']) {
+    await page.route(`https://${domain}/**`, route => route.abort())
+  }
+  await page.route('https://static.line-scdn.net/**', route => route.fulfill({
+    contentType: 'text/javascript',
+    body: `window.liff={init:async()=>{},isLoggedIn:()=>true,getProfile:async()=>({userId:'U_HISTORY_TEST'}),getAccessToken:()=> 'test-token'};`
+  }))
+
+  const points = [{ id: 'p1', amount: 5, type: 'DAILY_CHECKIN', created_at: '2026-11-28T10:00:00Z' }]
+  const redemptions = [{ id: 'r1', cost: 3, reward_name: 'รางวัลประวัติ', status: 'received', created_at: '2026-11-28T09:00:00Z' }]
+  const requests = []
+  let mode = 'current'
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url())
+    const { pathname, searchParams } = url
+    if (pathname === '/api/get-score') {
+      assert.equal(searchParams.get('includeAdmin'), '1')
+      const visibility = mode === 'legacy' ? {} : { isAdmin: mode === 'current' }
+      return route.fulfill({ json: { status: 'success', data: { score: 100 }, ...visibility } })
+    }
+    if (pathname === '/api/admin-actions') {
+      requests.push('admin')
+      return route.fulfill({ json: { isAdmin: true } })
+    }
+    if (pathname === '/api/score-history') {
+      assert.equal(searchParams.get('kind'), 'timeline')
+      assert.equal(searchParams.get('limit'), '50')
+      requests.push('timeline')
+      const history = mode === 'legacy' ? { items: points } : {
+        pointItems: mode === 'partial' ? null : points, redemptionItems: redemptions
+      }
+      return route.fulfill({ json: { status: 'success', ...history } })
+    }
+    if (pathname === '/api/redemptions' && !searchParams.has('pickup')) {
+      requests.push('legacy-redemptions')
+      return route.fulfill({ json: { status: 'success', items: redemptions } })
+    }
+    return route.fulfill({ json: { status: 'success', items: [], data: {} } })
+  })
+
+  try {
+    await page.goto(`${baseUrl}/index.html`)
+    await page.locator('#btnAdmin').waitFor()
+    const historyButton = page.locator('#historyBtn')
+    if (viewport.width < 500) await historyButton.tap()
+    else await historyButton.click()
+    await page.locator('#historyList [data-open-redemption="r1"]').waitFor()
+    assert.match(await page.locator('#historyList').innerText(), /เช็กอินประจำวัน/)
+    assert.deepEqual(requests, ['timeline'])
+
+    mode = 'partial'
+    requests.length = 0
+    await page.goto(`${baseUrl}/index.html?view=score-history`)
+    await page.locator('#historyList [data-open-redemption="r1"]').waitFor()
+    assert.equal(await page.locator('#btnAdmin').isVisible(), false)
+    assert.deepEqual(requests, ['timeline'])
+
+    mode = 'legacy'
+    requests.length = 0
+    await page.goto(`${baseUrl}/index.html?view=score-history`)
+    await page.locator('#historyList [data-open-redemption="r1"]').waitFor()
+    await page.locator('#btnAdmin').waitFor()
+    assert.deepEqual(requests, ['timeline', 'legacy-redemptions', 'admin'])
+    console.log(`phase 2 ${viewport.width}px one timeline request, zero separate admin checks on current boot`)
+  } finally {
+    await page.close()
+  }
+}
+
 ;(async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -761,6 +1034,8 @@ async function runProgressiveStartupViewport(browser, baseUrl, viewport) {
   const browser = await chromium.launch({ executablePath, headless: true })
   try {
     for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      await runPhaseOneRequestCounts(browser, baseUrl, viewport)
+      await runHistoryViewport(browser, baseUrl, viewport)
       await runViewport(browser, baseUrl, viewport)
       await runMemberCheckinViewport(browser, baseUrl, viewport)
       await runRedemptionReplay(browser, baseUrl, viewport, 'index.html')

@@ -4,6 +4,7 @@ const { has: isRegisteredRoom } = require('../room-options')
 const { auditEvent, retryAuditFailure } = require('../lib/audit')
 const { safeRewardImageUrl } = require('../lib/reward-image')
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth')
+const { getAdminRole } = require('../lib/admin-access')
 const {
   buildPointAdjustmentMessage,
   buildRedemptionCancelledMessage,
@@ -112,22 +113,6 @@ const SAFETY_ACTIONS = new Set([
   'safety_streak_reset',
   'safety_settings_update'
 ])
-
-function uidList(value = '') {
-  return String(value || '')
-    .split(',')
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-function getAdminRole(uid = '') {
-  const cleanUid = String(uid || '').trim()
-  if (!cleanUid) return null
-  if (cleanUid === process.env.ADMIN_UID) return 'super_admin'
-  if (uidList(process.env.SAFETY_ADMIN_UIDS).includes(cleanUid)) return 'safety_admin'
-  if (uidList(process.env.SAFETY_VIEWER_UIDS).includes(cleanUid)) return 'safety_viewer'
-  return null
-}
 
 function hasAdminAccess(uid = '', scope = 'full') {
   const role = getAdminRole(uid)
@@ -2192,7 +2177,6 @@ module.exports = async (req, res) => {
            cancelled_by,
            cancel_reason,
            refund_balance,
-           reward_id,
            users:user_id ( name, uid, room ),
            rewards:reward_id ( name, img_url )
         `)
@@ -2210,21 +2194,29 @@ module.exports = async (req, res) => {
          throw error;
       }
 
-      const redemptionIds = new Set((data || []).map(row => String(row.id)))
-      const { data: rawNotificationRows, error: notificationError } = redemptionIds.size
-        ? await supabaseAdmin
-            .from('line_notification_outbox')
-            .select('id,dedupe_key,message_kind,status,attempt_count,last_error,sent_at,updated_at')
-            .in('message_kind', ['redemption_created', 'redemption_admin_new', 'redemption_received', 'redemption_cancelled'])
-            .order('created_at', { ascending: false })
-            .limit(300)
-        : { data: [], error: null }
-      if (notificationError) throw notificationError
-      const notificationRows = (rawNotificationRows || []).filter(item => redemptionIds.has(String(item.dedupe_key || '').split(':').slice(1).join(':')))
-      const notificationMap = new Map((notificationRows || []).map(item => [item.dedupe_key, item]))
+      const rows = data || []
+      const notificationQueries = []
+      const notificationPrefixes = ['redemption-created', 'redemption-admin', 'redemption-received', 'redemption-cancelled']
+      // Keep the PostgREST filter bounded when a full page of 100 redemptions is shown.
+      const redemptionsPerQuery = 20
+      for (let start = 0; start < rows.length; start += redemptionsPerQuery) {
+        const keys = rows.slice(start, start + redemptionsPerQuery).flatMap(row => (
+          notificationPrefixes.map(prefix => `${prefix}:${row.id}`)
+        ))
+        notificationQueries.push(supabaseAdmin
+          .from('line_notification_outbox')
+          .select('id,dedupe_key,message_kind,status,attempt_count,last_error,sent_at,updated_at')
+          .in('message_kind', ['redemption_created', 'redemption_admin_new', 'redemption_received', 'redemption_cancelled'])
+          .in('dedupe_key', keys))
+      }
+      const notificationMap = new Map()
+      for (const result of await Promise.all(notificationQueries)) {
+        if (result.error) throw result.error
+        for (const item of result.data || []) notificationMap.set(item.dedupe_key, item)
+      }
       
       // จัด Format ข้อมูล
-      const formatted = (data || []).map(row => ({
+      const formatted = rows.map(row => ({
          id: row.id,
          date: row.created_at,
          

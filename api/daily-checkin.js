@@ -344,7 +344,7 @@ async function getWeeklyMission(userId, uid) {
 
   const { data: bonusRows, error: bonusError } = await supabaseAdmin
     .from('point_transactions')
-    .select('id,amount,created_at')
+    .select('created_at')
     .eq('user_id', userId)
     .eq('code', week.code)
     .eq('type', 'WEEKLY_SAFETY_MISSION')

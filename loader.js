@@ -477,10 +477,12 @@
 
   const recoveryReady = isAdminPage ? Promise.resolve({ consumed: false }) : consumeRecoveryLink();
 
-  // Attach the LIFF access token to every same-origin API request. Existing
-  // pages without this bridge continue in legacy mode until their next reload.
+  // These public resources have the same response for signed-in and anonymous visitors.
   global.fetch = async function authenticatedFetch(input, init = {}) {
     if (!isSameOriginApi(input)) return nativeFetch(input, init);
+    if ((input === '/api/rewards?action=banners' || input === '/api/rewards?include=0') && !init.method) {
+      return nativeFetch(input, { cache: init.cache, signal: init.signal, credentials: 'omit' });
+    }
 
     const token = !isAdminPage && isRecoveryMode() ? '' : getLineAccessToken();
     const requestHeaders = typeof Request !== 'undefined' && input instanceof Request
@@ -502,6 +504,7 @@
       try {
         response = await nativeFetch(input, requestInit);
       } catch (error) {
+        if (requestInit.signal?.aborted) throw error;
         const method = String(init.method || 'GET').toUpperCase();
         const safeNetworkRetry = ['GET', 'HEAD', 'OPTIONS'].includes(method) && replayable;
         if (safeNetworkRetry && attempt < 2) {

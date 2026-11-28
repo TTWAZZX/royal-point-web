@@ -1,11 +1,13 @@
 const { supabaseAdmin: supabase, getRedis, scoreCacheKey } = require('../lib/supabase');
 const { AuthError, authenticateRequest, sendAuthError } = require('../lib/line-auth');
+const { getAdminRole } = require('../lib/admin-access');
 
 const redis = getRedis();
 
-function sendScore(res, uid, { balance, updated_at, rewards }) {
+function sendScore(res, uid, { balance, updated_at, rewards }, adminStatus) {
   return res.status(200).json({
     status: 'success', uid,
+    ...adminStatus,
     data: { score: balance ?? 0, updated_at: updated_at ?? null, rewards: Array.isArray(rewards) ? rewards : [] }
   });
 }
@@ -21,44 +23,40 @@ module.exports = async (req, res) => {
     if (!uid) {
       return res.status(400).json({ status: 'error', message: 'uid required' });
     }
-    await authenticateRequest(req, { claimedUid: uid });
+    const auth = await authenticateRequest(req, { claimedUid: uid });
+    const adminStatus = req.query.includeAdmin === '1'
+      ? { isAdmin: auth.mode === 'token' && auth.uid === uid && Boolean(getAdminRole(auth.uid)) }
+      : {};
 
     const includeRewards = req.query.includeRewards !== '0';
     const cacheKey = scoreCacheKey(uid, includeRewards);
+    const useCache = redis && (includeRewards || req.query.fresh !== '1');
 
     // ---- Try cache first
-    if (redis) {
+    if (useCache) {
       try {
         const cached = await redis.get(cacheKey);
-        if (cached) return sendScore(res, uid, cached);
+        if (cached) return sendScore(res, uid, cached, adminStatus);
       } catch (e) {
         // ignore cache errors
       }
     }
 
-    // ---- Load user
-    const { data: user, error: e1 } = await supabase
+    // A member without a balance row still exists and starts at zero.
+    const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id')
+      .select('user_points(balance,updated_at)')
       .eq('uid', uid)
       .maybeSingle();
 
-    if (e1) throw e1;
+    if (userError) throw userError;
     if (!user) {
       return res.status(404).json({ status: 'error', message: 'user_not_found' });
     }
 
-    // ---- Load balance
-    const { data: point, error: e2 } = await supabase
-      .from('user_points')
-      .select('balance, updated_at')
-      .eq('user_id', user.id)
-      .single();
-
-    if (e2 && e2.code !== 'PGRST116') { // ไม่ถือว่า error ถ้าไม่พบแถว
-      throw e2;
-    }
-
+    const point = Array.isArray(user.user_points)
+      ? (user.user_points.length === 1 ? user.user_points[0] : null)
+      : user.user_points;
     const balance = Number(point?.balance ?? 0);
     const updated_at = point?.updated_at ?? null;
 
@@ -81,13 +79,13 @@ module.exports = async (req, res) => {
     }
 
     // ---- Cache 30s (Upstash)
-    if (redis) {
+    if (useCache) {
       try {
         await redis.set(cacheKey, { balance, updated_at, rewards }, { ex: 30 });
       } catch {}
     }
 
-    return sendScore(res, uid, { balance, updated_at, rewards });
+    return sendScore(res, uid, { balance, updated_at, rewards }, adminStatus);
 
   } catch (err) {
     if (err instanceof AuthError) return sendAuthError(res, err);

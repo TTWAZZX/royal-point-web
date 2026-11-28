@@ -1,12 +1,33 @@
-// /api/score-history.js — minimal & safe ordering (no id/uuid needed)
-const { createClient } = require('@supabase/supabase-js');
+const { supabaseAdmin: supabase } = require('../lib/supabase');
 const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
+async function loadRedemptions(userId, limit, pendingOnly) {
+  let query = supabase
+    .from('redemptions')
+    .select('id,created_at,cost,status,rewards:reward_id(name,img_url)')
+    .eq('user_id', userId);
+  if (pendingOnly) query = query.eq('status', 'approved');
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.id,
+    created_at: row.created_at,
+    cost: Number(row.cost || 0),
+    status: row.status || '',
+    reward_name: row.rewards?.name || 'ของรางวัล',
+    reward_img: row.rewards?.img_url || ''
+  }));
+}
+
+async function loadPoints(userId, offset, limit) {
+  return supabase
+    .from('point_transactions')
+    .select('id, amount, code, type, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .range(offset, offset + limit - 1);
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store');
@@ -38,44 +59,25 @@ module.exports = async (req, res) => {
       return res.status(404).json({ status: 'error', message: 'user_not_found' });
     }
 
-    // ดึงเฉพาะคอลัมน์ที่มีแน่ ๆ และเรียง created_at DESC
+    if (req.query.kind === 'timeline') {
+      const [points, redemptions] = await Promise.allSettled([
+        loadPoints(user.id, offset, limit),
+        loadRedemptions(user.id, limit, false)
+      ]);
+      const pointItems = points.status === 'fulfilled' && !points.value.error ? (points.value.data ?? []) : null;
+      const redemptionItems = redemptions.status === 'fulfilled' ? redemptions.value : null;
+      if (pointItems === null && redemptionItems === null) {
+        return res.status(500).json({ status: 'error', message: 'db_error' });
+      }
+      return res.status(200).json({ status: 'success', pointItems, redemptionItems });
+    }
+
     if (req.query.kind === 'redemptions') {
-      let query = supabase
-        .from('redemptions')
-        .select(`
-          id,
-          created_at,
-          cost,
-          status,
-          rewards:reward_id ( name, img_url )
-        `)
-        .eq('user_id', user.id);
-      if (req.query.pickup === 'pending') query = query.eq('status', 'approved');
-      const { data, error } = await query
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-
-      const items = (data || []).map(row => ({
-        id: row.id,
-        created_at: row.created_at,
-        cost: Number(row.cost || 0),
-        status: row.status || '',
-        reward_name: row.rewards?.name || 'ของรางวัล',
-        reward_img: row.rewards?.img_url || ''
-      }));
-
+      const items = await loadRedemptions(user.id, limit, req.query.pickup === 'pending');
       return res.status(200).json({ status: 'success', items });
     }
 
-    const { data, error } = await supabase
-      .from('point_transactions')
-      .select('id, amount, code, type, created_at')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false }) // = order by t.created_at desc
-      .order('id',         { ascending: false }) // = order by t.id desc
-      .range(offset, offset + limit - 1);
+    const { data, error } = await loadPoints(user.id, offset, limit);
 
     if (error) {
       return res.status(500).json({ status: 'error', message: 'db_error' });

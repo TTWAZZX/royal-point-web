@@ -1,15 +1,8 @@
-// /api/rewards.js  — Supabase version (Vercel Serverless Function)
-const { createClient } = require('@supabase/supabase-js');
+const { supabaseAdmin: supabase } = require('../lib/supabase');
 const { safeRewardImageUrl } = require('../lib/reward-image');
-const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
     if (req.method !== 'GET') {
       return res.status(405).json({ status: 'error', message: 'Method Not Allowed' });
@@ -24,7 +17,7 @@ module.exports = async (req, res) => {
         .order('sort_index', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) throw error;
-      res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
+      res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=30');
       return res.status(200).json({
         status: 'success',
         items: (data || []).map(item => ({
@@ -42,8 +35,14 @@ module.exports = async (req, res) => {
 
     const include = String(req.query.include ?? '0') === '1';
     if (include) {
-      res.setHeader('Cache-Control', 'private, no-store');
-      const { uid } = await authenticateRequest(req, { requireToken: true, allowRecovery: false });
+      const { AuthError, authenticateRequest, isAdminUid, sendAuthError } = require('../lib/line-auth');
+      let uid;
+      try {
+        ({ uid } = await authenticateRequest(req, { requireToken: true, allowRecovery: false }));
+      } catch (error) {
+        if (error instanceof AuthError) return sendAuthError(res, error);
+        throw error;
+      }
       if (!isAdminUid(uid)) {
         return res.status(403).json({ status: 'error', message: 'บัญชีนี้ไม่มีสิทธิ์จัดการของรางวัล' });
       }
@@ -76,11 +75,8 @@ module.exports = async (req, res) => {
       sort_index: r.sort_index ?? 9999   // ← เพิ่มตรงนี้
     }));
 
-    if (!include) res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-
     return res.status(200).json({ status: 'success', items });
   } catch (err) {
-    if (err instanceof AuthError) return sendAuthError(res, err);
     console.error('[api/rewards] error:', err);
     return res.status(500).json({ status: 'error', message: String(err || 'Internal Error') });
   }

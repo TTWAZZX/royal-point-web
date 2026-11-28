@@ -86,6 +86,28 @@ test('does not send the LINE token to third-party URLs', async () => {
   assert.equal(new Headers(calls[0].init?.headers || {}).has('Authorization'), false)
 })
 
+test('fetches public banners and catalog without credentials and keeps administration authenticated', async () => {
+  const { window, calls } = createContext()
+  await window.fetch('/api/rewards?action=banners')
+  await window.fetch('/api/rewards?include=0', { cache: 'no-store' })
+  await window.fetch('/api/rewards?include=1')
+  assert.equal(calls[0].init.credentials, 'omit')
+  assert.equal(calls[0].init.headers, undefined)
+  assert.equal(calls[1].init.credentials, 'omit')
+  assert.equal(calls[1].init.cache, 'no-store')
+  assert.equal(calls[1].init.headers, undefined)
+  assert.equal(calls[2].init.headers.get('Authorization'), 'Bearer line-access-token')
+})
+
+test('an aborted private read does not retry or open authentication help', async () => {
+  const error = new Error('request aborted')
+  const signal = AbortSignal.abort()
+  const { window, calls, swalCalls } = createContext({ responses: [{ error }], withSwal: true })
+  await assert.rejects(window.fetch('/api/get-score?uid=U-user-1', { signal }), error)
+  assert.equal(calls.length, 1)
+  assert.equal(swalCalls.length, 0)
+})
+
 test('manual recovery mode intentionally omits the bearer token', async () => {
   const { window, calls } = createContext()
   window.RoyalAuth.enableRecoveryMode(30)

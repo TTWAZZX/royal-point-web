@@ -24,6 +24,7 @@ function couponRpcReason(error) {
 }
 
 module.exports = async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store');
   try {
     if (!['GET', 'POST'].includes(req.method)) {
       return res.status(405).json({ status: 'error', message: 'Method not allowed' });
@@ -125,7 +126,12 @@ module.exports = async (req, res) => {
     await clearScoreCache(redis, cleanUid);
     await auditEvent(supabaseAdmin, { type: 'redeem_success', actorUid: cleanUid, entityType: 'coupon', entityId: redeemedCode, status: 'success', detail: { added: add, source: cleanTicket ? 'personal_link' : 'code', duplicate: Boolean(result.was_duplicate) } });
 
-    return res.status(200).json({ status: 'success', added: add, duplicate: Boolean(result.was_duplicate) });
+    return res.status(200).json({
+      status: 'success',
+      added: add,
+      duplicate: Boolean(result.was_duplicate),
+      ...(Number.isSafeInteger(result.balance) ? { balance: result.balance } : {})
+    });
 
   } catch (e) {
     if (e instanceof AuthError) return sendAuthError(res, e);

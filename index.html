@@ -410,13 +410,13 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/html5-qrcode"></script>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-<script src="/loader.js?v=line-token-v1-redemption-tracker"></script>
+<script src="/loader.js?v=line-token-v1-public-catalog"></script>
 <script src="/room-options.js?v=1"></script>
 <script>RoyalRooms.fill(document.getElementById('regRoom'));</script>
 <!-- index.html (ให้มาก่อน <script src="/app.js">) -->
 <script>window.__SKIP_AUTO_INIT__ = true;</script>
 <script src="/ui-status.js?v=1" defer></script>
-<script src="/app.js?v=redemption-tracker" defer></script>
+<script src="/app.js?v=reward-stock-freshness" defer></script>
 
 <!-- ===== Auto-register flow (single gate) ===== -->
 <script>
@@ -425,7 +425,7 @@
   window.__SKIP_AUTO_INIT__ = true;
 
   const LIFF_ID  = "2007053300-QoEvbXyn";
-  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}&includeRewards=0`;
+  const GET_SCORE = (uid) => `/api/get-score?uid=${encodeURIComponent(uid)}&includeRewards=0&includeAdmin=1`;
   const REG_URL   = "/api/register";
 
   function withBootTimeout(promise, timeoutMs, code) {
